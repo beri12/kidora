@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { --font-baloo: 'Baloo 2'; --font-nunito: 'Nunito'; }
+body { background: #F6F2FF; color: #3B0764; }
+
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes modal-pop { 0% { opacity: 0; transform: translateY(30px) scale(.94) } 100% { opacity: 1; transform: translateY(0) scale(1) } }
+@keyframes bob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+@keyframes pop { 0% { opacity: 0; transform: translateY(20px) scale(.96) } 100% { opacity: 1; transform: translateY(0) scale(1) } }
+@keyframes floaty { 0%, 100% { transform: translateY(0) rotate(-4deg) } 50% { transform: translateY(-14px) rotate(4deg) } }
+@keyframes breathe { 0%, 100% { transform: translateY(0) scale(1) } 50% { transform: translateY(-6px) scale(1.02) } }
+@keyframes fadeup { 0% { opacity: 0; transform: translateY(28px) } 100% { opacity: 1; transform: translateY(0) } }
+@keyframes marquee { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }
+
+.animate-fade-in { animation: fade-in .25s ease both; }
+.animate-modal-pop { animation: modal-pop .4s cubic-bezier(.2,.9,.3,1.4) both; }
+.animate-bob { animation: bob 4s ease-in-out infinite; }

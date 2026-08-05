@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kidora
+      POSTGRES_PASSWORD: kidora
+      POSTGRES_DB: kidora
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kidora"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redisdata:/data"]
+
+  mailhog:
+    image: mailhog/mailhog
+    ports: ["1025:1025", "8025:8025"]  # SMTP + web UI at :8025
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://kidora:kidora@postgres:5432/kidora?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      CORS_ORIGIN: http://localhost:3000
+      WEB_URL: http://localhost:3000
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-prod-access-secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-prod-refresh-secret}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_x}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-test}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:-test}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    ports: ["4000:4000"]
+
+volumes:
+  pgdata:
+  redisdata:

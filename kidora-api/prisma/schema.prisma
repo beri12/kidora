@@ -1,0 +1,538 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String            @id @default(cuid())
+  email           String            @unique
+  passwordHash    String?
+  name            String
+  role            Role              @default(PARENT)
+  avatarColor     String            @default("#8B5CF6")
+    avatarUrl       String?   
+  points          Int               @default(0)
+  streak          Int               @default(0)
+  googleId        String?           @unique
+  mfaEnabled      Boolean           @default(false)
+  mfaSecret       String?
+  backupCodes     String[]          @default([])
+  failedLogins    Int               @default(0)
+  lockedUntil     DateTime?
+  emailVerified   Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  schoolId        String?
+  aiConversations AIConversation[]
+  avatar          Avatar?
+  certificates    Certificate[]
+  children        ChildProfile[]    @relation("ParentChildren")
+  coursesOwned    Course[]          @relation("TeacherCourses")
+  inventory       Inventory[]
+  learningPaths   LearningPath[]
+  loginHistory    LoginHistory[]
+  notifications   Notification[]
+  payments        Payment[]
+  progress        Progress[]
+  refreshTokens   RefreshToken[]
+  wallet          RewardWallet?
+  sessions        Session[]
+  missions        StudentMission[]
+  subscription    Subscription?
+  transactions    Transaction[]
+  school          School?           @relation(fields: [schoolId], references: [id])
+  achievements    UserAchievement[]
+  earnedBadges    UserBadge[]
+}
+
+model District {
+  id        String   @id @default(cuid())
+  name      String
+  region    String   @default("")
+  createdAt DateTime @default(now())
+  schools   School[]
+}
+
+model School {
+  id         String    @id @default(cuid())
+  name       String
+  districtId String?
+  createdAt  DateTime  @default(now())
+  district   District? @relation(fields: [districtId], references: [id])
+  members    User[]
+}
+
+model ChildProfile {
+  id        String   @id @default(cuid())
+  name      String
+  age       Int
+  avatar    String   @default("#8B5CF6")
+  parentId  String
+  createdAt DateTime @default(now())
+  parent    User     @relation("ParentChildren", fields: [parentId], references: [id], onDelete: Cascade)
+}
+
+model Subject {
+  id      String   @id @default(cuid())
+  slug    String   @unique
+  name    String
+  accent  String
+  courses Course[]
+}
+
+model Course {
+  id               String       @id @default(cuid())
+  slug             String       @unique
+  title            String
+  description      String       @default("")
+  category         String?
+  subCategory      String?
+  topic            String?
+  ageBand          String?
+  gradient         String       @default("from-brand-500 to-brand-800")
+  accent           String       @default("#7C3AED")
+  isPremium        Boolean      @default(false)
+  published        Boolean      @default(false)
+  status           CourseStatus @default(DRAFT)
+  subjectId        String?
+  teacherId        String?
+  language         String?
+  subtitleLanguage String?
+  levelId          String?
+  duration         String?
+  thumbnailUrl     String?
+  trailerUrl       String?
+  learningPoints   String[]     @default([])
+  requirements     String[]     @default([])
+  tags             String[]     @default([])
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  subject          Subject?     @relation(fields: [subjectId], references: [id])
+  teacher          User?        @relation("TeacherCourses", fields: [teacherId], references: [id])
+  lessons          Lesson[]
+  resources        Resource[]
+  sections         Section[]
+}
+
+model Section {
+  id        String    @id @default(cuid())
+  title     String
+  order     Int
+  courseId  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  lectures  Lecture[]
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model Lecture {
+  id            String   @id @default(cuid())
+  title         String
+  content       String?
+  order         Int      @default(0)
+  videoUrl      String?
+  videoFileName String?
+  quiz          Json?
+  sectionId     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  section       Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+}
+
+model Lesson {
+  id        String     @id @default(cuid())
+  title     String
+  duration  String     @default("5 min")
+  type      LessonType @default(VIDEO)
+  order     Int        @default(0)
+  videoUrl  String?
+  courseId  String
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress  Progress[]
+  quiz      Quiz?
+  resources Resource[]
+}
+
+model Resource {
+  id        String       @id @default(cuid())
+  name      String
+  courseId  String
+  kind      ResourceKind @default(other)
+  url       String
+  sizeBytes Int          @default(0)
+  lessonId  String
+  createdAt DateTime     @default(now())
+  course    Course       @relation(fields: [courseId], references: [id])
+  lesson    Lesson       @relation(fields: [lessonId], references: [id])
+}
+
+model Quiz {
+  id        String         @id @default(cuid())
+  title     String
+  lessonId  String?        @unique
+  lesson    Lesson?        @relation(fields: [lessonId], references: [id])
+  questions QuizQuestion[]
+}
+
+model QuizQuestion {
+  id      String   @id @default(cuid())
+  prompt  String
+  options String[]
+  correct Int
+  quizId  String
+  quiz    Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+model Progress {
+  id        String   @id @default(cuid())
+  completed Boolean  @default(false)
+  percent   Int      @default(0)
+  userId    String
+  lessonId  String
+  updatedAt DateTime @updatedAt
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+}
+
+model Badge {
+  id       String      @id @default(cuid())
+  slug     String      @unique
+  name     String
+  desc     String
+  glyph    String
+  gradient String
+  users    UserBadge[]
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+  badge    Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+}
+
+model Certificate {
+  id         String   @id @default(cuid())
+  courseName String
+  userId     String
+  issuedAt   DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id         String           @id @default(cuid())
+  plan       PlanKey          @default(free)
+  status     String           @default("active")
+  provider   PaymentProvider?
+  externalId String?
+  userId     String           @unique
+  renewsAt   DateTime?
+  createdAt  DateTime         @default(now())
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id          String          @id @default(cuid())
+  provider    PaymentProvider
+  status      PaymentStatus   @default(pending)
+  plan        PlanKey
+  amountCents Int
+  currency    String          @default("USD")
+  externalId  String?         @unique
+  userId      String
+  createdAt   DateTime        @default(now())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  device     String   @default("unknown")
+  ip         String   @default("")
+  userId     String
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  success   Boolean
+  ip        String   @default("")
+  userAgent String   @default("")
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Avatar {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  body        String   @default("default")
+  skinColor   String   @default("#F1C27D")
+  hair        String   @default("short")
+  face        String   @default("happy")
+  clothes     String   @default("school")
+  accessories String[] @default([])
+  pet         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AvatarItem {
+  id        String      @id @default(cuid())
+  name      String
+  category  String
+  rarity    Rarity      @default(common)
+  price     Int         @default(0)
+  assetUrl  String      @default("")
+  inventory Inventory[]
+}
+
+model Inventory {
+  id          String     @id @default(cuid())
+  userId      String
+  itemId      String
+  equipped    Boolean    @default(false)
+  purchasedAt DateTime   @default(now())
+  item        AvatarItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+}
+
+model Pet {
+  id     String @id @default(cuid())
+  name   String
+  type   String
+  rarity Rarity @default(common)
+  level  Int    @default(1)
+}
+
+model RewardWallet {
+  id     String @id @default(cuid())
+  userId String @unique
+  coins  Int    @default(0)
+  gems   Int    @default(0)
+  xp     Int    @default(0)
+  level  Int    @default(1)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  type        TxnType
+  amount      Int
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Achievement {
+  id          String            @id @default(cuid())
+  title       String
+  description String
+  badgeUrl    String            @default("")
+  category    String            @default("Learning")
+  requirement Int               @default(1)
+  users       UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  progress      Int         @default(0)
+  unlockedAt    DateTime?
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+}
+
+model Mission {
+  id          String           @id @default(cuid())
+  title       String
+  description String           @default("")
+  rewardXP    Int              @default(0)
+  rewardCoins Int              @default(0)
+  students    StudentMission[]
+}
+
+model StudentMission {
+  id          String    @id @default(cuid())
+  studentId   String
+  missionId   String
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  mission     Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  student     User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, missionId])
+}
+
+model LearningPath {
+  id        String @id @default(cuid())
+  studentId String
+  world     World
+  progress  Int    @default(0)
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, world])
+}
+
+model AIConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  response  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String               @id @default(cuid())
+  type      String               @default("dm")
+  title     String?
+  createdAt DateTime             @default(now())
+  members   ConversationMember[]
+  messages  Message[]
+}
+
+model ConversationMember {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  role           String       @default("member")
+  lastReadAt     DateTime?
+  joinedAt       DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  senderId       String
+  body           String
+  type           String       @default("text")
+  attachmentUrl  String?
+  replyToId      String?
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  reactions      Json         @default("{}")
+  readBy         String[]     @default([])
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+enum Role {
+  CHILD
+  PARENT
+  TEACHER
+  SCHOOL_ADMIN
+  SCHOOL_LEADER
+  DISTRICT_ADMIN
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum World {
+  READING_FOREST
+  MATH_ISLAND
+  SCIENCE_PLANET
+  CODING_CITY
+  ART_VALLEY
+}
+
+enum Rarity {
+  common
+  rare
+  epic
+  legendary
+}
+
+enum TxnType {
+  EARN
+  SPEND
+  BONUS
+  PURCHASE
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum LessonType {
+  VIDEO
+  INTERACTIVE
+  QUIZ
+  GAME
+}
+
+enum ResourceKind {
+  video
+  document
+  image
+  other
+}
+
+enum LectureType {
+  VIDEO
+  QUIZ
+  ASSIGNMENT
+  LIVE
+}
+
+enum PlanKey {
+  free
+  family
+  school
+  district
+}
+
+enum PaymentProvider {
+  stripe
+  paypal
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+}
