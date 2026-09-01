@@ -168,9 +168,9 @@ export class ExamsService {
     });
     if (open) {
       if (open.expiresAt && open.expiresAt.getTime() < Date.now()) {
-        return this.finalise(open.id, exam, {}, true);
+        return this.finalise(open, exam, {}, true);
       }
-      return this.serveAttempt(open.id, exam);
+      return this.serveAttempt(open, exam);
     }
 
     const used = await this.prisma.examAttempt.count({
@@ -196,7 +196,7 @@ export class ExamsService {
         maxScore: pool.reduce((a, q) => a + q.points, 0),
       },
     });
-    return this.serveAttempt(attempt.id, exam);
+    return this.serveAttempt(attempt, exam);
   }
 
   /** Grade and close an attempt. */
@@ -214,7 +214,7 @@ export class ExamsService {
     if (!attempt) throw new BadRequestException('Start the exam before submitting');
 
     const expired = !!attempt.expiresAt && attempt.expiresAt.getTime() < Date.now();
-    return this.finalise(attempt.id, exam, dto.answers ?? {}, expired);
+    return this.finalise(attempt, exam, dto.answers ?? {}, expired);
   }
 
   async result(tenant: TenantContext, id: string) {
@@ -246,10 +246,8 @@ export class ExamsService {
     };
   }
 
-  private async serveAttempt(attemptId: string, exam: any) {
-    const attempt = await this.prisma.examAttempt.findUnique({ where: { id: attemptId } });
-    if (!attempt) throw new NotFoundException('Attempt not found');
-
+  /** Builds the student-safe payload from an attempt row already in hand. */
+  private serveAttempt(attempt: any, exam: any) {
     const byId = new Map(exam.questions.map((q: any) => [q.id, q]));
     const served = attempt.questionIds.map((qid) => byId.get(qid)).filter(Boolean) as any[];
 
@@ -271,10 +269,8 @@ export class ExamsService {
     };
   }
 
-  private async finalise(attemptId: string, exam: any, answers: Record<string, unknown>, expired: boolean) {
-    const attempt = await this.prisma.examAttempt.findUnique({ where: { id: attemptId } });
-    if (!attempt) throw new NotFoundException('Attempt not found');
-
+  private async finalise(attempt: any, exam: any, answers: Record<string, unknown>, expired: boolean) {
+    const attemptId = attempt.id;
     const byId = new Map(exam.questions.map((q: any) => [q.id, q]));
     const served = attempt.questionIds.map((qid) => byId.get(qid)).filter(Boolean) as any[];
 

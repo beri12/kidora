@@ -188,7 +188,7 @@ export class SchoolsService {
 
   // ---------------------------------------------------------------- grades
 
-  grades(tenant: TenantContext) {
+  async grades(tenant: TenantContext) {
     const schoolId = this.tenants.requireSchoolId(tenant);
     return this.prisma.grade.findMany({
       where: { OR: [{ schoolId }, { schoolId: null }] },
@@ -226,7 +226,7 @@ export class SchoolsService {
 
   // ---------------------------------------------------------------- classes
 
-  classes(tenant: TenantContext, query: ListQueryDto) {
+  async classes(tenant: TenantContext, query: ListQueryDto) {
     const schoolId = this.tenants.requireSchoolId(tenant);
     const where: any = { schoolId };
     if (query.gradeId) where.gradeId = query.gradeId;
@@ -353,7 +353,7 @@ export class SchoolsService {
 
   // ---------------------------------------------------------------- courses
 
-  courses(tenant: TenantContext, query: ListQueryDto & { status?: string; teacherId?: string }) {
+  async courses(tenant: TenantContext, query: ListQueryDto & { status?: string; teacherId?: string }) {
     const schoolId = this.tenants.requireSchoolId(tenant);
     const where: any = { schoolId };
     if (query.gradeId) where.gradeId = query.gradeId;
