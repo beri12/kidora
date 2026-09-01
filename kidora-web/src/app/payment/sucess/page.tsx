@@ -1,13 +1,13 @@
 // app/payment/success/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import confetti from "canvas-confetti";
 import { getCheckoutSessionStatus } from "@/lib/payment";
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessContent() {
   const params = useSearchParams();
   const router = useRouter();
   const sessionId = params.get("session_id");
@@ -81,5 +81,23 @@ export default function PaymentSuccessPage() {
         )}
       </div>
     </div>
+  );
+}
+/**
+ * useSearchParams() forces a client bailout, which Next 15 rejects during
+ * prerender unless the reading component sits inside a Suspense boundary.
+ * Without this the whole production build fails on this route.
+ */
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F1ECFF] grid place-items-center px-5">
+          <div className="w-10 h-10 rounded-full border-4 border-[#DDD1FF] border-t-[#8B5CF6] animate-spin" />
+        </div>
+      }
+    >
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }
