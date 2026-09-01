@@ -3,5 +3,12 @@ import { QuizzesService } from './quizzes.service';
 import { QuizzesController } from './quizzes.controller';
 import { RewardsModule } from '../rewards/rewards.module';
 import { NotificationsModule } from '../notifications/notifications.module';
-@Module({ imports: [RewardsModule, NotificationsModule], providers: [QuizzesService], controllers: [QuizzesController] })
+import { CoursesModule } from '../courses/courses.module';
+
+@Module({
+  imports: [RewardsModule, NotificationsModule, CoursesModule],
+  providers: [QuizzesService],
+  controllers: [QuizzesController],
+  exports: [QuizzesService],
+})
 export class QuizzesModule {}

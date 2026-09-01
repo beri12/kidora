@@ -5,10 +5,13 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { JwtAuthGuard } from '../auth/dto/Jwt-auth.guard';
-import { RolesGuard } from '../auth/dto/Roles.guard';
-import { Roles } from '../auth/dto/Roles.decorator';
-import { CurrentUser } from '../auth/dto/Current-user.decorator';
+// Canonical guards/decorators live in src/common. The near-identical copies in
+// src/auth/dto are unwired legacy (see "Conflicts found" in KIDORA_UPDATE_PLAN.md).
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AppRole } from '../common/enums/role.enum';
 
 import { CoursesService } from './courses.service';
 import {
@@ -19,7 +22,7 @@ import {
 } from './dto/Course-wizard.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('TEACHER')
+@Roles(AppRole.TEACHER, AppRole.ADMIN, AppRole.SUPER_ADMIN)
 @Controller('courses')
 export class CoursesController {
   constructor(private readonly coursesService: CoursesService) {}

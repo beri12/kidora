@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
 import { DatabaseModule } from './database/database.module';
+import { TenantModule } from './common/tenancy/tenant.module';
 import { CacheModule } from './infrastructure/cache/cache.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
 import { EmailModule } from './infrastructure/email/email.module';
@@ -34,6 +35,13 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { ChatModule } from './chat/chat.module';
 
+// School LMS modules
+import { SchoolsModule } from './schools/schools.module';
+import { AssignmentsModule } from './assignments/assignments.module';
+import { ExamsModule } from './exams/exams.module';
+import { QuestsModule } from './quests/quests.module';
+import { StudentsModule } from './students/students.module';
+
 import appConfig from './config/app.config';
 import authConfig from './config/auth.config';
 import databaseConfig from './config/database.config';
@@ -50,6 +58,7 @@ import { RedisModule } from './redis/redis.module';
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     DatabaseModule,
+    TenantModule,
     CacheModule,
     StorageModule,
     EmailModule,
@@ -76,7 +85,12 @@ import { RedisModule } from './redis/redis.module';
     SubscriptionsModule,
     InvoicesModule,
     ChatModule,
-    RedisModule
+    RedisModule,
+    SchoolsModule,
+    AssignmentsModule,
+    ExamsModule,
+    QuestsModule,
+    StudentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

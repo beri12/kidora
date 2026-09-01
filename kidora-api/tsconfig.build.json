@@ -1,5 +1,11 @@
 {
   "extends": "./tsconfig.json",
+  // Without an explicit include, TypeScript also picks up prisma/seed.ts, which
+  // pushes the inferred rootDir to the package root and emits dist/src/main.js.
+  // The Dockerfile runs `node dist/main.js`, so the build has to be scoped to
+  // src/ for the produced layout to match. (prisma/seed.ts is run through
+  // ts-node by `npm run db:seed` and is not part of the compiled output.)
+  "include": ["src/**/*"],
   "exclude": [
     "node_modules",
     "test",

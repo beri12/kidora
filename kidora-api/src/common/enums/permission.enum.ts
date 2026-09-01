@@ -1,5 +1,7 @@
 // Fine-grained permissions used by the RBAC policy layer.
 export enum Permission {
+  // --- pre-existing (unchanged values, do not rename: they are asserted in specs
+  // and mirrored by kidora-web/src/constants/index.ts) ---
   COURSE_CREATE = 'course:create',
   COURSE_UPDATE = 'course:update',
   LESSON_UPLOAD = 'lesson:upload',
@@ -11,4 +13,28 @@ export enum Permission {
   SUBSCRIPTION_MANAGE = 'subscription:manage',
   LESSON_LEARN = 'lesson:learn',
   GAME_PLAY = 'game:play',
+
+  // --- school LMS ---
+  SCHOOL_READ = 'school.read',
+  SCHOOL_MANAGE = 'school.manage',
+  STUDENTS_READ = 'students.read',
+  STUDENTS_MANAGE = 'students.manage',
+  TEACHERS_READ = 'teachers.read',
+  TEACHERS_MANAGE = 'teachers.manage',
+  CLASSES_READ = 'classes.read',
+  CLASSES_MANAGE = 'classes.manage',
+  COURSES_READ = 'courses.read',
+  COURSES_CREATE = 'courses.create',
+  COURSES_UPDATE = 'courses.update',
+  COURSES_PUBLISH = 'courses.publish',
+  LESSONS_CREATE = 'lessons.create',
+  LESSONS_UPDATE = 'lessons.update',
+  ACTIVITIES_CREATE = 'activities.create',
+  QUIZZES_CREATE = 'quizzes.create',
+  ASSIGNMENTS_CREATE = 'assignments.create',
+  ASSIGNMENTS_GRADE = 'assignments.grade',
+  EXAMS_CREATE = 'exams.create',
+  EXAMS_GRADE = 'exams.grade',
+  CERTIFICATES_ISSUE = 'certificates.issue',
+  ANALYTICS_READ = 'analytics.read',
 }

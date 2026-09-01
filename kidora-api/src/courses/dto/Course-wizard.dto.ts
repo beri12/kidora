@@ -68,17 +68,24 @@ export class AdvanceInfoDto {
   @IsArray() @IsString({ each: true }) tags!: string[];
 }
 
+// Every field is optional so POST /courses/:id/publish serves both callers:
+// the 3-step wizard (which sends the whole course) and the LMS course builder
+// (which has already saved its sections and just flips the flag). The original
+// full payload still validates exactly as before.
 export class PublishCourseDto {
+  @IsOptional()
   @ValidateNested()
   @Type(() => CreateDraftCourseDto)
-  basicInfo!: CreateDraftCourseDto;
+  basicInfo?: CreateDraftCourseDto;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => SectionDto)
-  sections!: SectionDto[];
+  sections?: SectionDto[];
 
+  @IsOptional()
   @ValidateNested()
   @Type(() => AdvanceInfoDto)
-  advanceInfo!: AdvanceInfoDto;
+  advanceInfo?: AdvanceInfoDto;
 }
