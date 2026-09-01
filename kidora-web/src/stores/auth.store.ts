@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { AxiosInstance } from 'axios';
 import { api, API_URL } from '@/lib/axios';
 import type { AuthResponse, User } from '@/types';
 
@@ -11,7 +12,8 @@ interface AuthState {
   setSession: (r: AuthResponse) => void;
   login: (email: string, password: string) => Promise<User>;
   register: (name: string, email: string, password: string, role?: string) => Promise<User>;
-  refresh: () => Promise<string | null>;
+  /** `client` lets the axios interceptor pass its non-intercepted instance. */
+  refresh: (client?: AxiosInstance) => Promise<string | null>;
   logout: () => void;
   hasPlan: () => boolean;
 }
@@ -54,18 +56,24 @@ export const useAuthStore = create<AuthState>()(
         return data.user;
       },
 
-      // Uses raw fetch to avoid the axios interceptor recursing on 401.
-      refresh: async () => {
+      // Uses the caller's non-intercepted axios instance when given one, and
+      // raw fetch otherwise, so the interceptor can never recurse on a 401.
+      refresh: async (client?: AxiosInstance) => {
         const rt = get().refreshToken;
         if (!rt) return null;
         try {
-          const res = await fetch(`${API_URL}/auth/refresh`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken: rt }),
-          });
-          if (!res.ok) throw new Error('refresh failed');
-          const data = await res.json();
+          let data: any;
+          if (client) {
+            data = (await client.post('/auth/refresh', { refreshToken: rt })).data;
+          } else {
+            const res = await fetch(`${API_URL}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken: rt }),
+            });
+            if (!res.ok) throw new Error('refresh failed');
+            data = await res.json();
+          }
           const accessToken = data.accessToken ?? data.access_token ?? null;
           const refreshToken = data.refreshToken ?? data.refresh_token ?? null;
           set({ accessToken, refreshToken });

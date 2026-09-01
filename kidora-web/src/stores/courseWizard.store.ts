@@ -49,10 +49,13 @@ export interface AdvanceInfo {
   tags: string[];
 }
 
-interface StepStatus {
+// The index signature lets StepStatus be passed straight to WizardStepper,
+// which takes Record<string, boolean>.
+export interface StepStatus {
   basicInfo: boolean;
   curriculum: boolean;
   advanceInfo: boolean;
+  [step: string]: boolean;
 }
 
 interface CourseWizardState {

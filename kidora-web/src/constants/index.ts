@@ -7,18 +7,34 @@ export const ROLE_HOME: Record<Role, string> = {
   TEACHER: '/dashboard/teacher',
   PARENT: '/dashboard/parent',
   CHILD: '/dashboard/child',
-  SCHOOL_ADMIN: '/dashboard/school',
+  SCHOOL_ADMIN: '/dashboard/school/overview',
+  SCHOOL_LEADER: '/dashboard/school/overview',
   DISTRICT_ADMIN: '/dashboard/district',
 };
 
-// Coarse feature permissions per role (mirror the backend RBAC).
+// Coarse feature permissions per role. These mirror kidora-api's
+// src/common/constants/rbac.ts and are for showing/hiding UI only — the API
+// enforces the real thing on every request.
+const SCHOOL_ADMIN_PERMISSIONS = [
+  'school.read', 'school.manage', 'students.read', 'students.manage',
+  'teachers.read', 'teachers.manage', 'classes.read', 'classes.manage',
+  'courses.read', 'courses.publish', 'assignments.grade', 'certificates.issue',
+  'analytics.read',
+];
+
 export const PERMISSIONS: Record<Role, string[]> = {
   ADMIN: ['*'],
-  TEACHER: ['course:create', 'course:update', 'lesson:upload', 'student:view', 'grade:manage'],
+  TEACHER: [
+    'course:create', 'course:update', 'lesson:upload', 'student:view', 'grade:manage',
+    'courses.create', 'courses.update', 'courses.publish', 'lessons.create', 'lessons.update',
+    'activities.create', 'quizzes.create', 'assignments.create', 'assignments.grade',
+    'exams.create', 'exams.grade', 'certificates.issue', 'analytics.read',
+  ],
   PARENT: ['child:view', 'subscription:manage', 'report:view'],
-  CHILD: ['lesson:learn', 'game:play', 'quiz:take', 'badge:earn'],
-  SCHOOL_ADMIN: ['school:manage', 'teacher:view', 'student:view', 'report:view'],
-  DISTRICT_ADMIN: ['district:manage', 'school:view', 'report:view'],
+  CHILD: ['lesson:learn', 'game:play', 'quiz:take', 'badge:earn', 'courses.read'],
+  SCHOOL_ADMIN: SCHOOL_ADMIN_PERMISSIONS,
+  SCHOOL_LEADER: SCHOOL_ADMIN_PERMISSIONS,
+  DISTRICT_ADMIN: ['district:manage', 'school:view', 'report:view', ...SCHOOL_ADMIN_PERMISSIONS],
 };
 
 export const PLANS: Plan[] = [

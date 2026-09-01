@@ -1,4 +1,13 @@
-export type Role = 'CHILD' | 'PARENT' | 'TEACHER' | 'ADMIN' | 'SCHOOL_ADMIN' | 'DISTRICT_ADMIN';
+export * from './lms';
+
+export type Role =
+  | 'CHILD'
+  | 'PARENT'
+  | 'TEACHER'
+  | 'ADMIN'
+  | 'SCHOOL_ADMIN'
+  | 'SCHOOL_LEADER'
+  | 'DISTRICT_ADMIN';
 
 export interface User {
   id: string;
@@ -30,6 +39,11 @@ export interface Course {
   title: string;
   description: string;
   ageBand: string;
+  thumbnailUrl?: string | null;
+  trailerUrl?: string | null;
+  published?: boolean;
+  gradeId?: string | null;
+  grade?: { id: string; name: string } | null;
   gradient: string;
   accent: string;
   subject?: Subject;
@@ -43,7 +57,7 @@ export interface Lesson {
   id: string;
   title: string;
   duration: string;
-  type: 'VIDEO' | 'INTERACTIVE' | 'QUIZ' | 'GAME';
+  type: 'VIDEO' | 'INTERACTIVE' | 'QUIZ' | 'GAME' | 'ARTICLE' | 'AUDIO' | 'RESOURCE';
   order: number;
   videoUrl?: string;
   resources?: Resource[];
