@@ -9,6 +9,9 @@ dist/
 
 .env
 .env.*
+# ...but the documented templates are meant to be committed.
+!.env.example
+!**/.env.example
 
 *.log
 # Build artifacts
