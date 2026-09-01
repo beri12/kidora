@@ -387,3 +387,85 @@ pattern from `quizzes.service.spec.ts`. New suites:
 no code to change. The API additions are transport-agnostic REST + JSON and the
 shared types are exported from `kidora-web/src/types` for a future mobile client.
 This is reported as unfinished scope rather than silently skipped.
+
+---
+
+# Implementation status
+
+The plan above was implemented in full except where noted. Verified locally
+against Postgres 16 + Redis 7 with a two-school demo dataset.
+
+| Check | Result |
+|---|---|
+| `prisma validate` | ✅ |
+| Migration `20260901120000_add_school_lms` | ✅ applied; 0 `DROP`/`RENAME`; every added column nullable or defaulted |
+| `prisma/backfill-lms.ts` | ✅ runs twice with identical output (idempotent), deletes nothing |
+| `kidora-api` typecheck + `nest build` | ✅ (was failing at baseline) |
+| `kidora-api` tests | ✅ 136 passed, 13 suites |
+| `kidora-web` typecheck | ✅ (8 baseline errors fixed) |
+| `kidora-web` `next build` | ✅ 52 routes (3 baseline failures fixed) |
+| API boots, all routes mapped, no DI or route conflicts | ✅ |
+| Existing API contracts (17 endpoints re-checked live) | ✅ unchanged |
+| Tenant isolation, server-side scoring, certificate gate | ✅ verified live, not just unit-tested |
+| Key pages rendered in a real browser | ✅ student, school, teacher, parent |
+
+## Not done
+
+* **Mobile (Phase 38).** There is no React Native / Expo application in this
+  repository, so there was nothing to integrate into. The API additions are
+  plain REST + JSON and the shared types live in `kidora-web/src/types/lms.ts`,
+  ready for a mobile client.
+* **Docker image build (Phase 42).** No Docker daemon is available in this
+  environment, so `docker build` could not be executed. The Dockerfile itself
+  was fixed: `tsconfig.build.json` now scopes the build to `src/`, so
+  `nest build` emits `dist/main.js` — the path the Dockerfile's
+  `CMD node dist/main.js` already expected but which the build was not
+  producing (it emitted `dist/src/main.js`, because `prisma/seed.ts` widened
+  the inferred rootDir).
+* **`npm run lint`.** Neither app has a working lint setup, and this predates
+  this change: `kidora-api` has no ESLint config and no `eslint` dependency, and
+  `kidora-web`'s `next lint` has never been configured (it prompts
+  interactively). Setting one up would change lint rules across the existing
+  codebase, so it is left for a separate decision.
+* **Cross-school district roll-ups.** `DISTRICT_ADMIN` is scoped to their own
+  school's district; aggregating across every school in a district is not
+  implemented server-side, and `/dashboard/district` says so rather than
+  inventing numbers.
+
+## Pre-existing problems found and fixed along the way
+
+These were not part of the LMS brief but were blocking or unsafe:
+
+1. `UploadsModule` was imported by `app.module.ts` but did not exist — **the API
+   did not compile at all**. Built on the existing `StorageService`.
+2. `tsconfig.build.json` emitted `dist/src/main.js` while the Dockerfile runs
+   `node dist/main.js` — **the production image could not have started**.
+3. `GET /lessons/:id` was `@Public()` and returned quiz questions including
+   their `correct` index — **every answer key, and any unpublished course's
+   content, was readable by anyone with a lesson id**. Now authenticated,
+   access-checked and answer-key-stripped.
+4. `GET /teachers/students` returned *every* `CHILD` account on the platform —
+   **one school's children were visible to every other school's teachers**.
+   Now derived from the caller's own enrolments and school.
+5. `src/app/dashboard/district/page.tsx` was an empty file, which fails
+   `next build` ("is not a module").
+6. `games/live/[slug]` typed `params` as a plain object; Next 15 passes a promise.
+7. `/payment/sucess` called `useSearchParams()` with no Suspense boundary,
+   failing prerender.
+8. Navbar linked to `/for-teachers` and `/for-schools`, neither of which exists.
+9. Eight `kidora-web` type errors (see section B).
+
+## Left alone deliberately
+
+* `src/auth/dto/*` — the unwired duplicate auth stack. Flagged in the file, no
+  longer imported by anything; deleting it is a separate reviewable change.
+* `src/app/dashboard/school/page.tsx` — a marketing landing page under a
+  dashboard path. The admin surface is a sibling at `/overview`.
+* `src/app/dashboard/teacher/page` (empty, no extension),
+  `src/components/course-wizard` (empty file next to the real
+  `course-witzard/` directory), and
+  `src/app/dashboard/teacher/Teachercourses .tsx` (a filename with a space) —
+  harmless leftovers that Next ignores.
+* The public `GET /leaderboard` endpoint keeps its shape; only the displayed
+  name is now masked to "First L." so a children's platform does not publish
+  full names to unauthenticated callers.
