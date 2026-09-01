@@ -18,9 +18,11 @@ const PRODUCTS = [
 ];
 
 const AUDIENCES = [
-  { key: 'nav.teachers',  href: '/for-teachers' },
+  // These two landing pages live under /dashboard (that is where the route
+  // files are); the links previously pointed at top-level paths that 404.
+  { key: 'nav.teachers',  href: '/dashboard/for-teachers' },
   { key: 'nav.schools',   href: '/dashboard/school' },
-  { key: 'nav.districts', href: '/for-schools' },
+  { key: 'nav.districts', href: '/dashboard/school' },
   { key: 'nav.families',  href: '/for-families' },
 ];
 
