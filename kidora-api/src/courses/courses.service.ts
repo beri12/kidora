@@ -134,16 +134,21 @@ export class CoursesService {
     if (!dto?.basicInfo) {
       const lessons = await this.prisma.lesson.count({ where: { courseId } });
       if (lessons === 0) throw new ForbiddenException('Add at least one lesson before publishing');
-      return this.prisma.course.update({
+      const course = await this.prisma.course.update({
         where: { id: courseId },
         data: { status: 'PUBLISHED', published: true },
       });
+      await this.audit.record({
+        actorId: teacherId, schoolId: course.schoolId, action: 'course.publish',
+        entity: 'Course', entityId: courseId, meta: { title: course.title, via: 'builder' },
+      });
+      return course;
     }
 
     const sections = dto.sections ?? [];
     const advanceInfo = dto.advanceInfo;
 
-    return this.prisma.$transaction(
+    const published = await this.prisma.$transaction(
       async (tx) => {
         await tx.section.deleteMany({ where: { courseId } });
 
@@ -190,6 +195,12 @@ export class CoursesService {
       },
       { timeout: 15000 }, // raised from Prisma's 5000ms default
     );
+
+    await this.audit.record({
+      actorId: teacherId, schoolId: published.schoolId, action: 'course.publish',
+      entity: 'Course', entityId: courseId, meta: { title: published.title, via: 'wizard' },
+    });
+    return published;
   }
 
   async listMine(teacherId: string) {
