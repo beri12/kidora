@@ -1,7 +1,7 @@
 {
   "name": "kidora-api",
   "version": "1.0.0",
-  "description": "Kidora Education Platform API — AI-powered learning ecosystem for children, parents, teachers, schools, and districts.",
+  "description": "Kidora Education Platform API \u2014 AI-powered learning ecosystem for children, parents, teachers, schools, and districts.",
   "private": true,
   "scripts": {
     "build": "nest build",
@@ -16,7 +16,10 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "lint": "eslint \"src/**/*.ts\""
+    "lint": "eslint \"src/**/*.ts\"",
+    "db:backfill": "ts-node prisma/backfill-lms.ts",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "db:seed:lms": "ts-node prisma/seed-lms.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
