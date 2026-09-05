@@ -1,9 +1,11 @@
 export interface RoleField {
-  key: string;                 // form field name
+  key: string;                 // form field name — must match a field on the API's RegisterDto
   label: string;
   placeholder: string;
-  type?: 'text' | 'email' | 'number' | 'select';
+  type?: 'text' | 'email' | 'number' | 'select' | 'tel';
   options?: string[];         // for select
+  optional?: boolean;         // rendered, but not required to submit
+  hint?: string;              // small helper line under the input
 }
 
 export interface SignupRole {
@@ -20,7 +22,10 @@ export interface SignupRole {
 }
 
 // Order matches the signup modal grid: Teacher · Parent · Student · School Leader · District Leader.
-// Keys must match the Role type in role.ts exactly (ADMIN, TEACHER, PARENT, CHILD, SCHOOL_ADMIN, DISTRICT_ADMIN).
+// `key` is posted to POST /auth/register as `role`, so it must be spelled
+// exactly as the backend's Prisma Role enum. Each entry in `fields` must
+// likewise name a real property of the API's RegisterDto — the register page
+// posts them through verbatim.
 export const SIGNUP_ROLES: SignupRole[] = [
   {
     key: 'TEACHER', name: 'Teacher', emoji: '🍎',
@@ -30,9 +35,9 @@ export const SIGNUP_ROLES: SignupRole[] = [
     tagline: 'Set up your classroom in minutes.',
     cta: 'Create teacher account 🍎',
     fields: [
-      { key: 'schoolName', label: 'School name', placeholder: 'Sunnyvale Elementary' },
-      { key: 'gradeLevel', label: 'Grade you teach', placeholder: 'Grade 3', type: 'select', options: ['Pre-K', 'Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'] },
       { key: 'subject', label: 'Main subject', placeholder: 'Mathematics', type: 'select', options: ['Mathematics', 'Reading & English', 'Science', 'Programming', 'Art', 'General'] },
+      { key: 'gradeLevel', label: 'Grade you teach', placeholder: 'Grade 3', type: 'select', optional: true, options: ['Pre-K', 'Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'] },
+      { key: 'schoolCode', label: 'School code', placeholder: 'K7M2QP', optional: true, hint: 'Ask your school admin — you can join a school later.' },
     ],
   },
   {
@@ -42,9 +47,9 @@ export const SIGNUP_ROLES: SignupRole[] = [
     headline: 'Join as a parent 👪',
     tagline: 'Track progress and manage your family plan.',
     cta: 'Create free account 🎉',
-    fields: [
-      { key: 'childrenCount', label: 'How many children?', placeholder: '2', type: 'number' },
-    ],
+    // Children are added during onboarding, so nothing extra is needed to
+    // create the account itself.
+    fields: [],
   },
   {
     key: 'CHILD', name: 'Student', emoji: '🎒',
@@ -54,9 +59,8 @@ export const SIGNUP_ROLES: SignupRole[] = [
     tagline: "Let's set up your explorer profile.",
     cta: 'Start learning 🎈',
     fields: [
-      { key: 'age', label: 'Age', placeholder: '7', type: 'number' },
-      { key: 'grade', label: 'Grade', placeholder: 'Grade 2' },
-      { key: 'parentEmail', label: "Parent's email (for approval)", placeholder: 'parent@family.com', type: 'email' },
+      { key: 'gradeLevel', label: 'Grade', placeholder: 'Grade 2', type: 'select', options: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8'] },
+      { key: 'schoolCode', label: 'School code', placeholder: 'K7M2QP', optional: true, hint: 'From your teacher — leave blank if you learn at home.' },
     ],
   },
   {
@@ -65,11 +69,10 @@ export const SIGNUP_ROLES: SignupRole[] = [
     bg: 'from-amber-400 to-amber-700', shadow: 'rgba(180,83,9,.5)',
     headline: 'Set up your school 🏫',
     tagline: 'Give your whole school superpowers.',
-    cta: 'Request school setup →',
+    cta: 'Create school account 🏫',
     fields: [
       { key: 'schoolName', label: 'School name', placeholder: 'Sunnyvale Elementary' },
-      { key: 'role', label: 'Your role', placeholder: 'Principal', type: 'select', options: ['Principal', 'Vice Principal', 'Coordinator', 'IT Admin', 'Other'] },
-      { key: 'studentCount', label: 'Approx. number of students', placeholder: '500', type: 'number' },
+      { key: 'country', label: 'Country', placeholder: 'Ethiopia' },
     ],
   },
   {
@@ -78,11 +81,10 @@ export const SIGNUP_ROLES: SignupRole[] = [
     bg: 'from-rose-400 to-rose-600', shadow: 'rgba(225,29,72,.5)',
     headline: 'District partnership 🏛️',
     tagline: "Let's bring Kidora to every school.",
-    cta: 'Contact our team →',
+    cta: 'Create district account 🏛️',
     fields: [
       { key: 'districtName', label: 'District name', placeholder: 'Bay Area USD' },
-      { key: 'role', label: 'Your role', placeholder: 'Superintendent', type: 'select', options: ['Superintendent', 'Director', 'Coordinator', 'IT Admin', 'Other'] },
-      { key: 'schoolCount', label: 'Number of schools', placeholder: '12', type: 'number' },
+      { key: 'region', label: 'Region / state', placeholder: 'Addis Ababa' },
     ],
   },
 ];
@@ -144,4 +146,9 @@ export const ONBOARDING: Record<string, OnboardStep[]> = {
     DONE,
   ],
   ADMIN: [DONE],
+  SUPER_ADMIN: [DONE],
 };
+
+// SCHOOL_LEADER onboards exactly like SCHOOL_ADMIN; aliased rather than
+// duplicated so the two can't drift apart.
+ONBOARDING.SCHOOL_LEADER = ONBOARDING.SCHOOL_ADMIN;

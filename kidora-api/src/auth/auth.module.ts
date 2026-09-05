@@ -8,6 +8,9 @@ import { TokenService } from './services/token.service';
 import { MfaService } from './services/mfa.service';
 import { OAuthService } from './services/oauth.service';
 import { SmsMfaService } from './services/sms-mfa.service';
+import { PhoneAuthService } from './services/phone-auth.service';
+import { OtpStore } from './services/otp.store';
+import { RegistrationService } from './services/registeration.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { GithubStrategy } from './strategies/github.strategy';
@@ -21,7 +24,18 @@ const oauthStrategies = [GoogleStrategy, GithubStrategy, MicrosoftStrategy, Appl
 @Module({
   imports: [PassportModule, JwtModule.register({})],
   controllers: [AuthController, OAuthController],
-  providers: [AuthService, TokenService, MfaService, OAuthService, SmsMfaService, JwtStrategy, ...oauthStrategies],
-  exports: [AuthService, TokenService],
+  providers: [
+    AuthService,
+    TokenService,
+    MfaService,
+    OAuthService,
+    SmsMfaService,
+    PhoneAuthService,
+    OtpStore,
+    RegistrationService,
+    JwtStrategy,
+    ...oauthStrategies,
+  ],
+  exports: [AuthService, TokenService, RegistrationService],
 })
 export class AuthModule {}

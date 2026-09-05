@@ -1,13 +1,27 @@
-export type Role = 'CHILD' | 'PARENT' | 'TEACHER' | 'ADMIN' | 'SCHOOL_ADMIN' | 'DISTRICT_ADMIN';
+// Mirrors the Prisma Role enum in kidora-api/prisma/schema.prisma exactly.
+export type Role =
+  | 'CHILD'
+  | 'PARENT'
+  | 'TEACHER'
+  | 'SCHOOL_ADMIN'
+  | 'SCHOOL_LEADER'
+  | 'DISTRICT_ADMIN'
+  | 'SUPER_ADMIN'
+  | 'ADMIN';
 
 export interface User {
   id: string;
   name: string;
   email: string;
+  /** E.164, set when the account uses SMS sign-in. */
+  phone?: string | null;
+  phoneVerified?: boolean;
   role: Role;
   points: number;
   streak: number;
   avatarColor: string;
+  schoolId?: string | null;
+  districtId?: string | null;
   subscriptionPlan?: 'free' | 'family' | 'school';
 }
 

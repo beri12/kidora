@@ -34,6 +34,7 @@
     "@types/canvas-confetti": "^1.6.4",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.2.7",
     "@types/three": "^0.171.0",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",

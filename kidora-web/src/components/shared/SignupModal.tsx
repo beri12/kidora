@@ -6,7 +6,17 @@ import { useI18n } from '@/lib/i18n';
 export { SIGNUP_ROLES } from '@/constants/roles';
 export type { SignupRole } from '@/constants/roles';
 
-const ROLE_KEY: Record<string, string> = { CHILD: 'child', PARENT: 'parent', TEACHER: 'teacher', SCHOOL: 'school', DISTRICT: 'district' };
+// SIGNUP_ROLES keys are the backend Role enum values; the translation keys are
+// the short slugs used in i18n. SCHOOL_ADMIN/DISTRICT_ADMIN were missing here,
+// which rendered the literal string "role.undefined" on those two cards.
+const ROLE_KEY: Record<string, string> = {
+  CHILD: 'child',
+  PARENT: 'parent',
+  TEACHER: 'teacher',
+  SCHOOL_ADMIN: 'school',
+  SCHOOL_LEADER: 'school',
+  DISTRICT_ADMIN: 'district',
+};
 
 export function SignupModal({
   open,
@@ -72,8 +82,12 @@ export function SignupModal({
               >
                 {r.emoji}
               </span>
-              <span className="font-display text-xl font-extrabold text-brand-900">{t('role.' + ROLE_KEY[r.key])}</span>
-              <span className="text-sm font-bold text-brand-500 leading-snug mt-1">{t('role.' + ROLE_KEY[r.key] + '.desc')}</span>
+              <span className="font-display text-xl font-extrabold text-brand-900">
+                {ROLE_KEY[r.key] ? t('role.' + ROLE_KEY[r.key]) : r.name}
+              </span>
+              <span className="text-sm font-bold text-brand-500 leading-snug mt-1">
+                {ROLE_KEY[r.key] ? t('role.' + ROLE_KEY[r.key] + '.desc') : r.desc}
+              </span>
             </button>
           ))}
         </div>

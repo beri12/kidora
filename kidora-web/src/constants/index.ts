@@ -1,23 +1,29 @@
 import type { Role, Plan } from '@/types';
 export * from './roles';
 
-// Where each role lands after login.
+// Where each role lands after login. Every member of the Role union needs an
+// entry: a missing one made router.replace(ROLE_HOME[user.role]) navigate to
+// `undefined` for accounts the backend can legitimately issue.
 export const ROLE_HOME: Record<Role, string> = {
   ADMIN: '/dashboard/admin',
+  SUPER_ADMIN: '/dashboard/admin',
   TEACHER: '/dashboard/teacher',
   PARENT: '/dashboard/parent',
   CHILD: '/dashboard/child',
   SCHOOL_ADMIN: '/dashboard/school',
+  SCHOOL_LEADER: '/dashboard/school',
   DISTRICT_ADMIN: '/dashboard/district',
 };
 
 // Coarse feature permissions per role (mirror the backend RBAC).
 export const PERMISSIONS: Record<Role, string[]> = {
   ADMIN: ['*'],
+  SUPER_ADMIN: ['*'],
   TEACHER: ['course:create', 'course:update', 'lesson:upload', 'student:view', 'grade:manage'],
   PARENT: ['child:view', 'subscription:manage', 'report:view'],
   CHILD: ['lesson:learn', 'game:play', 'quiz:take', 'badge:earn'],
   SCHOOL_ADMIN: ['school:manage', 'teacher:view', 'student:view', 'report:view'],
+  SCHOOL_LEADER: ['school:manage', 'teacher:view', 'student:view', 'report:view'],
   DISTRICT_ADMIN: ['district:manage', 'school:view', 'report:view'],
 };
 

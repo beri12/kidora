@@ -1,4 +1,10 @@
 import type { ReactNode } from "react";
-import { QueryProvider } from "@/providers/QueryProvider";
-// Route protection for /student/* lives in middleware.role-routing.ts (merge into your middleware).
-export default function Layout({ children }: { children: ReactNode }) { return <QueryProvider>{children}</QueryProvider>; }
+
+// The query client and i18n provider are installed once by the root layout
+// (src/app/layout.tsx -> <Providers>), so this layout only needs to pass its
+// children through. It previously imported "@/providers/QueryProvider", a
+// module that does not exist, which broke the production build.
+// Route protection for /student/* lives in middleware.role-routing.ts.
+export default function Layout({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}

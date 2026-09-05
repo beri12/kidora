@@ -5,8 +5,10 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
@@ -14,14 +16,18 @@ import { Role } from '@prisma/client';
 /**
  * Roles a visitor is allowed to select during self-registration.
  *
- * ADMIN, SUPER_ADMIN and CHILD are deliberately excluded:
- * - ADMIN / SUPER_ADMIN accounts should be created by an authorized admin.
- * - CHILD accounts should normally be created through a parent/school flow.
+ * ADMIN and SUPER_ADMIN are deliberately excluded: those accounts should be
+ * created by an already-authorized admin, never by a visitor.
+ *
+ * CHILD is allowed because the public signup modal offers a Student card; a
+ * child who signs up alone is linked to a parent or school afterwards, either
+ * by a school join code or by a parent invite.
  *
  * SCHOOL_ADMIN and DISTRICT_ADMIN are allowed because Kidora supports
  * school and district onboarding during registration.
  */
 export const SELF_SIGNUP_ROLES = [
+  Role.CHILD,
   Role.PARENT,
   Role.TEACHER,
   Role.SCHOOL_ADMIN,
@@ -62,6 +68,19 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password!: string;
+
+  /**
+   * Optional at signup. When present it becomes the account's SMS login
+   * identity, so it is stored in E.164 form and must be unique.
+   */
+  @ApiPropertyOptional({
+    example: '+251912345678',
+    description: 'Mobile number for SMS sign-in and OTP verification',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  phone?: string;
 
   @ApiPropertyOptional({
     enum: SELF_SIGNUP_ROLES,
@@ -153,14 +172,29 @@ export class RegisterDto {
 }
 
 /**
- * Login
+ * Password login.
+ *
+ * Either `email` or `phone` identifies the account — the login form lets the
+ * user type whichever one they registered with.
  */
 export class LoginDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'abebe@example.com',
+    description: 'Required unless `phone` is supplied',
   })
+  @ValidateIf((o) => !o.phone)
   @IsEmail()
-  email!: string;
+  email?: string;
+
+  @ApiPropertyOptional({
+    example: '+251912345678',
+    description: 'Required unless `email` is supplied',
+  })
+  @ValidateIf((o) => !o.email)
+  @IsString()
+  @MinLength(7)
+  @MaxLength(20)
+  phone?: string;
 
   @ApiProperty({
     example: 'Password123',
@@ -202,6 +236,58 @@ export class MfaVerifyDto {
   @MinLength(6)
   @MaxLength(6)
   code!: string;
+}
+
+/**
+ * Step 1 of SMS sign-in: ask for a one-time code.
+ *
+ * Deliberately never reveals whether the number belongs to an account — the
+ * response is identical either way, so this endpoint can't be used to
+ * enumerate Kidora's users.
+ */
+export class RequestOtpDto {
+  @ApiProperty({
+    example: '+251912345678',
+    description: 'Mobile number in E.164 form (local numbers are normalised server-side)',
+  })
+  @IsString()
+  @MinLength(7)
+  @MaxLength(20)
+  phone!: string;
+}
+
+/**
+ * Step 2 of SMS sign-in: exchange the code for tokens.
+ */
+export class VerifyOtpDto {
+  @ApiProperty({
+    example: '+251912345678',
+  })
+  @IsString()
+  @MinLength(7)
+  @MaxLength(20)
+  phone!: string;
+
+  @ApiProperty({
+    example: '123456',
+    description: '6-digit code delivered by SMS',
+  })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code.' })
+  code!: string;
+}
+
+/**
+ * Attach (or replace) the mobile number on the signed-in account.
+ */
+export class SetPhoneDto {
+  @ApiProperty({
+    example: '+251912345678',
+  })
+  @IsString()
+  @MinLength(7)
+  @MaxLength(20)
+  phone!: string;
 }
 
 /**

@@ -9,5 +9,10 @@ dist/
 
 .env
 .env.*
+# ...but the templates are meant to be committed.
+!.env.example
+!**/.env.example
 
 *.log
+# Redis snapshot dropped by a local redis-server
+dump.rdb
