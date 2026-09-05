@@ -1,3 +1,8 @@
+// 
+
+
+
+
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -34,6 +39,12 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { ChatModule } from './chat/chat.module';
 
+// Kidora school LMS (student / teacher / school / parent dashboards,
+// assessments, gamification pipeline, tenancy). All routes live under
+// /api/student, /api/teacher, /api/school, /api/parent and /api/lms/* so
+// they never collide with the existing modules above.
+import { LmsModule } from './lms/lms.module';
+
 import appConfig from './config/app.config';
 import authConfig from './config/auth.config';
 import databaseConfig from './config/database.config';
@@ -46,7 +57,7 @@ import { RedisModule } from './redis/redis.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, databaseConfig, redisConfig, mailConfig, storageConfig, ],
+      load: [appConfig, authConfig, databaseConfig, redisConfig, mailConfig, storageConfig],
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     DatabaseModule,
@@ -76,7 +87,8 @@ import { RedisModule } from './redis/redis.module';
     SubscriptionsModule,
     InvoicesModule,
     ChatModule,
-    RedisModule
+    RedisModule,
+    LmsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
