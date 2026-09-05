@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loginSchema } from '@/features/auth/schemas';
+import { loginSchema } from '@/features/auth/schema';
 import { useAuthStore } from '@/stores/auth.store';
 import { ROLE_HOME } from '@/constants';
 import { Button } from '@/components/ui/button';

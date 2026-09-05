@@ -1,0 +1,1 @@
+import { SchoolStudentsPage } from "@/features/school/SchoolPages"; export default async function Page({ searchParams }: { searchParams: Promise<{ health?: string }> }) { const { health } = await searchParams; return <SchoolStudentsPage initialHealth={health ?? ""} />; }

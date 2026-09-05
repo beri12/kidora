@@ -1,0 +1,1 @@
+import { TeacherDashboardPage } from "@/features/teacher/TeacherDashboard"; export const metadata = { title: "Teacher Dashboard · Kidora" }; export default function Page() { return <TeacherDashboardPage />; }

@@ -1,0 +1,1 @@
+import { ParentDashboardPage } from "@/features/parent/ParentDashboard"; export const metadata = { title: "Parent Dashboard · Kidora" }; export default function Page() { return <ParentDashboardPage />; }

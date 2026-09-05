@@ -2,7 +2,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { registerSchema } from '@/features/auth/schemas';
+import { registerSchema } from '@/features/auth/schema'
 import { useAuthStore } from '@/stores/auth.store';
 import { ROLE_HOME } from '@/constants';
 import { SIGNUP_ROLES } from '@/constants/roles';
