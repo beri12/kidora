@@ -30,6 +30,12 @@ export class CoursesService {
       slug = `${baseSlug}-${suffix++}`;
     }
 
+    // Subjects are seeded, so an unknown slug means a stale client rather than
+    // something worth creating on the fly — the course is saved without one.
+    const subject = dto.subjectSlug
+      ? await this.prisma.subject.findUnique({ where: { slug: dto.subjectSlug }, select: { id: true } })
+      : null;
+
     return this.prisma.course.create({
       data: {
         title: dto.title,
@@ -41,11 +47,15 @@ export class CoursesService {
         subtitleLanguage: dto.subtitleLanguage,
         levelId: dto.levelId,
         duration: dto.duration,
+        ageBand: dto.ageBand,
+        isPremium: dto.isPremium ?? false,
+        subjectId: subject?.id,
         slug,
         teacherId,
         status: 'DRAFT',
         published: false,
       },
+      ...CoursesService.listShape,
     });
   }
 
@@ -154,10 +164,19 @@ export class CoursesService {
     );
   }
 
+  /** Shape the course list UIs read: subject name and a lesson count. */
+  private static readonly listShape = {
+    include: {
+      subject: true,
+      _count: { select: { lessons: true } },
+    },
+  } as const;
+
   async listMine(teacherId: string) {
     return this.prisma.course.findMany({
       where: { teacherId },
       orderBy: { createdAt: 'desc' },
+      ...CoursesService.listShape,
     });
   }
 
@@ -173,13 +192,18 @@ export class CoursesService {
   return this.prisma.course.findMany({
     where: { published: true },
     orderBy: { createdAt: 'desc' },
+    ...CoursesService.listShape,
   });
 }
 
 async getPublished(id: string) {
   const course = await this.prisma.course.findUnique({
     where: { id, published: true },
-    include: { sections: { include: { lectures: true }, orderBy: { order: 'asc' } } },
+    include: {
+      subject: true,
+      _count: { select: { lessons: true } },
+      sections: { include: { lectures: { orderBy: { order: 'asc' } } }, orderBy: { order: 'asc' } },
+    },
   });
   if (!course) throw new NotFoundException('Course not found');
   return course;

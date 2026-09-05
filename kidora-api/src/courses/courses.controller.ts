@@ -65,6 +65,33 @@ export class CoursesController {
     return { url: `/uploads/thumbnails/${file.filename}`, fileName: file.originalname };
   }
 
+  // The teacher upload form offers "MP4, PDF, PNG, JPG". Videos and images
+  // have endpoints above; without this one a PDF was rejected by both of them.
+  @Post('upload/document')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: './uploads/documents',
+      filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`),
+    }),
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+    fileFilter: (req, file, cb) => {
+      const allowed = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+      ];
+      if (!allowed.includes(file.mimetype)) {
+        return cb(new BadRequestException('File must be a PDF, Word document or text file'), false);
+      }
+      cb(null, true);
+    },
+  }))
+  uploadDocument(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    return { url: `/uploads/documents/${file.filename}`, fileName: file.originalname };
+  }
+
   @Post('draft')
   @HttpCode(HttpStatus.CREATED)
   createDraft(@CurrentUser('id') teacherId: string, @Body() dto: CreateDraftCourseDto) {

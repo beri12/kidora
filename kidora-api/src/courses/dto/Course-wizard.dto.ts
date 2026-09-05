@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -20,6 +21,14 @@ export class CreateDraftCourseDto {
   @IsOptional() @IsString() subtitleLanguage?: string;
   @IsOptional() @IsString() levelId?: string;
   @IsOptional() @IsString() duration?: string;
+
+  // The quick-create form on the teacher dashboard sends these three. The
+  // global ValidationPipe runs with whitelist:true, so before they were
+  // declared here they were stripped from the body and the course was saved
+  // with no subject, no age band and never premium.
+  @IsOptional() @IsString() subjectSlug?: string;
+  @IsOptional() @IsIn(['3-5', '6-8', '9-12']) ageBand?: string;
+  @IsOptional() @IsBoolean() isPremium?: boolean;
 }
 
 export class UpdateDraftCourseDto extends CreateDraftCourseDto {}

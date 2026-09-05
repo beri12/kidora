@@ -43,14 +43,39 @@ export interface Course {
   slug: string;
   title: string;
   description: string;
-  ageBand: string;
+  /** Optional on drafts — the wizard fills it in later. */
+  ageBand?: string;
   gradient: string;
   accent: string;
   subject?: Subject;
   lessons?: Lesson[];
+  sections?: Section[];
   teacherId?: string;
   isPremium?: boolean;
+  /** Drafts are unpublished; the teacher list badges off this. */
+  published?: boolean;
+  status?: 'DRAFT' | 'PUBLISHED' | 'REVIEW' | 'ARCHIVED';
+  thumbnailUrl?: string | null;
+  trailerUrl?: string | null;
+  createdAt?: string;
   _count?: { lessons: number };
+}
+
+export interface Section {
+  id: string;
+  title: string;
+  order: number;
+  description?: string;
+  lectures?: Lecture[];
+}
+
+export interface Lecture {
+  id: string;
+  title: string;
+  order: number;
+  content?: string | null;
+  videoUrl?: string | null;
+  videoFileName?: string | null;
 }
 
 export interface Lesson {
