@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
+import { RequireRole } from "@/components/shared/RequireRole";
 
 // The query client and i18n provider are installed once by the root layout
-// (src/app/layout.tsx -> <Providers>), so this layout only needs to pass its
-// children through. It previously imported "@/providers/QueryProvider", a
-// module that does not exist, which broke the production build.
-// Route protection for /student/* lives in middleware.role-routing.ts.
+// (src/app/layout.tsx -> <Providers>), so this layout only adds the role gate.
+// src/middleware.ts redirects before this renders; RequireRole re-checks
+// against the real session, and the backend guards enforce it for real.
 export default function Layout({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  return <RequireRole allow={['CHILD']}>{children}</RequireRole>;
 }

@@ -49,7 +49,8 @@ export interface AdvanceInfo {
   tags: string[];
 }
 
-interface StepStatus {
+/** Which wizard steps are complete. Exported so the stepper can take it directly. */
+export interface StepStatus {
   basicInfo: boolean;
   curriculum: boolean;
   advanceInfo: boolean;

@@ -36,6 +36,23 @@ export class CacheService implements OnModuleDestroy {
 
   async blacklist(jti: string, ttl: number) { await this.client.set('bl:' + jti, '1', 'EX', ttl); }
 
+  /**
+   * Drop a user's cached tenancy (role / schoolId / districtId / active).
+   *
+   * JwtStrategy caches these for a minute because it reads them on every
+   * authenticated request. Call this after moving a user between schools,
+   * changing their role, or disabling them, so the change takes effect at once
+   * instead of at the end of the TTL.
+   */
+  async bustTenancy(userId: string) {
+    try {
+      await this.client.del('tenancy:' + userId);
+    } catch (err) {
+      // Worst case the change is visible a minute later; never fail the write.
+      console.error('[redis] bustTenancy failed:', err);
+    }
+  }
+
   // Fail open rather than hanging the whole request if Redis is down.
   // A blacklist check failing shouldn't take the entire API down with it;
   // logging the failure is more useful here than freezing every request.

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/axios';
+import { API_ORIGIN } from '@/lib/api/client';
 
 interface Quiz { question: string; answers: string[]; correctAnswer: number; }
 interface Lecture { id: string; title: string; order: number; videoUrl?: string; quiz?: Quiz; }
@@ -16,8 +17,6 @@ function progressKey(courseId: string) {
 // The browser resolves relative <video src> against the current page's
 // origin (the Next.js frontend on :3000), not the backend on :4000, so
 // relative paths must be prefixed with the backend's origin before use.
-const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api').replace(/\/api\/?$/, '');
-
 function resolveMediaUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;

@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/stores/auth.store';
+import { API_BASE_URL } from '@/lib/api/client';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -7,11 +8,9 @@ declare module 'axios' {
   }
 }
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-
-if (typeof window !== 'undefined') {
-  console.log('[api] baseURL:', API_URL);
-}
+// Re-exported from lib/api/client so both clients cannot resolve to different
+// hosts. Kept as `API_URL` because existing modules import that name.
+export const API_URL = API_BASE_URL;
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -19,15 +18,6 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-// Separate, non-intercepted instance just for the refresh call.
-// This avoids the refresh request being caught by this same
-// response interceptor if it also 401s (which caused hangs before).
-const refreshClient = axios.create({
-  baseURL: API_URL,
-  timeout: 8000, // shorter than main timeout, so refresh fails fast
-  headers: { 'Content-Type': 'application/json' },
 });
 
 api.interceptors.request.use(
@@ -63,7 +53,7 @@ api.interceptors.response.use(
       try {
         if (!refreshing) {
           console.log('[api] refreshing token...');
-          refreshing = useAuthStore.getState().refresh(refreshClient);
+          refreshing = useAuthStore.getState().refresh();
         }
 
         const newToken = await refreshing;

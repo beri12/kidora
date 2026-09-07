@@ -4,16 +4,39 @@ export * from './roles';
 // Where each role lands after login. Every member of the Role union needs an
 // entry: a missing one made router.replace(ROLE_HOME[user.role]) navigate to
 // `undefined` for accounts the backend can legitimately issue.
+//
+// These point at the LMS route tree (/student, /teacher, /parent, /school),
+// which is the one wired to the backend through features/* -> lib/hooks/queries
+// -> lib/api. The older /dashboard/* pages are left in place and still work,
+// but they are not where a login lands.
 export const ROLE_HOME: Record<Role, string> = {
   ADMIN: '/dashboard/admin',
   SUPER_ADMIN: '/dashboard/admin',
-  TEACHER: '/dashboard/teacher',
-  PARENT: '/dashboard/parent',
-  CHILD: '/dashboard/child',
-  SCHOOL_ADMIN: '/dashboard/school',
-  SCHOOL_LEADER: '/dashboard/school',
-  DISTRICT_ADMIN: '/dashboard/district',
+  TEACHER: '/teacher/dashboard',
+  PARENT: '/parent/dashboard',
+  CHILD: '/student/dashboard',
+  SCHOOL_ADMIN: '/school/dashboard',
+  SCHOOL_LEADER: '/school/dashboard',
+  DISTRICT_ADMIN: '/school/dashboard',
 };
+
+/**
+ * Which roles may enter each protected area. The backend guards are the real
+ * authorization boundary; this drives navigation and the client-side guard so
+ * a user is not shown a page that will only 403.
+ */
+export const AREA_ROLES: Record<string, Role[]> = {
+  '/student': ['CHILD'],
+  '/teacher': ['TEACHER'],
+  '/parent': ['PARENT'],
+  '/school': ['SCHOOL_ADMIN', 'SCHOOL_LEADER', 'DISTRICT_ADMIN', 'SUPER_ADMIN', 'ADMIN'],
+  '/dashboard/admin': ['ADMIN', 'SUPER_ADMIN'],
+};
+
+/** The protected area a path belongs to, or null if it is public. */
+export function areaFor(pathname: string): string | null {
+  return Object.keys(AREA_ROLES).find((a) => pathname === a || pathname.startsWith(a + '/')) ?? null;
+}
 
 // Coarse feature permissions per role (mirror the backend RBAC).
 export const PERMISSIONS: Record<Role, string[]> = {

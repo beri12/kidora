@@ -1,7 +1,11 @@
-// lib/api/payments.ts
-// This is the contract the NestJS PaymentsController will implement.
+// This is the contract the NestJS PaymentsController implements.
 // Keeping it typed here means the backend build just has to match these shapes.
-import { http } from "./http";
+//
+// Uses the shared axios instance so payment calls carry the bearer token and
+// take part in the 401-refresh retry. It previously used a second instance in
+// lib/http that read a localStorage key this app never writes, so every one of
+// these calls would have gone out unauthenticated.
+import { api as http } from "@/lib/axios";
 
 export type PaymentProvider = "stripe" | "paypal" | "apple_pay" | "telebirr";
 export type BillingCycle = "monthly" | "yearly";

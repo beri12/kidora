@@ -1,19 +1,21 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
 import { loginSchema, otpRequestSchema, otpVerifySchema, zodErrors } from '@/features/auth/schema';
 import { useAuthStore } from '@/stores/auth.store';
-import { ROLE_HOME } from '@/constants';
+import { ROLE_HOME, AREA_ROLES, areaFor } from '@/constants';
+import type { Role } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
 import { SignupModal } from '@/components/shared/SignupModal';
 
 type Mode = 'email' | 'sms';
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter();
+  const params = useSearchParams();
   const { login, requestOtp, verifyOtp } = useAuthStore();
 
   const [mode, setMode] = useState<Mode>('email');
@@ -28,7 +30,21 @@ export default function LoginPage() {
   const [signupOpen, setSignupOpen] = useState(false);
 
   function land(role: string) {
-    router.replace(ROLE_HOME[role as keyof typeof ROLE_HOME] ?? '/');
+    const home = ROLE_HOME[role as keyof typeof ROLE_HOME] ?? '/';
+
+    // Return the user to the page a guard bounced them off, but only if their
+    // role may actually enter it — otherwise an old ?next= would bounce them
+    // straight back here.
+    const next = params.get('next');
+    if (next?.startsWith('/') && !next.startsWith('//')) {
+      const area = areaFor(next);
+      const role_ = role as Role;
+      if (!area || (AREA_ROLES[area] ?? []).includes(role_)) {
+        router.replace(next);
+        return;
+      }
+    }
+    router.replace(home);
   }
 
   function switchMode(next: Mode) {
@@ -196,4 +212,12 @@ function loginError(err: unknown, field = 'password'): Record<string, string> {
       : { [field]: 'That code is not correct or has expired.' };
   }
   return { [field]: text || 'Login failed. Please try again.' };
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
+  );
 }

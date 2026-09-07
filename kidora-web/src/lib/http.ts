@@ -1,23 +1,13 @@
-// lib/api/http.ts
+// Error normalisation shared by the payment flow.
+//
+// This module used to also export its own axios instance, pointed at a second
+// env var (NEXT_PUBLIC_API_BASE_URL) and reading a bearer token from a
+// localStorage key ("accessToken") that this app never writes — the session
+// lives under "cl.auth". Nothing sent requests through it, and anything that
+// started to would have been silently unauthenticated. The client to use is
+// lib/api/client.ts (typed fetch, LMS endpoints) or lib/axios.ts (auth
+// endpoints, owns the refresh interceptor).
 import axios, { AxiosError } from "axios";
-import { env } from "@/lib//env";
-
-export const http = axios.create({
-  baseURL: env.apiBaseUrl,
-  withCredentials: true, // needed if your NestJS auth uses httpOnly cookies
-  timeout: 15000,
-});
-
-// Attach JWT if you store it client-side (e.g. in memory / a store).
-// If you're using httpOnly cookies for auth instead, you can delete this interceptor.
-http.interceptors.request.use((config) => {
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("accessToken") : null;
-  if (token) {
-    config.headers = config.headers ?? {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 export interface ApiErrorShape {
   message: string;

@@ -1,13 +1,13 @@
 // app/payment/success/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import confetti from "canvas-confetti";
 import { getCheckoutSessionStatus } from "@/lib/payment";
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessInner() {
   const params = useSearchParams();
   const router = useRouter();
   const sessionId = params.get("session_id");
@@ -81,5 +81,15 @@ export default function PaymentSuccessPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// useSearchParams opts the page into client rendering, which the production
+// build rejects unless a Suspense boundary marks where to bail out.
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <PaymentSuccessInner />
+    </Suspense>
   );
 }

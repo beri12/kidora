@@ -1,24 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AxiosInstance } from 'axios';
-import { api, API_URL } from '@/lib/axios';
+import { authApi, type RegisterPayload } from '@/lib/api/auth';
 import type { AuthResponse, User } from '@/types';
 
-/** Everything POST /auth/register accepts beyond name/email/password. */
-export interface RegisterPayload {
-  name: string;
-  email: string;
-  password: string;
-  role?: string;
-  phone?: string;
-  gradeLevel?: string;
-  schoolCode?: string;
-  subject?: string;
-  schoolName?: string;
-  country?: string;
-  districtName?: string;
-  region?: string;
-}
+// Re-exported so existing imports from the store keep resolving; the type is
+// defined next to the call that uses it, in lib/api/auth.
+export type { RegisterPayload };
 
 interface AuthState {
   user: User | null;
@@ -31,9 +18,27 @@ interface AuthState {
   register: (payload: RegisterPayload) => Promise<User>;
   requestOtp: (phone: string) => Promise<{ sent: boolean; expiresIn: number; devCode?: string }>;
   verifyOtp: (phone: string, code: string) => Promise<User>;
-  refresh: (client?: AxiosInstance) => Promise<string | null>;
+  refresh: () => Promise<string | null>;
   logout: () => void;
   hasPlan: () => boolean;
+}
+
+/**
+ * Mirrors the signed-in role into a cookie.
+ *
+ * The session itself lives in localStorage, which Next middleware cannot read.
+ * This cookie lets middleware redirect before a protected page renders. It is
+ * a navigation hint only — it is set by client JavaScript and a user can edit
+ * it, so it is never trusted for authorization. Every protected read is
+ * enforced again by the backend's JwtAuthGuard and RolesGuard.
+ */
+const ROLE_COOKIE = 'kidora_role';
+function syncRoleCookie(role?: string | null) {
+  if (typeof document === 'undefined') return;
+  const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = role
+    ? `${ROLE_COOKIE}=${encodeURIComponent(role)}; Path=/; SameSite=Lax; Max-Age=604800${secure}`
+    : `${ROLE_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0${secure}`;
 }
 
 // Auth store — persisted to localStorage. The axios interceptor reads
@@ -59,82 +64,64 @@ export const useAuthStore = create<AuthState>()(
           console.error('setSession: no access token found in response', r);
         }
 
+        syncRoleCookie(r.user?.role);
         set({ user: r.user, accessToken, refreshToken });
       },
 
       login: async (email, password) => {
-        const { data } = await api.post<AuthResponse>('/auth/login', { email, password });
+        const data = await authApi.login(email, password);
         get().setSession(data);
         return data.user;
       },
 
-      // Same endpoint; the backend looks the account up by whichever
-      // identifier is present.
       loginWithPhone: async (phone, password) => {
-        const { data } = await api.post<AuthResponse>('/auth/login', { phone, password });
+        const data = await authApi.loginWithPhone(phone, password);
         get().setSession(data);
         return data.user;
       },
 
-      // Blank optional fields are dropped rather than sent as "", which the
-      // API's string validators would reject.
       register: async (payload) => {
-        const body = Object.fromEntries(
-          Object.entries(payload).filter(([, v]) => v !== undefined && String(v).trim() !== ''),
-        );
-        const { data } = await api.post<AuthResponse>('/auth/register', body);
+        const data = await authApi.register(payload);
         get().setSession(data);
         return data.user;
       },
 
       // Step 1 of SMS sign-in. Always resolves for a well-formed number, even
       // if no account uses it — the API deliberately doesn't say either way.
-      requestOtp: async (phone) => {
-        const { data } = await api.post<{ sent: boolean; expiresIn: number; devCode?: string }>(
-          '/auth/otp/request',
-          { phone },
-        );
-        return data;
-      },
+      requestOtp: (phone) => authApi.requestOtp(phone),
 
       // Step 2 of SMS sign-in; returns the same session shape as /auth/login.
       verifyOtp: async (phone, code) => {
-        const { data } = await api.post<AuthResponse>('/auth/otp/verify', { phone, code });
+        const data = await authApi.verifyOtp(phone, code);
         get().setSession(data);
         return data.user;
       },
 
-      // The response interceptor passes its own non-intercepted axios instance
-      // so a 401 on the refresh call can't re-enter this same handler. Falls
-      // back to fetch when called directly (e.g. from a component).
-      refresh: async (client) => {
+      // Called by both clients' 401 handlers. authApi.refresh uses raw fetch so
+      // a 401 on the refresh call itself cannot re-enter an interceptor.
+      refresh: async () => {
         const rt = get().refreshToken;
         if (!rt) return null;
         try {
-          let data: any;
-          if (client) {
-            data = (await client.post('/auth/refresh', { refreshToken: rt })).data;
-          } else {
-            const res = await fetch(`${API_URL}/auth/refresh`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken: rt }),
-            });
-            if (!res.ok) throw new Error('refresh failed');
-            data = await res.json();
-          }
-          const accessToken = data.accessToken ?? data.access_token ?? null;
-          const refreshToken = data.refreshToken ?? data.refresh_token ?? null;
+          const data = await authApi.refresh(rt);
+          const accessToken = data.accessToken ?? null;
           if (!accessToken) throw new Error('refresh returned no access token');
-          set({ accessToken, refreshToken });
-          return accessToken as string;
+          set({ accessToken, refreshToken: data.refreshToken ?? rt });
+          return accessToken;
         } catch {
+          syncRoleCookie(null);
           set({ user: null, accessToken: null, refreshToken: null });
           return null;
         }
       },
 
-      logout: () => set({ user: null, accessToken: null, refreshToken: null }),
+      logout: () => {
+        // Revoke the refresh token server-side; the local session is cleared
+        // either way so a network failure cannot strand the user signed in.
+        void authApi.logout();
+        syncRoleCookie(null);
+        set({ user: null, accessToken: null, refreshToken: null });
+      },
 
       hasPlan: () => {
         const p = get().user?.subscriptionPlan;
@@ -143,7 +130,13 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'cl.auth',
-      onRehydrateStorage: () => (state) => { if (state) state.hydrated = true; },
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.hydrated = true;
+        // Keep the cookie in step with the restored session: it expires on its
+        // own schedule and would otherwise drift from localStorage.
+        syncRoleCookie(state.accessToken ? state.user?.role : null);
+      },
     },
   ),
 );

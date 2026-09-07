@@ -15,7 +15,13 @@ function required(name: string, value: string | undefined): string {
 }
 
 export const env = {
-  apiBaseUrl: required("NEXT_PUBLIC_API_BASE_URL", process.env.NEXT_PUBLIC_API_BASE_URL),
+  // One API base URL for the whole app. NEXT_PUBLIC_API_URL is the name the
+  // rest of the codebase uses; NEXT_PUBLIC_API_BASE_URL is accepted first for
+  // deployments that already set it, so the two spellings cannot disagree.
+  apiBaseUrl: required(
+    "NEXT_PUBLIC_API_URL",
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_URL,
+  ),
   stripePublishableKey: required(
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
