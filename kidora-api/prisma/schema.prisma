@@ -178,6 +178,16 @@ model User {
 
   loginHistory   LoginHistory[]
   refreshTokens  RefreshToken[]
+
+  // ============================================================
+  // CALENDAR / SUPPORT
+  // ============================================================
+
+  calendarEvents      CalendarEvent[] @relation("CalendarAuthor")
+  calendarAboutMe     CalendarEvent[] @relation("CalendarStudent")
+  supportTickets      SupportTicket[] @relation("SupportRequester")
+  supportAssigned     SupportTicket[] @relation("SupportAssignee")
+  supportMessages     SupportMessage[] @relation("SupportAuthor")
   sessions       Session[]
   auditLogs      AuditLog[]
   activityEvents ActivityEvent[]
@@ -243,6 +253,8 @@ model School {
   auditLogs      AuditLog[]
   conversations  Conversation[]
   joinCode       String?         @unique
+  calendarEvents CalendarEvent[]
+  supportTickets SupportTicket[]
 }
 
 /// Configurable rules for "On Track / Needs Support / At Risk" (spec §36).
@@ -294,6 +306,7 @@ model SchoolClass {
   assignments       Assignment[]
   exams             Exam[]
   attendance        Attendance[]
+  calendarEvents    CalendarEvent[]
 
   @@unique([schoolId, gradeId, name, academicYear])
 }
@@ -435,6 +448,7 @@ model Course {
   assignments  Assignment[]
   exams        Exam[]
   certificates Certificate[]
+  calendarEvents CalendarEvent[]
 
   @@index([schoolId, status])
   @@index([schoolId, gradeId, subjectId])
@@ -1450,4 +1464,123 @@ enum AIKind {
   MISTAKE
   RECOMMEND
   TEACHER_ASSIST
+}
+
+// ---------------------------------------------------------------------------
+// CALENDAR
+// ---------------------------------------------------------------------------
+
+/// Explicit calendar entries. Assignment/exam/quiz deadlines are NOT copied
+/// here — the calendar API merges them from their own tables at read time, so
+/// a due date can never drift out of sync with two stored copies.
+model CalendarEvent {
+  id          String            @id @default(cuid())
+  title       String
+  description String            @default("")
+  type        CalendarEventType @default(EVENT)
+  startsAt    DateTime
+  endsAt      DateTime?
+  allDay      Boolean           @default(false)
+  location    String?
+  color       String?
+
+  /// Who created it; they may always edit and delete it.
+  createdById String
+  createdBy   User   @relation("CalendarAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+
+  /// Audience. A null schoolId means a personal event visible only to its author.
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classId  String?
+  class    SchoolClass? @relation(fields: [classId], references: [id], onDelete: Cascade)
+  courseId String?
+  course   Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  /// Set when the event is about one student (a parent-teacher meeting).
+  studentId String?
+  student   User?  @relation("CalendarStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([schoolId, startsAt])
+  @@index([classId, startsAt])
+  @@index([createdById, startsAt])
+  @@index([studentId, startsAt])
+}
+
+enum CalendarEventType {
+  EVENT
+  CLASS
+  LESSON
+  MEETING
+  HOLIDAY
+  REMINDER
+}
+
+// ---------------------------------------------------------------------------
+// SUPPORT
+// ---------------------------------------------------------------------------
+
+model SupportTicket {
+  id        String              @id @default(cuid())
+  /// Short human-quotable reference, e.g. KID-4F2A9C.
+  reference String              @unique
+  subject   String
+  category  SupportCategory     @default(GENERAL)
+  status    SupportTicketStatus @default(OPEN)
+  priority  SupportPriority     @default(NORMAL)
+
+  requesterId String
+  requester   User   @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assigneeId  String?
+  assignee    User?  @relation("SupportAssignee", fields: [assigneeId], references: [id])
+  schoolId    String?
+  school      School? @relation(fields: [schoolId], references: [id])
+
+  messages SupportMessage[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
+  resolvedAt DateTime?
+
+  @@index([requesterId, status])
+  @@index([status, createdAt])
+  @@index([schoolId, status])
+}
+
+model SupportMessage {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation("SupportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body     String
+  /// Internal notes are visible to support staff only, never to the requester.
+  internal Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+enum SupportCategory {
+  GENERAL
+  ACCOUNT
+  BILLING
+  TECHNICAL
+  COURSE
+  SAFETY
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
 }
