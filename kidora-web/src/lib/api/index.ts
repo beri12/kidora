@@ -9,3 +9,5 @@ export { teacherApi, type AnalyticsFilters, type TeacherStudentRow, type Teacher
 export { schoolApi, type ListQuery } from "./school";
 export { parentApi } from "./parent";
 export { settingsApi, type MyProfile, type UserSettings, type ProfilePatch, type NotificationPrefs } from "./settings";
+export { calendarApi, type CalendarItem, type CalendarEventInput, type CalendarSource } from "./calendar";
+export { supportApi, type TicketSummary, type TicketDetail, type TicketMessage, type NewTicket, type TicketStatus, type TicketCategory } from "./support";
