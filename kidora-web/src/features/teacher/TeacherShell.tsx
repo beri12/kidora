@@ -11,7 +11,7 @@ export function TeacherShell({ children, header }: { children: ReactNode; header
   const promo = (
     <div className="rounded-2xl bg-brand-50/70 p-4">
       <div className="flex items-start gap-2"><Bot size={18} className="mt-0.5 text-brand-600" aria-hidden /><div><p className="text-sm font-semibold">Kidora AI Assistant</p><p className="mt-0.5 text-xs text-muted">Create lessons, quizzes and analyze student data.</p></div></div>
-      <Link href="/teacher/ai" className="btn-primary mt-3 w-full">Ask Kidora AI</Link>
+      <Link href="/ai-tutor" className="btn-primary mt-3 w-full">Ask Kidora AI</Link>
     </div>
   );
   return <DashboardLayout nav={teacherNav} badges={{ notifications: data?.unreadNotifications, messages: data?.unreadMessages }} promo={promo} header={header}>{children}</DashboardLayout>;

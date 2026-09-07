@@ -96,7 +96,7 @@ export function TeacherCoursesPage() {
   const q = useTeacherCourses(tab === "all" ? undefined : tab);
   const tone = (s: string) => s === "PUBLISHED" ? "success" : s === "REVIEW" ? "warning" : s === "ARCHIVED" ? "neutral" : "info";
   return (
-    <Page title="Courses" q={q} actions={<><Tabs value={tab} onChange={setTab} options={["all", "DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"].map((v) => ({ value: v as typeof tab, label: v === "all" ? "All" : v[0] + v.slice(1).toLowerCase() }))} /><Link href="/teacher/courses/new" className="btn-primary"><Plus size={16} /> New course</Link></>}>
+    <Page title="Courses" q={q} actions={<><Tabs value={tab} onChange={setTab} options={["all", "DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"].map((v) => ({ value: v as typeof tab, label: v === "all" ? "All" : v[0] + v.slice(1).toLowerCase() }))} /><Link href="/dashboard/teacher/create-course/basic-info" className="btn-primary"><Plus size={16} /> New course</Link></>}>
       {(list) => list.length ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {list.map((c) => (
@@ -110,7 +110,7 @@ export function TeacherCoursesPage() {
             </Card>
           ))}
         </div>
-      ) : <EmptyState title="No courses yet" body="Create your first course and add sections, lessons and quizzes." action={{ label: "Create course", href: "/teacher/courses/new" }} />}
+      ) : <EmptyState title="No courses yet" body="Create your first course and add sections, lessons and quizzes." action={{ label: "Create course", href: "/dashboard/teacher/create-course/basic-info" }} />}
     </Page>
   );
 }

@@ -18,7 +18,7 @@ export function TeacherDashboardPage() {
         right={<>
           <RangePicker value={range} onChange={setRange} className="hidden sm:block" />
           <Link href="/teacher/messages" className="btn-icon relative bg-white shadow-card ring-1 ring-black/[0.04]" aria-label={`${d?.unreadMessages ?? 0} unread messages`}><MessageSquare size={18} />{!!d?.unreadMessages && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger-500 px-1 text-[10px] font-bold text-white">{d.unreadMessages}</span>}</Link>
-          <Link href="/teacher/courses/new" className="btn-primary"><Plus size={16} /> <span className="hidden sm:inline">Create New</span></Link>
+          <Link href="/dashboard/teacher/create-course/basic-info" className="btn-primary"><Plus size={16} /> <span className="hidden sm:inline">Create New</span></Link>
         </>}
         notifications={d?.unreadNotifications} notificationsHref="/teacher/notifications" />
     )}>

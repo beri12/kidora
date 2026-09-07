@@ -59,6 +59,11 @@ model User {
   emailVerified Boolean @default(false)
   phoneVerified Boolean @default(false)
 
+  /// Per-user preferences (notifications, language, appearance, privacy).
+  /// A Json column rather than a table: the shape is UI-driven and read only
+  /// with the user record, so a join would buy nothing.
+  settings Json @default("{}")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

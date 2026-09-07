@@ -7,6 +7,7 @@ import { CourseTile } from "./StudentDashboard";
 import {
   useStudentCourses, useStudentQuests, useClaimQuest, useStudentAssignments, useStudentQuizzes, useStudentExams,
   useStudentCertificates, useStudentBadges, useLeaderboard, useWorldMap, useAiHistory, useAiAsk, useSubmitAssignment,
+  useStudentDashboard,
 } from "@/lib/hooks/queries";
 import { TopHeader, Card, CardBody, CardHeader, Pill, ProgressBar, Avatar, EmptyState, ErrorState, Skeleton, Tabs, cn } from "@/components/dashboard";
 import { dueLabel, fmtDate, fmtNumber, timeAgo } from "@/lib/format";
@@ -300,5 +301,100 @@ export function StudentAiTutorPage() {
         {ask.data && <p className="px-4 pb-2 text-[11px] text-muted">{ask.data.remainingToday} questions left today</p>}
       </Card>
     </StudentShell>
+  );
+}
+
+// ---------------------------------------------------------------- Profile
+/**
+ * The student's own profile. Everything shown comes from /student/dashboard,
+ * /student/certificates and /student/badges — no separate profile endpoint is
+ * needed, and nothing here is editable that the backend treats as protected
+ * (role, school and grade are set by the school, not the student).
+ */
+export function StudentProfilePage() {
+  const q = useStudentDashboard();
+  const certs = useStudentCertificates();
+  const badges = useStudentBadges();
+
+  return (
+    <Page title="Profile" sub="Your learning journey so far" q={q}>
+      {(d) => (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-1">
+            <CardBody className="text-center">
+              <div className="mx-auto w-fit"><Avatar name={d.profile.name} src={d.profile.avatarUrl} color={d.profile.avatarColor} size={72} /></div>
+              <p className="mt-3 text-lg font-semibold">{d.profile.displayName || d.profile.name}</p>
+              {d.profile.schoolName && <p className="text-sm text-muted">{d.profile.schoolName}</p>}
+              <div className="mt-3 flex justify-center gap-2">
+                <Pill tone="brand">Level {d.profile.level}</Pill>
+                <Pill tone="warning">{fmtNumber(d.profile.xp)} XP</Pill>
+              </div>
+              <div className="mt-4">
+                <ProgressBar value={Math.round((d.profile.xp / Math.max(1, d.profile.xpForNextLevel)) * 100)} />
+                <p className="mt-1 text-xs text-muted">{fmtNumber(d.profile.xpForNextLevel - d.profile.xp)} XP to level {d.profile.level + 1}</p>
+              </div>
+              <Link href="/student/settings" className="btn-secondary mt-4 w-full">Edit settings</Link>
+            </CardBody>
+          </Card>
+
+          <div className="grid gap-4 lg:col-span-2">
+            <Card>
+              <CardHeader title="Learning statistics" />
+              <CardBody>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    ["Courses", d.stats.coursesEnrolled],
+                    ["Lessons", d.stats.lessonsCompleted],
+                    ["Quizzes", d.stats.quizzesCompleted],
+                    ["Avg score", `${d.stats.averageScore}%`],
+                  ].map(([label, value]) => (
+                    <div key={label as string} className="rounded-2xl bg-brand-50 p-3 text-center">
+                      <p className="text-xl font-bold text-ink">{value as ReactNode}</p>
+                      <p className="text-xs text-muted">{label as string}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center gap-3 rounded-2xl bg-brand-50 p-3">
+                  <Trophy className="h-5 w-5 text-brand-600" />
+                  <p className="text-sm font-semibold">{d.profile.streak} day streak · {fmtNumber(d.profile.coins)} coins</p>
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Certificates" action="See all" href="/student/certificates" />
+              <CardBody>
+                {certs.isPending ? <Skeleton className="h-16" />
+                  : certs.data?.length ? (
+                    <ul className="grid gap-2">
+                      {certs.data.slice(0, 3).map((c) => (
+                        <li key={c.id} className="flex items-center gap-3 rounded-xl border border-line p-3">
+                          <Award className="h-5 w-5 text-brand-600" />
+                          <span className="flex-1 text-sm font-semibold">{c.courseName}</span>
+                          <span className="text-xs text-muted">{fmtDate(c.issuedAt)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <EmptyState title="No certificates yet" body="Finish a course to earn your first one." />}
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Badges" action="See all" href="/student/badges" />
+              <CardBody>
+                {badges.isPending ? <Skeleton className="h-16" />
+                  : badges.data?.filter((b) => b.earnedAt).length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {badges.data.filter((b) => b.earnedAt).slice(0, 8).map((b) => (
+                        <span key={b.id} className="rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold">{b.glyph} {b.name}</span>
+                      ))}
+                    </div>
+                  ) : <EmptyState title="No badges yet" body="Complete lessons and quizzes to unlock them." />}
+              </CardBody>
+            </Card>
+          </div>
+        </div>
+      )}
+    </Page>
   );
 }

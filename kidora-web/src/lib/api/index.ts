@@ -8,3 +8,4 @@ export { studentApi } from "./student";
 export { teacherApi, type AnalyticsFilters, type TeacherStudentRow, type TeacherAnalytics } from "./teacher";
 export { schoolApi, type ListQuery } from "./school";
 export { parentApi } from "./parent";
+export { settingsApi, type MyProfile, type UserSettings, type ProfilePatch, type NotificationPrefs } from "./settings";
