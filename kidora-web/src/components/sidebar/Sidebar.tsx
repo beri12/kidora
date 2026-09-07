@@ -6,9 +6,16 @@ import type { Role } from '@/types';
 
 interface NavItem { href: string; label: string; icon: string }
 
+// These point at the LMS tree (/student, /teacher, /parent, /school) — the one
+// wired to the backend. They used to point at /dashboard/*, so a user who
+// signed in landed on the new dashboard and was then walked straight back to
+// the old pages by the first sidebar link they clicked.
+// /dashboard/teacher/upload is the exception: the course-upload wizard only
+// exists there.
+
 // SCHOOL_ADMIN and SCHOOL_LEADER see the same menu; shared so they can't drift.
 const SCHOOL_NAV: NavItem[] = [
-  { href: '/dashboard/school', label: 'Overview', icon: '📊' },
+  { href: '/school/dashboard', label: 'Overview', icon: '📊' },
   { href: '/school/teachers', label: 'Teachers', icon: '🍎' },
   { href: '/school/students', label: 'Students', icon: '👥' },
   { href: '/school/classes', label: 'Classes', icon: '🏫' },
@@ -25,21 +32,23 @@ const NAV: Record<Role, NavItem[]> = {
     { href: '/dashboard/admin/payments', label: 'Payments', icon: '💳' },
   ],
   TEACHER: [
-    { href: '/dashboard/teacher', label: 'Overview', icon: '📊' },
-    { href: '/dashboard/teacher/courses', label: 'My Courses', icon: '📚' },
-    { href: '/students', label: 'Students', icon: '👥' },
+    { href: '/teacher/dashboard', label: 'Overview', icon: '📊' },
+    { href: '/teacher/courses', label: 'My Courses', icon: '📚' },
+    { href: '/teacher/students', label: 'Students', icon: '👥' },
+    { href: '/teacher/assignments', label: 'Assignments', icon: '📝' },
     { href: '/dashboard/teacher/upload', label: 'Upload', icon: '⬆️' },
   ],
   PARENT: [
-    { href: '/dashboard/parent', label: 'Overview', icon: '📊' },
-    { href: '/dashboard/parent/reports', label: 'Reports', icon: '📈' },
+    { href: '/parent/dashboard', label: 'Overview', icon: '📊' },
+    { href: '/parent/progress', label: 'Progress', icon: '📈' },
+    { href: '/parent/assignments', label: 'Assignments', icon: '📝' },
     { href: '/pricing', label: 'Subscription', icon: '💎' },
   ],
   CHILD: [
-    { href: '/dashboard/child', label: 'Home', icon: '🏠' },
-    { href: '/courses', label: 'Courses', icon: '📚' },
+    { href: '/student/dashboard', label: 'Home', icon: '🏠' },
+    { href: '/student/courses', label: 'Courses', icon: '📚' },
     { href: '/games', label: 'Games', icon: '🎮' },
-    { href: '/dashboard/child/rewards', label: 'Rewards', icon: '🏆' },
+    { href: '/student/badges', label: 'Rewards', icon: '🏆' },
   ],
   // The org roles had no entry, so NAV[role] was undefined and the sidebar
   // threw on .map — on the very dashboard a school or district leader lands
@@ -47,7 +56,7 @@ const NAV: Record<Role, NavItem[]> = {
   SCHOOL_ADMIN: SCHOOL_NAV,
   SCHOOL_LEADER: SCHOOL_NAV,
   DISTRICT_ADMIN: [
-    { href: '/dashboard/district', label: 'Overview', icon: '📊' },
+    { href: '/school/dashboard', label: 'Overview', icon: '📊' },
     { href: '/school/analytics', label: 'Analytics', icon: '📈' },
     { href: '/school/billing', label: 'Billing', icon: '💳' },
   ],

@@ -1,4 +1,7 @@
 'use client';
+// Public marketing page. It used to sit at /dashboard/for-teachers, where
+// DashboardLayout's useRequireAuth redirected every signed-out visitor to
+// /login — the audience it is written for could never read it.
 import { Navbar } from '@/components/navbar/Navbar';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';

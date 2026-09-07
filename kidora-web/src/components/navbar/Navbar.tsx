@@ -17,10 +17,13 @@ const PRODUCTS = [
   { name: 'Kidora Sparks',  emoji: '✨', descKey: 'prod.sparks',  href: '/games' },
 ];
 
+// Marketing links for visitors, so every one must resolve without a session.
+// /for-teachers and /for-schools were 404s, and nav.schools pointed at the
+// school *dashboard*, which bounces a signed-out visitor to /login.
 const AUDIENCES = [
   { key: 'nav.teachers',  href: '/for-teachers' },
-  { key: 'nav.schools',   href: '/dashboard/school' },
-  { key: 'nav.districts', href: '/for-schools' },
+  { key: 'nav.schools',   href: '/pricing' },
+  { key: 'nav.districts', href: '/pricing' },
   { key: 'nav.families',  href: '/for-families' },
 ];
 
