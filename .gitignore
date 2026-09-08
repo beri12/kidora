@@ -16,3 +16,13 @@ dist/
 *.log
 # Redis snapshot dropped by a local redis-server
 dump.rdb
+
+# Python AI service
+apps/ai-service/.venv/
+apps/ai-service/__pycache__/
+apps/ai-service/**/__pycache__/
+apps/ai-service/.pytest_cache/
+apps/ai-service/models/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

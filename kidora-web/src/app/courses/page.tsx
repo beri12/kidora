@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { Navbar } from '@/components/navbar/Navbar';
-import { useCourses } from '@/features/courses/hooks';
+import { useCourses, useEnroll, useEnrollment } from '@/features/courses/hooks';
 import { useAuthStore } from '@/stores/auth.store';
+import { useRouter } from 'next/navigation';
 import { Card, CardBody, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
@@ -11,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 export default function CoursesPage() {
   const { data: courses = [], isLoading } = useCourses();
   const hasPlan = useAuthStore((s) => s.hasPlan());
+  const user = useAuthStore((s) => s.user);
+  const isStudent = user?.role === 'CHILD';
 
   return (
     <div className="min-h-screen bg-brand-50">
@@ -51,6 +54,8 @@ export default function CoursesPage() {
                       <Link href="/pricing" className="mt-3 inline-block font-display font-extrabold text-sm text-brand-700">
                         Unlock with a plan →
                       </Link>
+                    ) : isStudent ? (
+                      <EnrollButton courseId={c.id} />
                     ) : (
                       <Link href={`/courses/${c.id}/learn`} className="mt-3 inline-block font-display font-extrabold text-sm text-grass-600">
                         Start →
@@ -64,5 +69,39 @@ export default function CoursesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Enrolling is the step that puts a course on the student's dashboard —
+ * CourseEnrollment is what every LMS student view reads, so a published course
+ * stays invisible until this runs. Once enrolled the button becomes Continue.
+ */
+function EnrollButton({ courseId }: { courseId: string }) {
+  const router = useRouter();
+  const { data, isPending } = useEnrollment(courseId);
+  const enroll = useEnroll();
+
+  if (isPending) {
+    return <span className="mt-3 inline-block font-body font-bold text-sm text-brand-400">Checking…</span>;
+  }
+
+  if (data?.enrolled) {
+    return (
+      <Link href={`/courses/${courseId}/learn`} className="mt-3 inline-block font-display font-extrabold text-sm text-grass-600">
+        Continue →
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={enroll.isPending}
+      onClick={() => enroll.mutate(courseId, { onSuccess: () => router.push(`/courses/${courseId}/learn`) })}
+      className="mt-3 inline-block rounded-xl bg-grass-600 px-4 py-2 font-display font-extrabold text-sm text-white hover:bg-grass-700 disabled:opacity-60"
+    >
+      {enroll.isPending ? 'Enrolling…' : 'Enroll free →'}
+    </button>
   );
 }

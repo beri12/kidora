@@ -49,6 +49,28 @@ services:
       redis: { condition: service_started }
     ports: ["4000:4000"]
 
+
+  ai-service:
+    build:
+      context: ../apps/ai-service
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      LLM_PROVIDER: ${LLM_PROVIDER:-local}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
+      DATABASE_URL: postgresql://kidora:kidora@postgres:5432/kidora
+      REDIS_URL: redis://redis:6379
+    # Deliberately no host port: only the API reaches it, over the compose
+    # network. Publishing 8000 would expose the AI service to the internet.
+    expose: ["8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
 volumes:
   pgdata:
   redisdata:

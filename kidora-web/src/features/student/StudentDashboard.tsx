@@ -7,6 +7,7 @@ import {
   TopHeader, Card, CardHeader, CardBody, ProgressBar, Avatar, XPIndicator, CoinIndicator, StreakIndicator,
   DashboardSkeleton, ErrorState, EmptyState, cn,
 } from "@/components/dashboard";
+import { LIVE_GAMES } from "@/constants";
 import { fmtNumber } from "@/lib/format";
 import type { StudentDashboard as Data, CourseCard as CourseCardT } from "@/types/lms";
 
@@ -119,6 +120,28 @@ function Body({ d }: { d: Data }) {
                 <span className="text-xs font-semibold text-muted">{fmtNumber(e.xp)} XP</span>
               </div>
             )) : <EmptyState title="Leaderboard is empty" body="Earn XP this week to appear here." />}
+          </CardBody>
+        </Card>
+
+        {/* Every game is free to play — nothing here is gated behind a plan. */}
+        <Card>
+          <CardHeader title="Games" action="All games" href="/games" />
+          <CardBody className="pt-2">
+            <div className="grid gap-2">
+              {LIVE_GAMES.map((g) => (
+                <Link
+                  key={g.slug}
+                  href={`/games/live/${g.slug}`}
+                  className="flex items-center gap-2.5 rounded-xl px-2 py-2 hover:bg-brand-50"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-100 text-base">🎮</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{g.title}</span>
+                    <span className="block text-xs capitalize text-muted">{g.subject} · free to play</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
           </CardBody>
         </Card>
       </aside>

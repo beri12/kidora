@@ -130,3 +130,42 @@ export function useUploadResource(courseId: string) {
     },
   });
 }
+
+// ------------------------------------------------------------------ Enrollment
+
+/**
+ * Enrolling is what puts a course on the student's dashboard: every LMS
+ * student view reads CourseEnrollment, so browsing alone shows nothing until
+ * this runs.
+ */
+export function useEnrollment(courseId: string) {
+  return useQuery({
+    queryKey: [...courseKeys.detail(courseId), "enrollment"],
+    queryFn: async () => (await api.get<{ enrolled: boolean }>(`/courses/${courseId}/enrollment`)).data,
+    enabled: Boolean(courseId),
+    staleTime: 30_000,
+  });
+}
+
+export function useEnroll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (courseId: string) => (await api.post(`/courses/${courseId}/enroll`)).data,
+    onSuccess: (_d, courseId) => {
+      qc.invalidateQueries({ queryKey: [...courseKeys.detail(courseId), "enrollment"] });
+      // The student dashboard and My Courses both read the enrollment list.
+      qc.invalidateQueries({ queryKey: ["student"] });
+    },
+  });
+}
+
+export function useUnenroll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (courseId: string) => (await api.delete(`/courses/${courseId}/enroll`)).data,
+    onSuccess: (_d, courseId) => {
+      qc.invalidateQueries({ queryKey: [...courseKeys.detail(courseId), "enrollment"] });
+      qc.invalidateQueries({ queryKey: ["student"] });
+    },
+  });
+}

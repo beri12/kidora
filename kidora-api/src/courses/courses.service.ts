@@ -82,6 +82,9 @@ export class CoursesService {
 
     return this.prisma.$transaction(
       async (tx) => {
+        // Lesson has no cascade from Section, so clear them explicitly or a
+        // second save would stack duplicates on the student's course.
+        await tx.lesson.deleteMany({ where: { courseId } });
         await tx.section.deleteMany({ where: { courseId } });
 
         for (const section of dto.sections) {
@@ -100,12 +103,33 @@ export class CoursesService {
                 sectionId: createdSection.id,
               })),
             });
+
+            // Mirror each lecture as a Lesson. The wizard writes the legacy
+            // Lecture model, but every LMS student view (dashboard, courses,
+            // world map, progress) reads Lesson — so a course built here used
+            // to show up with no content at all for the student.
+            await tx.lesson.createMany({
+              data: section.lectures.map((lecture) => ({
+                title: lecture.title,
+                order: lecture.order,
+                videoUrl: lecture.videoUrl,
+                type: lecture.videoUrl ? ('VIDEO' as const) : ('TEXT' as const),
+                status: 'PUBLISHED' as const,
+                courseId,
+                sectionId: createdSection.id,
+              })),
+            });
           }
         }
 
         return tx.course.findUnique({
           where: { id: courseId },
-          include: { sections: { include: { lectures: true }, orderBy: { order: 'asc' } } },
+          include: {
+            sections: {
+              include: { lectures: { orderBy: { order: 'asc' } }, lessons: { orderBy: { order: 'asc' } } },
+              orderBy: { order: 'asc' },
+            },
+          },
         });
       },
       { timeout: 15000 }, // raised from Prisma's 5000ms default; multiple section/lecture inserts can exceed it
@@ -117,6 +141,9 @@ export class CoursesService {
 
     return this.prisma.$transaction(
       async (tx) => {
+        // Lesson has no cascade from Section, so clear them explicitly or a
+        // second save would stack duplicates on the student's course.
+        await tx.lesson.deleteMany({ where: { courseId } });
         await tx.section.deleteMany({ where: { courseId } });
 
         for (const section of dto.sections) {
@@ -132,6 +159,19 @@ export class CoursesService {
                 videoUrl: lecture.videoUrl,
                 videoFileName: lecture.videoFileName,
                 quiz: lecture.quiz ? (lecture.quiz as any) : undefined,
+                sectionId: createdSection.id,
+              })),
+            });
+
+            // See saveCurriculum: the student side reads Lesson, not Lecture.
+            await tx.lesson.createMany({
+              data: section.lectures.map((lecture) => ({
+                title: lecture.title,
+                order: lecture.order,
+                videoUrl: lecture.videoUrl,
+                type: lecture.videoUrl ? ('VIDEO' as const) : ('TEXT' as const),
+                status: 'PUBLISHED' as const,
+                courseId,
                 sectionId: createdSection.id,
               })),
             });
@@ -188,6 +228,53 @@ export class CoursesService {
   }
 
 
+  /**
+   * Enrol the signed-in student in a published course.
+   *
+   * CourseEnrollment is what every LMS student view reads — dashboard,
+   * My Courses, world map, progress — and nothing in the codebase created a
+   * row, so a published course could never reach a student. Idempotent: a
+   * second call returns the existing enrollment rather than failing.
+   */
+  async enroll(studentId: string, courseId: string) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, published: true, title: true },
+    });
+    if (!course) throw new NotFoundException('Course not found');
+    if (!course.published) throw new ForbiddenException('That course is not published yet.');
+
+    const existing = await this.prisma.courseEnrollment.findUnique({
+      where: { courseId_studentId: { courseId, studentId } },
+    });
+    if (existing) return existing;
+
+    // Start them on the first published lesson so "Continue" has a target.
+    const firstLesson = await this.prisma.lesson.findFirst({
+      where: { courseId, status: 'PUBLISHED' },
+      orderBy: [{ section: { order: 'asc' } }, { order: 'asc' }],
+      select: { id: true },
+    });
+
+    return this.prisma.courseEnrollment.create({
+      data: { courseId, studentId, lastLessonId: firstLesson?.id ?? null, lastActivityAt: new Date() },
+    });
+  }
+
+  async unenroll(studentId: string, courseId: string) {
+    await this.prisma.courseEnrollment.deleteMany({ where: { courseId, studentId } });
+    return { ok: true };
+  }
+
+  /** Whether the signed-in student is already enrolled, for the button state. */
+  async enrollment(studentId: string, courseId: string) {
+    const e = await this.prisma.courseEnrollment.findUnique({
+      where: { courseId_studentId: { courseId, studentId } },
+      select: { id: true, status: true, progressPercent: true, lessonsCompleted: true, lastLessonId: true },
+    });
+    return { enrolled: Boolean(e), enrollment: e };
+  }
+
   async listPublished() {
   return this.prisma.course.findMany({
     where: { published: true },
@@ -202,7 +289,15 @@ async getPublished(id: string) {
     include: {
       subject: true,
       _count: { select: { lessons: true } },
-      sections: { include: { lectures: { orderBy: { order: 'asc' } } }, orderBy: { order: 'asc' } },
+      sections: {
+        orderBy: { order: 'asc' },
+        include: {
+          lectures: { orderBy: { order: 'asc' } },
+          // The student learn page and progress tracking read Lesson, so the
+          // detail response has to carry them alongside the legacy lectures.
+          lessons: { where: { status: 'PUBLISHED' }, orderBy: { order: 'asc' } },
+        },
+      },
     },
   });
   if (!course) throw new NotFoundException('Course not found');

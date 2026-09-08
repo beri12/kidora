@@ -39,6 +39,7 @@ import { InvoicesModule } from './invoices/invoices.module';
 import { ChatModule } from './chat/chat.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { SupportModule } from './support/support.module';
+import { AiModule } from './modules/ai/ai.module';
 
 // Kidora school LMS (student / teacher / school / parent dashboards,
 // assessments, gamification pipeline, tenancy). All routes live under
@@ -89,6 +90,7 @@ import { RedisModule } from './redis/redis.module';
     ChatModule,
     CalendarModule,
     SupportModule,
+    AiModule,
     RedisModule,
     LmsModule,
   ],
