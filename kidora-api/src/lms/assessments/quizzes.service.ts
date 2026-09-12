@@ -16,6 +16,16 @@ import type { CreateQuizDto, SubmitAttemptDto } from './dto';
 /**
  * Quiz + exam attempts, auto-grading for objective questions.
  */
+/** Fisher-Yates. Used to present a matching question's answers out of order. */
+function shuffle<T>(input: T[]): T[] {
+  const out = [...input];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 @Injectable()
 export class QuizzesService {
   constructor(
@@ -59,6 +69,8 @@ export class QuizzesService {
             options: true,
             points: true,
             imageUrl: true,
+            hint: true,
+            pairs: true,
           },
         },
 
@@ -84,7 +96,30 @@ export class QuizzesService {
 
     await this.assertEnrolled(studentId, quizId);
 
-    return quiz;
+    /**
+     * A MATCHING question is unanswerable without its two columns, but the
+     * stored pairs are already matched up. Split them and shuffle the
+     * right-hand column so the student gets something to solve rather than
+     * the answer key.
+     */
+    return {
+      ...quiz,
+      questions: quiz.questions.map((question) => {
+        if (question.type !== 'MATCHING') {
+          const { pairs: _pairs, ...rest } = question;
+          return rest;
+        }
+        const pairs = Array.isArray(question.pairs)
+          ? (question.pairs as { left?: string; right?: string }[])
+          : [];
+        const { pairs: _pairs, ...rest } = question;
+        return {
+          ...rest,
+          matchLefts: pairs.map((p) => String(p?.left ?? '')),
+          matchRights: shuffle(pairs.map((p) => String(p?.right ?? ''))),
+        };
+      }),
+    };
   }
 
   /**
@@ -177,6 +212,7 @@ export class QuizzesService {
 
             lesson: {
               select: {
+                courseId: true,
                 course: {
                   select: {
                     schoolId: true,
@@ -298,6 +334,57 @@ export class QuizzesService {
       }
 
       /**
+       * ORDERING
+       *
+       * `selected` is the option indexes in the order the student put them,
+       * so unlike every other type the order itself is the answer and must
+       * not be sorted away.
+       */
+      else if (question.type === 'ORDERING') {
+        const given = submittedAnswer?.selected ?? [];
+        const expected = question.correctOrder;
+
+        correct =
+          expected.length > 0 &&
+          given.length === expected.length &&
+          given.every((value, i) => value === expected[i]);
+      }
+
+      /**
+       * MATCHING
+       *
+       * `selected[i]` is the right-hand item the student paired with the i-th
+       * left-hand item. The pairs are stored already matched, so a correct
+       * answer is the identity mapping.
+       */
+      else if (question.type === 'MATCHING') {
+        const pairs = Array.isArray(question.pairs)
+          ? (question.pairs as { left?: string; right?: string }[])
+          : [];
+
+        /**
+         * Answered as JSON: the right-hand text the student chose for each
+         * left-hand item, in the order the lefts were shown. Text rather than
+         * indexes, because indexes into the stored pairs would have to be sent
+         * to the browser and would hand over the answer key.
+         */
+        let chosen: string[] = [];
+        try {
+          const parsed = JSON.parse(submittedAnswer?.answerText ?? '[]');
+          if (Array.isArray(parsed)) chosen = parsed.map((v) => String(v ?? '').trim().toLowerCase());
+        } catch {
+          chosen = [];
+        }
+
+        const expected = pairs.map((p) => String(p?.right ?? '').trim().toLowerCase());
+
+        correct =
+          expected.length > 0 &&
+          chosen.length === expected.length &&
+          chosen.every((value, i) => value === expected[i]);
+      }
+
+      /**
        * SINGLE SELECT / TRUE-FALSE / OTHER OBJECTIVE
        */
       else {
@@ -401,6 +488,7 @@ export class QuizzesService {
           xpReward: attempt.quiz.xpReward,
           schoolId,
           isExam: !!attempt.examId,
+          courseId: attempt.quiz.courseId ?? attempt.quiz.lesson?.courseId ?? null,
         },
       );
 

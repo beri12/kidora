@@ -125,6 +125,19 @@ const reg = async (p) => (await post('/auth/register', null, p)).body;
   });
   check('an incomplete ordering answer is rejected', 400, badOrder.status);
 
+  const matchQuiz = await post(`/authoring/courses/${courseId}/quizzes`, T, {
+    title: 'Match the fraction', lessonId: l2.body.id, published: true, passingScore: 50,
+    questions: [{
+      prompt: 'Match each fraction to its picture.', type: 'MATCHING',
+      pairs: [{ left: '1/2', right: 'Half a circle' }, { left: '1/4', right: 'A quarter circle' }, { left: '3/4', right: 'Three quarter circles' }],
+    }],
+  });
+  check('a matching question is accepted', 201, matchQuiz.status);
+  const badMatch = await post(`/authoring/courses/${courseId}/quizzes`, T, {
+    title: 'Broken match', questions: [{ prompt: 'Match', type: 'MATCHING', pairs: [{ left: 'a', right: '' }, { left: 'b', right: 'c' }] }],
+  });
+  check('a pair with an empty side is rejected', 400, badMatch.status);
+
   console.log('\n=== 8. Assignment builder ===');
   const assignment = await post(`/authoring/courses/${courseId}/assignments`, T, {
     title: 'Fractions worksheet', instructions: 'Complete every question and upload a photo of your work.',
@@ -197,7 +210,187 @@ const reg = async (p) => (await post('/auth/register', null, p)).body;
   const allLessons = tree.body.sections.flatMap((x) => x.lessons);
   check('draft lessons were published with the course', ['PUBLISHED', 'PUBLISHED', 'PUBLISHED'], allLessons.map((l) => l.status));
 
-  globalThis.__ctx = { courseId, T, S, O, l1: l1.body.id, l2: l2.body.id, l3: l3.body.id, quizId: quiz.body.id, assignmentId: assignment.body.id, examId: exam.body.id, s };
+  console.log('\n=== 15. Student browses the catalogue ===');
+  const browse = await j('/learning/browse?pageSize=50', { token: S });
+  check('GET /learning/browse -> 200', 200, browse.status);
+  const found = browse.body.items.find((c) => c.id === courseId);
+  ok('the published course is listed', Boolean(found), 'course missing from browse');
+  check('it carries the course id', courseId, found?.id);
+  check('not enrolled yet', false, found?.enrolled);
+  check('lesson count is real', 3, found?.totalLessons);
+  ok('teacher is named', Boolean(found?.teacher?.name));
+
+  const search = await j(`/learning/browse?search=Fractions&pageSize=50`, { token: S });
+  ok('search finds it', search.body.items.some((c) => c.id === courseId));
+  const wrongSubject = await j('/learning/browse?search=zzzznothing', { token: S });
+  check('a search with no matches returns an empty page', 0, wrongSubject.body.items.length);
+
+  const filters = await j('/learning/browse/filters', { token: S });
+  check('GET filters -> 200', 200, filters.status);
+  ok('filters offer subjects', filters.body.subjects.length > 0);
+
+  console.log('\n=== 16. Course detail before enrolling ===');
+  const detailBefore = await j(`/learning/courses/${courseId}`, { token: S });
+  check('GET course detail -> 200', 200, detailBefore.status);
+  check('not enrolled', false, detailBefore.body.enrolled);
+  check('curriculum is visible to help them decide', 2, detailBefore.body.sections.length);
+  check('but every lesson is locked', [true, true, true], detailBefore.body.sections.flatMap((x) => x.lessons).map((l) => l.locked));
+  check('the player refuses before enrolment', 403, (await j(`/learning/courses/${courseId}/lessons/${l1.body.id}`, { token: S })).status);
+
+  console.log('\n=== 17. Enrol ===');
+  const enrolled = await post(`/learning/courses/${courseId}/enroll`, S);
+  check('POST enroll -> 201', 201, enrolled.status);
+  check('enrollment is ACTIVE', 'ACTIVE', enrolled.body.status);
+  ok('starts on the first lesson', Boolean(enrolled.body.lastLessonId));
+  const again = await post(`/learning/courses/${courseId}/enroll`, S);
+  check('enrolling twice is idempotent', enrolled.body.id, again.body.id);
+
+  const mine = await j('/learning/my-courses', { token: S });
+  check('the course is now in My Courses', true, mine.body.some((c) => c.id === courseId));
+  check('with the right lesson total', 3, mine.body.find((c) => c.id === courseId).totalLessons);
+
+  console.log('\n=== 18. The learning player ===');
+  const player = await j(`/learning/courses/${courseId}/lessons/${l1.body.id}`, { token: S });
+  check('GET player -> 200', 200, player.status);
+  check('lesson content is delivered', 4, player.body.lesson.contents.length);
+  check('curriculum rail lists every lesson', 3, player.body.curriculum.length);
+  check('no previous lesson on the first', null, player.body.nav.previous);
+  check('next points at lesson 2', l2.body.id, player.body.nav.next?.id);
+  ok('the lesson quiz is attached', Boolean(player.body.lesson.quiz));
+
+  const foreignLesson = await j(`/learning/courses/${courseId}/lessons/${empty.body.id}`, { token: S });
+  check('a lesson id from another course -> 404', 404, foreignLesson.status);
+
+  console.log('\n=== 19. Progress autosave ===');
+  await post(`/learning/lessons/${l1.body.id}/progress`, S, { percent: 40, timeSpentSec: 30 });
+  const back = await post(`/learning/lessons/${l1.body.id}/progress`, S, { percent: 10, timeSpentSec: 5 });
+  check('percent never moves backwards', 40, back.body.percent);
+  check('time spent accumulates', 35, back.body.timeSpentSec);
+
+  console.log('\n=== 20. Completing lessons ===');
+  const done1 = await post(`/learning/lessons/${l1.body.id}/complete`, S);
+  check('POST complete -> 201', 201, done1.status);
+  check('1 of 3 lessons done', 1, done1.body.completion.lessonsCompleted);
+  check('progress is 33%', 33, done1.body.completion.percent);
+  check('course is not complete yet', false, done1.body.completion.complete);
+  ok('and it says what is left', done1.body.completion.unmet.length > 0);
+
+  const twice = await post(`/learning/lessons/${l1.body.id}/complete`, S);
+  check('completing twice does not double-count', 1, twice.body.completion.lessonsCompleted);
+
+  await post(`/learning/lessons/${l2.body.id}/complete`, S);
+  const done3 = await post(`/learning/lessons/${l3.body.id}/complete`, S);
+  check('all 3 lessons done', 3, done3.body.completion.lessonsCompleted);
+  check('lesson progress is 100%', 100, done3.body.completion.percent);
+  check('but the course requires the exam, so it is NOT complete', false, done3.body.completion.complete);
+  check('and the exam is named as the blocker', ['Pass the final exam.'], done3.body.completion.unmet);
+  check('no certificate yet', null, done3.body.certificate);
+
+  console.log('\n=== 21. Student takes the lesson quiz ===');
+  const quizView = await j(`/lms/quizzes/${quiz.body.id}`, { token: S });
+  check('GET quiz -> 200', 200, quizView.status);
+  ok('the correct answers are not sent to the student',
+    !JSON.stringify(quizView.body).includes('"correct"'),
+    'quiz payload leaked the answer key');
+
+  const attempt = await post(`/lms/quizzes/${quiz.body.id}/attempts`, S);
+  check('start attempt -> 201', 201, attempt.status);
+  const qs = quizView.body.questions;
+  const submitted = await post(`/lms/attempts/${attempt.body.id}/submit`, S, {
+    answers: [
+      { questionId: qs[0].id, selected: [0] },
+      { questionId: qs[1].id, selected: [1] },
+      { questionId: qs[2].id, selected: [1, 0, 2] },
+    ],
+  });
+  check('submit -> 201', 201, submitted.status);
+  check('scored 100%', 100, submitted.body.percent);
+  check('passed', true, submitted.body.passed);
+
+  console.log('\n=== 21b. Matching question ===');
+  const matchView = await j(`/lms/quizzes/${matchQuiz.body.id}`, { token: S });
+  check('GET matching quiz -> 200', 200, matchView.status);
+  const mq = matchView.body.questions[0];
+  check('the student gets the left column', ['1/2', '1/4', '3/4'], mq.matchLefts);
+  check('and all three right options', 3, mq.matchRights.length);
+  ok('the stored pairing is not sent', mq.pairs === undefined, 'matching payload leaked the pairs');
+
+  const matchAttempt = await post(`/lms/quizzes/${matchQuiz.body.id}/attempts`, S);
+  const matchResult = await post(`/lms/attempts/${matchAttempt.body.id}/submit`, S, {
+    answers: [{ questionId: mq.id, answerText: JSON.stringify(['Half a circle', 'A quarter circle', 'Three quarter circles']) }],
+  });
+  check('a correct matching answer scores 100%', 100, matchResult.body.percent);
+
+  const matchAttempt2 = await post(`/lms/quizzes/${matchQuiz.body.id}/attempts`, S);
+  const matchWrong = await post(`/lms/attempts/${matchAttempt2.body.id}/submit`, S, {
+    answers: [{ questionId: mq.id, answerText: JSON.stringify(['A quarter circle', 'Half a circle', 'Three quarter circles']) }],
+  });
+  check('a wrong pairing scores 0%', 0, matchWrong.body.percent);
+
+  console.log('\n=== 22. Student submits the assignment ===');
+  const submission = await post(`/student/assignments/${assignment.body.id}/submit`, S, {
+    content: 'I finished every question. My working is in the photo.',
+  });
+  check('POST submit -> 201', 201, submission.status);
+
+  const studentAssignments = await j('/student/assignments', { token: S });
+  const mineA = studentAssignments.body.find((a) => a.id === assignment.body.id);
+  check('the student sees it as submitted', 'SUBMITTED', mineA?.status);
+
+  console.log('\n=== 23. Teacher grades the assignment ===');
+  const subs = await j(`/teacher/assignments/${assignment.body.id}/submissions`, { token: T });
+  check('teacher sees the submission', 200, subs.status);
+  const subId = (subs.body.items ?? subs.body)[0]?.id;
+  ok('submission id found', Boolean(subId));
+  const graded = await patch(`/teacher/submissions/${subId}/grade`, T, { score: 18, feedback: 'Neat working — well done.' });
+  check('grade -> 200', 200, graded.status);
+
+  const afterGrade = await j('/student/assignments', { token: S });
+  const gradedA = afterGrade.body.find((a) => a.id === assignment.body.id);
+  check('the student sees the grade', 18, gradedA?.score);
+  check('and the feedback', 'Neat working — well done.', gradedA?.feedback);
+
+  console.log('\n=== 24. Final exam completes the course ===');
+  const examQuiz = await j(`/lms/quizzes/${exam.body.quizId}`, { token: S });
+  check('GET exam quiz -> 200', 200, examQuiz.status);
+  const examAttempt = await post(`/lms/exams/${exam.body.id}/attempts`, S);
+  check('start exam -> 201', 201, examAttempt.status);
+  const eqs = examQuiz.body.questions;
+  const examResult = await post(`/lms/attempts/${examAttempt.body.id}/submit`, S, {
+    answers: [{ questionId: eqs[0].id, selected: [0] }, { questionId: eqs[1].id, selected: [0] }],
+  });
+  check('exam submitted', 201, examResult.status);
+  check('scored 100%', 100, examResult.body.percent);
+  check('passed', true, examResult.body.passed);
+
+  console.log('\n=== 25. Course completion and certificate ===');
+  const finalProgress = await j(`/learning/courses/${courseId}/progress`, { token: S });
+  check('GET progress -> 200', 200, finalProgress.status);
+  check('the course is now complete', true, finalProgress.body.complete);
+  check('nothing outstanding', [], finalProgress.body.unmet);
+  check('enrollment is COMPLETED', 'COMPLETED', finalProgress.body.enrollment.status);
+  ok('completedAt recorded', Boolean(finalProgress.body.enrollment.completedAt));
+
+  const finalDetail = await j(`/learning/courses/${courseId}`, { token: S });
+  ok('a certificate was issued', Boolean(finalDetail.body.certificate), 'no certificate on the course detail');
+  const certCode = finalDetail.body.certificate?.code;
+  ok('it has a verification code', Boolean(certCode));
+
+  const verified = await j(`/lms/certificates/verify/${certCode}`);
+  check('the certificate verifies publicly', 200, verified.status);
+  check('and is valid', true, verified.body.valid);
+  check('naming the student', 'LMS Student', verified.body.studentName);
+  check('and the course', 'Fractions for Grade 5', verified.body.courseName);
+
+  const certs = await j('/student/certificates', { token: S });
+  ok('it appears in the student certificate list', certs.body.some((c) => c.code === certCode));
+
+  console.log('\n=== 26. Student cannot reach what is not theirs ===');
+  const other2 = await reg({ name: 'Nosy Kid', email: `nk.${s}@k.test`, password: 'Password123', role: 'CHILD', gradeLevel: 'Grade 5' });
+  check('a non-enrolled student cannot open the player', 403, (await j(`/learning/courses/${courseId}/lessons/${l1.body.id}`, { token: other2.accessToken })).status);
+  check('nor read course progress', 403, (await j(`/learning/courses/${courseId}/progress`, { token: other2.accessToken })).status);
+  check('a teacher cannot use the student learning API', 403, (await j('/learning/browse', { token: T })).status);
+  check('no token -> 401', 401, (await j('/learning/browse')).status);
 
   console.log('\n======================================');
   console.log(`  passed: ${pass}   failed: ${fail}`);

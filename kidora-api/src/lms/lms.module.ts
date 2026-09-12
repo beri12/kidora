@@ -32,6 +32,9 @@ import { AuthoringService } from './authoring/authoring.service';
 import { AssessmentAuthoringService } from './authoring/assessment-authoring.service';
 import { PublishService } from './authoring/publish.service';
 import { AuthoringController } from './authoring/authoring.controller';
+import { CompletionService } from './learning/completion.service';
+import { LearningService } from './learning/learning.service';
+import { LearningController } from './learning/learning.controller';
 
 /**
  * Add `LmsModule` to the `imports` array of your existing AppModule.
@@ -44,14 +47,14 @@ import { AuthoringController } from './authoring/authoring.controller';
  *   3. KIDORA_REDIS   -> your ioredis client; KIDORA_AI_PROVIDER -> your AI service.
  */
 @Module({
-  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController],
+  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController],
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
     StudentService, TeacherService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
-    AuthoringService, AssessmentAuthoringService, PublishService,
+    AuthoringService, AssessmentAuthoringService, PublishService, CompletionService, LearningService,
     { provide: KIDORA_REDIS, useValue: undefined }, // e.g. { provide: KIDORA_REDIS, useFactory: (r: RedisService) => r.getClient(), inject: [RedisService] }
     { provide: KIDORA_AI_PROVIDER, useClass: UnconfiguredAiProvider },
   ],
-  exports: [RewardsService, TenancyService, AnalyticsService, CertificatesService],
+  exports: [RewardsService, TenancyService, AnalyticsService, CertificatesService, CompletionService],
 })
 export class LmsModule {}

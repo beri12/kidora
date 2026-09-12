@@ -38,7 +38,7 @@ export class AssignmentsService {
     if (existing?.status === 'GRADED') throw new BadRequestException('This assignment was already graded.');
     const s = await this.prisma.assignmentSubmission.upsert({ where: { assignmentId_studentId: { assignmentId, studentId } }, create: { assignmentId, studentId, content: dto.content, attachments: dto.attachments ?? [], isLate }, update: { content: dto.content, attachments: dto.attachments ?? [], submittedAt: new Date(), isLate, status: 'SUBMITTED' } });
     if (!existing) {
-      await this.rewards.onAssignmentSubmitted(studentId, { assignmentId, submissionId: s.id, title: a.title, xpReward: a.xpReward, schoolId: a.schoolId });
+      await this.rewards.onAssignmentSubmitted(studentId, { assignmentId, submissionId: s.id, title: a.title, xpReward: a.xpReward, schoolId: a.schoolId, courseId: a.courseId });
       await this.prisma.notification.create({ data: { userId: a.teacherId, type: 'SUBMISSION_RECEIVED', title: 'New submission', body: `${a.title} has a new submission to grade.`, link: `/teacher/assignments/${a.id}` } });
     }
     return s;

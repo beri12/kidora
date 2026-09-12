@@ -25,6 +25,39 @@ export class CertificatesService {
     return cert;
   }
 
+  /**
+   * Issued when a student satisfies a course's completion rules. Shares the
+   * one-certificate-per-course rule with `issueForExam`, so a student who both
+   * finishes the course and passes its exam gets one certificate, not two.
+   */
+  async issueForCourse(studentId: string, courseId: string, score: number | null) {
+    const existing = await this.prisma.certificate.findFirst({ where: { userId: studentId, courseId, revoked: false } });
+    if (existing) return existing;
+    const course = await this.prisma.course.findUniqueOrThrow({
+      where: { id: courseId },
+      select: { title: true, schoolId: true, grade: { select: { name: true } }, school: { select: { name: true } } },
+    });
+    const s = await this.prisma.user.findUniqueOrThrow({ where: { id: studentId }, select: { name: true, grade: { select: { name: true } } } });
+    const cert = await this.prisma.certificate.create({
+      data: {
+        userId: studentId, courseId, schoolId: course.schoolId, courseName: course.title,
+        studentName: s.name, schoolName: course.school?.name ?? '',
+        gradeName: s.grade?.name ?? course.grade?.name, score, code: this.code(),
+      },
+    });
+    await Promise.all([
+      this.prisma.notification.create({ data: { userId: studentId, type: 'CERTIFICATE', title: 'Certificate earned!', body: course.title, link: '/student/certificates' } }),
+      this.activity.log({ userId: studentId, schoolId: course.schoolId, type: 'CERTIFICATE_ISSUED', title: `Earned certificate: ${course.title}`, entityType: 'certificate', entityId: cert.id }),
+    ]);
+    const parents = await this.prisma.parentStudent.findMany({ where: { studentId }, select: { parentId: true } });
+    if (parents.length) {
+      await this.prisma.notification.createMany({
+        data: parents.map((p) => ({ userId: p.parentId, type: 'CERTIFICATE' as const, title: `${s.name} earned a certificate`, body: course.title, link: '/parent/achievements' })),
+      });
+    }
+    return cert;
+  }
+
   /** Public verification. Exposes only what a certificate shows, never the account. */
   async verify(code: string) {
     const c = await this.prisma.certificate.findUnique({ where: { code }, select: { code: true, studentName: true, schoolName: true, courseName: true, gradeName: true, issuedAt: true, revoked: true } });
