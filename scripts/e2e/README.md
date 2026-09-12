@@ -23,6 +23,7 @@ node scripts/e2e/roles.js
 node scripts/e2e/course-flow.js
 node scripts/e2e/lms-workflow.js
 node scripts/e2e/coursera-structure.js
+node scripts/e2e/studio.js
 node scripts/e2e/cal-support.js
 node scripts/e2e/settings.js
 node scripts/e2e/ai.js        # needs the AI service running, see below
@@ -36,6 +37,7 @@ cd kidora-web
 npm run dev
 # then, in another terminal, from the repo root
 node scripts/e2e/ui-lms.js
+node scripts/e2e/ui-studio.js
 ```
 
 Each script prints `PASS`/`FAIL` per assertion and exits non-zero if anything
@@ -52,6 +54,7 @@ failed.
 | `ai.js` | AI tutor: structured responses, the degraded response when no LLM is configured, moderation, and the authorisation rules that stop one user asking about another user's child |
 | `lms-workflow.js` | The whole course workflow: teacher builds a course (modules, lessons, content, quiz, assignment, final exam), publishes it against a validated checklist, then a student browses, enrols, learns, is graded, sits the exam, completes the course and gets a verifiable certificate. Also the teacher library pages and cross-teacher isolation. |
 | `ui-lms.js` | The same journey driven through the real browser (Playwright): every teacher page, the 12-step builder, a real file upload, enrolment and the lesson player, plus phone-width layout checks |
+| `studio.js` | The course studio: learning outcomes, co-instructors, per-item publishing, module exams, publish readiness and the version snapshot taken at each publish |
 | `coursera-structure.js` | Teacher file uploads, modules numbered as weeks, typed lesson items (video with captions and in-video questions, readings with attachments), formative vs summative quizzes, and peer review end to end |
 
 ## The AI service

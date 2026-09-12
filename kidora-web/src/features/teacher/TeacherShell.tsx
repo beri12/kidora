@@ -14,5 +14,13 @@ export function TeacherShell({ children, header }: { children: ReactNode; header
       <Link href="/ai-tutor" className="btn-primary mt-3 w-full">Ask Kidora AI</Link>
     </div>
   );
-  return <DashboardLayout nav={teacherNav} badges={{ notifications: data?.unreadNotifications, messages: data?.unreadMessages }} promo={promo} header={header}>{children}</DashboardLayout>;
+  // `teacher-ui` switches the shared components to the deeper professional
+  // purple. The children's app keeps the lighter, playful one.
+  return (
+    <div className="teacher-ui">
+      <DashboardLayout nav={teacherNav} badges={{ notifications: data?.unreadNotifications, messages: data?.unreadMessages }} promo={promo} header={header}>
+        {children}
+      </DashboardLayout>
+    </div>
+  );
 }

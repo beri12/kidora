@@ -4,7 +4,7 @@ import { studentApi } from "@/lib/api/student";
 import { teacherApi, type AnalyticsFilters } from "@/lib/api/teacher";
 import { schoolApi, type ListQuery } from "@/lib/api/school";
 import { parentApi } from "@/lib/api/parent";
-import { authoringApi, teacherLibraryApi } from "@/lib/api/authoring";
+import { authoringApi, studioApi, teacherLibraryApi } from "@/lib/api/authoring";
 import { learningApi, type BrowseQuery } from "@/lib/api/learning";
 import { teachingAiApi } from "@/lib/api/ai";
 
@@ -215,6 +215,7 @@ const invalidateCourse = (qc: ReturnType<typeof useQueryClient>, courseId: strin
   qc.invalidateQueries({ queryKey: keys.authoring.tree(courseId) });
   qc.invalidateQueries({ queryKey: keys.authoring.checklist(courseId) });
   qc.invalidateQueries({ queryKey: keys.authoring.preview(courseId) });
+  qc.invalidateQueries({ queryKey: ["authoring", "readiness", courseId] });
   qc.invalidateQueries({ queryKey: ["teacher", "courses"] });
 };
 
@@ -252,7 +253,15 @@ export const useSetCompletionRules = (courseId: string) => {
 };
 export const usePublishAuthoredCourse = (courseId: string) => {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => authoringApi.publish(courseId), onSuccess: () => invalidateCourse(qc, courseId) });
+  return useMutation({
+    mutationFn: () => authoringApi.publish(courseId),
+    onSuccess: () => {
+      invalidateCourse(qc, courseId);
+      // A publish writes a version row; without this the history stayed empty
+      // until a reload.
+      qc.invalidateQueries({ queryKey: ["authoring", "versions", courseId] });
+    },
+  });
 };
 export const useArchiveCourse = (courseId: string) => {
   const qc = useQueryClient();
@@ -469,3 +478,128 @@ export const useCompleteLesson = (courseId: string) => {
 export const useGenerateLessonPlan = () => useMutation({ mutationFn: teachingAiApi.lessonPlan });
 export const useGenerateQuizDraft = () => useMutation({ mutationFn: teachingAiApi.quizDraft });
 export const useAnalyseClass = () => useMutation({ mutationFn: teachingAiApi.analyseClass });
+
+/* ----------------------------------------------------------- the studio */
+
+export const useOutcomes = (courseId: string, sectionId?: string) =>
+  useQuery({
+    queryKey: ["authoring", "outcomes", courseId, sectionId ?? "course"],
+    queryFn: () => studioApi.outcomes(courseId, sectionId),
+    enabled: !!courseId,
+  });
+
+const invalidateOutcomes = (qc: ReturnType<typeof useQueryClient>, courseId: string) => {
+  qc.invalidateQueries({ queryKey: ["authoring", "outcomes", courseId] });
+  invalidateCourse(qc, courseId);
+};
+
+export const useAddOutcome = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: { text: string; sectionId?: string }) => studioApi.addOutcome(courseId, dto),
+    onSuccess: () => invalidateOutcomes(qc, courseId),
+  });
+};
+export const useUpdateOutcome = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) => studioApi.updateOutcome(id, { text }),
+    onSuccess: () => invalidateOutcomes(qc, courseId),
+  });
+};
+export const useDeleteOutcome = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: studioApi.deleteOutcome, onSuccess: () => invalidateOutcomes(qc, courseId) });
+};
+export const useReorderOutcomes = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, sectionId }: { ids: string[]; sectionId?: string }) =>
+      studioApi.reorderOutcomes(courseId, ids, sectionId),
+    onSuccess: () => invalidateOutcomes(qc, courseId),
+  });
+};
+
+export const useInstructors = (courseId: string) =>
+  useQuery({
+    queryKey: ["authoring", "instructors", courseId],
+    queryFn: () => studioApi.instructors(courseId),
+    enabled: !!courseId,
+  });
+export const useAddInstructor = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: { email: string; role?: "LEAD" | "CO_INSTRUCTOR" | "ASSISTANT"; bio?: string }) =>
+      studioApi.addInstructor(courseId, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["authoring", "instructors", courseId] }),
+  });
+};
+export const useRemoveInstructor = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => studioApi.removeInstructor(courseId, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["authoring", "instructors", courseId] }),
+  });
+};
+
+export const useSetItemStatus = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "DRAFT" | "PUBLISHED" | "ARCHIVED" }) =>
+      studioApi.setItemStatus(id, status),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+
+export const useReadiness = (courseId: string) =>
+  useQuery({
+    queryKey: ["authoring", "readiness", courseId],
+    queryFn: () => studioApi.readiness(courseId),
+    enabled: !!courseId,
+  });
+
+export const useCourseVersions = (courseId: string) =>
+  useQuery({
+    queryKey: ["authoring", "versions", courseId],
+    queryFn: () => studioApi.versions(courseId),
+    enabled: !!courseId,
+  });
+
+export const useCourseExams = (courseId: string) =>
+  useQuery({
+    queryKey: ["authoring", "exams", courseId],
+    queryFn: () => studioApi.exams(courseId),
+    enabled: !!courseId,
+  });
+
+export const useModuleExam = (courseId: string, sectionId: string) =>
+  useQuery({
+    queryKey: ["authoring", "module-exam", courseId, sectionId],
+    // "no exam on this module" is a real answer, but react-query treats an
+    // undefined result as a programming error and logs one. Normalise it.
+    queryFn: async () => (await studioApi.moduleExam(courseId, sectionId)) ?? null,
+    enabled: !!courseId && !!sectionId,
+  });
+
+export const useUpsertModuleExam = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sectionId, ...dto }: { sectionId: string } & Parameters<typeof studioApi.upsertModuleExam>[2]) =>
+      studioApi.upsertModuleExam(courseId, sectionId, dto),
+    onSuccess: (_d, v) => {
+      invalidateCourse(qc, courseId);
+      qc.invalidateQueries({ queryKey: ["authoring", "exams", courseId] });
+      qc.invalidateQueries({ queryKey: ["authoring", "module-exam", courseId, v.sectionId] });
+    },
+  });
+};
+export const useDeleteModuleExam = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sectionId: string) => studioApi.deleteModuleExam(courseId, sectionId),
+    onSuccess: () => {
+      invalidateCourse(qc, courseId);
+      qc.invalidateQueries({ queryKey: ["authoring", "exams", courseId] });
+    },
+  });
+};

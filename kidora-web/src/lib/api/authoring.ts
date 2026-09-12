@@ -5,13 +5,15 @@ import type { Paginated } from "@/types/lms";
 
 export type Difficulty = "EASY" | "MEDIUM" | "HARD";
 export type CourseAccess = "FREE" | "PREMIUM" | "SCHOOL_ONLY" | "INVITE_ONLY";
-export type CourseStatus = "DRAFT" | "REVIEW" | "PUBLISHED" | "ARCHIVED";
+export type CourseStatus = "DRAFT" | "REVIEW" | "PUBLISHED" | "UNPUBLISHED" | "ARCHIVED";
 export type LessonStatus = "DRAFT" | "PUBLISHED";
 export type QuestionType =
   | "MULTIPLE_CHOICE" | "TRUE_FALSE" | "MULTIPLE_SELECT" | "SHORT_ANSWER" | "MATCHING" | "ORDERING";
 export type ContentType =
   | "HEADING" | "PARAGRAPH" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT"
-  | "CODE" | "CALLOUT" | "EXAMPLE" | "QUESTION" | "INTERACTIVE" | "RESOURCE" | "TEXT";
+  | "CODE" | "CALLOUT" | "EXAMPLE" | "QUESTION" | "INTERACTIVE" | "RESOURCE" | "TEXT"
+  // Items that are an assessment: they point at a real Quiz or Assignment.
+  | "QUIZ" | "ASSIGNMENT" | "PEER_REVIEW";
 
 export interface Checkpoint {
   atSeconds: number;
@@ -51,6 +53,9 @@ export interface ContentBlock {
   // an item that IS an assessment
   quizId?: string | null;
   assignmentId?: string | null;
+
+  /** Its own lifecycle, independent of the course's. */
+  status?: "DRAFT" | "PUBLISHED" | "ARCHIVED";
 }
 
 export interface AuthoredLesson {
@@ -145,7 +150,9 @@ export interface PreviewLesson {
   _count: { contents: number };
 }
 export interface PreviewSection {
-  id: string; title: string; description: string; order: number; lessons: PreviewLesson[];
+  id: string; title: string; description: string; order: number;
+  weekNumber?: number | null;
+  lessons: PreviewLesson[];
 }
 
 export interface CoursePreview extends Omit<CourseTree, "quizzes" | "assignments" | "exams" | "sections"> {
@@ -313,4 +320,94 @@ export const teacherLibraryApi = {
   attachResource: (id: string, lessonId: string | null) =>
     api.patch<TeacherResourceRow>(`/teacher/resources/${id}/attach`, { lessonId }),
   deleteResource: (id: string) => api.delete<{ ok: true }>(`/teacher/resources/${id}`),
+};
+
+/* ------------------------------------------------------------- the studio */
+
+export type ItemStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+
+export interface LearningOutcome {
+  id: string;
+  courseId: string;
+  sectionId: string | null;
+  text: string;
+  order: number;
+}
+
+export interface CourseInstructor {
+  id: string;
+  role: "LEAD" | "CO_INSTRUCTOR" | "ASSISTANT";
+  bio: string | null;
+  order: number;
+  user: { id: string; name: string; avatarUrl: string | null; email: string };
+}
+
+export interface ReadinessLine {
+  key: string;
+  label: string;
+  count: number;
+  ok: boolean;
+  required: boolean;
+  detail?: string;
+}
+
+export interface Readiness {
+  status: CourseStatus;
+  access: CourseAccess;
+  lines: ReadinessLine[];
+  blockers: string[];
+  ready: boolean;
+}
+
+export interface CourseVersionRow {
+  id: string;
+  version: number;
+  note: string | null;
+  createdAt: string;
+  publishedBy: { id: string; name: string } | null;
+}
+
+export interface ExamRow {
+  id: string;
+  title: string;
+  status: string;
+  sectionId: string | null;
+  passingScore: number;
+  durationMin: number | null;
+  section: { id: string; title: string; weekNumber: number | null; order: number } | null;
+  quiz: { id: string; _count: { questions: number; attempts: number } };
+}
+
+export const studioApi = {
+  outcomes: (courseId: string, sectionId?: string) =>
+    api.get<LearningOutcome[]>(`/authoring/courses/${courseId}/outcomes`, sectionId ? { sectionId } : undefined),
+  addOutcome: (courseId: string, dto: { text: string; sectionId?: string }) =>
+    api.post<LearningOutcome>(`/authoring/courses/${courseId}/outcomes`, dto),
+  updateOutcome: (id: string, dto: { text: string }) => api.patch<LearningOutcome>(`/authoring/outcomes/${id}`, dto),
+  deleteOutcome: (id: string) => api.delete<{ ok: true }>(`/authoring/outcomes/${id}`),
+  reorderOutcomes: (courseId: string, ids: string[], sectionId?: string) =>
+    api.patch<LearningOutcome[]>(
+      `/authoring/courses/${courseId}/outcomes/reorder${sectionId ? `?sectionId=${sectionId}` : ""}`,
+      { ids },
+    ),
+
+  instructors: (courseId: string) => api.get<CourseInstructor[]>(`/authoring/courses/${courseId}/instructors`),
+  addInstructor: (courseId: string, dto: { email: string; role?: CourseInstructor["role"]; bio?: string }) =>
+    api.post<CourseInstructor>(`/authoring/courses/${courseId}/instructors`, dto),
+  removeInstructor: (courseId: string, id: string) =>
+    api.delete<{ ok: true }>(`/authoring/courses/${courseId}/instructors/${id}`),
+
+  setItemStatus: (id: string, status: ItemStatus) =>
+    api.patch<ContentBlock & { id: string; status: ItemStatus }>(`/authoring/content/${id}/status/${status}`, {}),
+
+  readiness: (courseId: string) => api.get<Readiness>(`/authoring/courses/${courseId}/readiness`),
+  versions: (courseId: string) => api.get<CourseVersionRow[]>(`/authoring/courses/${courseId}/versions`),
+
+  exams: (courseId: string) => api.get<ExamRow[]>(`/authoring/courses/${courseId}/exams`),
+  moduleExam: (courseId: string, sectionId: string) =>
+    api.get<AuthoredExam | null>(`/authoring/courses/${courseId}/sections/${sectionId}/exam`),
+  upsertModuleExam: (courseId: string, sectionId: string, dto: Partial<AuthoredExam> & { title: string; questions?: AuthoredQuestion[] }) =>
+    api.put<AuthoredExam>(`/authoring/courses/${courseId}/sections/${sectionId}/exam`, dto),
+  deleteModuleExam: (courseId: string, sectionId: string) =>
+    api.delete<{ ok: true }>(`/authoring/courses/${courseId}/sections/${sectionId}/exam`),
 };

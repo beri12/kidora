@@ -92,39 +92,109 @@ export function TeacherStudentsPage() {
 
 // ---------------------------------------------------------------- Courses
 export function TeacherCoursesPage() {
-  const [tab, setTab] = useState<"all" | "DRAFT" | "REVIEW" | "PUBLISHED" | "ARCHIVED">("all");
-  const q = useTeacherCourses(tab === "all" ? undefined : tab);
-  const tone = (s: string) => s === "PUBLISHED" ? "success" : s === "REVIEW" ? "warning" : s === "ARCHIVED" ? "neutral" : "info";
+  const [tab, setTab] = useState<"all" | "DRAFT" | "PUBLISHED" | "ARCHIVED">("all");
+  // DRAFT and UNPUBLISHED both mean "not live"; a teacher looking at Drafts
+  // wants to see a course they took down just as much as one never published.
+  const apiStatus = tab === "all" ? undefined : tab;
+  const q = useTeacherCourses(apiStatus);
+  const unpublished = useTeacherCourses(tab === "DRAFT" ? "UNPUBLISHED" : undefined);
+
+  const tone = (st: string) =>
+    st === "PUBLISHED" ? "success"
+    : st === "REVIEW" ? "warning"
+    : st === "ARCHIVED" ? "neutral"
+    : st === "UNPUBLISHED" ? "warning"
+    : "info";
+
+  const list = tab === "DRAFT"
+    ? [...(q.data ?? []), ...(unpublished.data ?? [])]
+    : (q.data ?? []);
+
   return (
-    <Page title="Courses" q={q} actions={<><Tabs value={tab} onChange={setTab} options={["all", "DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"].map((v) => ({ value: v as typeof tab, label: v === "all" ? "All" : v[0] + v.slice(1).toLowerCase() }))} /><Link href="/dashboard/teacher/create-course" className="btn-primary"><Plus size={16} /> New course</Link></>}>
-      {(list) => <>
-        {/* These live here rather than in the sidebar: they are views across
-            your courses, not separate destinations. */}
-        <nav aria-label="Across all your courses" className="mb-4 flex flex-wrap gap-2">
-          {([["Lessons", "/teacher/lessons"], ["Quizzes", "/teacher/quizzes"], ["Exams", "/teacher/exams"], ["Resources", "/teacher/resources"], ["Attendance", "/teacher/attendance"]] as const).map(([label, href]) => (
-            <Link key={href} href={href} className="focus-ring rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium hover:bg-brand-50">{label}</Link>
-          ))}
-        </nav>
-        {list.length ? (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {list.map((c) => (
-            <Card key={c.id} as="article" className="overflow-hidden">
-              <div className="grid aspect-[16/7] place-items-center text-3xl font-black text-white/90" style={{ background: c.subjectAccent }}>{c.thumbnailUrl ? <img src={c.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : c.subject.slice(0, 1)}</div>
-              <div className="p-4">
-                <div className="flex items-center justify-between gap-2"><p className="truncate font-semibold">{c.title}</p><Pill tone={tone(c.status)}>{c.status[0] + c.status.slice(1).toLowerCase()}</Pill></div>
-                <p className="mt-0.5 text-xs text-muted">{c.subject}{c.grade ? ` · ${c.grade}` : ""} · {c.totalLessons} lessons{c.studentCount !== undefined ? ` · ${c.studentCount} students` : ""}</p>
-                <div className="mt-3 flex gap-2"><Link href={`/teacher/courses/${c.id}/build`} className="btn-primary flex-1">Edit</Link><Link href={`/teacher/courses/${c.id}/build`} className="btn-secondary flex-1">Preview</Link></div>
-              </div>
-            </Card>
-          ))}
+    <Page
+      title="My Courses"
+      q={q}
+      actions={
+        <Link href="/dashboard/teacher/create-course" className="btn-primary">
+          <Plus size={16} /> Create New Course
+        </Link>
+      }
+    >
+      {() => <>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "all", label: "All" },
+              { value: "DRAFT", label: "Drafts" },
+              { value: "PUBLISHED", label: "Published" },
+              { value: "ARCHIVED", label: "Archived" },
+            ]}
+          />
+          <span className="flex-1" />
+          {/* Views across every course, rather than sidebar destinations. */}
+          <nav aria-label="Across all your courses" className="flex flex-wrap gap-2">
+            {([["Lessons", "/teacher/lessons"], ["Quizzes", "/teacher/quizzes"], ["Exams", "/teacher/exams"], ["Resources", "/teacher/resources"], ["Attendance", "/teacher/attendance"]] as const).map(([label, href]) => (
+              <Link key={href} href={href} className="focus-ring rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium hover:bg-brand-50">{label}</Link>
+            ))}
+          </nav>
         </div>
-      ) : <EmptyState title="No courses yet" body="Create your first course and add modules, lessons and quizzes." action={{ label: "Create course", href: "/dashboard/teacher/create-course" }} />}
+
+        {list.length ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {list.map((c) => {
+              // How far along the course itself is, not a student's progress:
+              // a teacher scanning drafts wants to know what is unfinished.
+              const built = [
+                c.totalLessons > 0,
+                Boolean(c.thumbnailUrl),
+                c.status === "PUBLISHED",
+              ].filter(Boolean).length;
+              const percent = Math.round((built / 3) * 100);
+              return (
+                <Card key={c.id} as="article" className="overflow-hidden">
+                  <div className="grid aspect-[16/7] place-items-center text-3xl font-black text-white/90" style={{ background: c.subjectAccent }}>
+                    {c.thumbnailUrl ? <img src={c.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : c.subject.slice(0, 1)}
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="truncate font-semibold">{c.title}</p>
+                      <Pill tone={tone(c.status)}>{c.status[0] + c.status.slice(1).toLowerCase()}</Pill>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {c.subject}{c.grade ? ` · ${c.grade}` : ""} · {c.totalLessons} lessons
+                      {c.studentCount !== undefined ? ` · ${c.studentCount} students` : ""}
+                    </p>
+                    {c.status !== "PUBLISHED" && (
+                      <div className="mt-3">
+                        <p className="mb-1 text-[11px] text-muted">{percent}% set up</p>
+                        <ProgressBar value={percent} size="sm" />
+                      </div>
+                    )}
+                    <div className="mt-3 flex gap-2">
+                      <Link href={`/teacher/courses/${c.id}/build`} className="btn-primary flex-1">
+                        {c.status === "PUBLISHED" ? "Manage" : "Continue"}
+                      </Link>
+                      <Link href={`/teacher/courses/${c.id}/preview`} className="btn-secondary flex-1">Preview</Link>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            title={tab === "all" ? "No courses yet" : `Nothing in ${tab.toLowerCase()}`}
+            body="Create a course, add modules and lessons, then publish it for your students."
+            action={{ label: "Create New Course", href: "/dashboard/teacher/create-course" }}
+          />
+        )}
       </>}
     </Page>
   );
 }
 
-// ---------------------------------------------------------------- Tasks
 export function TeacherTasksPage() {
   const [tab, setTab] = useState<"all" | "TODAY" | "TOMORROW" | "UPCOMING" | "OVERDUE">("all");
   const q = useTeacherTasks(tab === "all" ? undefined : tab);

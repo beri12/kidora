@@ -31,7 +31,8 @@ const reg = async (p) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 950 } });
     const page = await ctx.newPage();
     page.on('pageerror', (e) => errors.push(`${who}: ${e.message}`));
-    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|404 \(Not Found\)/.test(m.text())) errors.push(`${who} console: ${m.text()}`); });
+    // A 503 from the optional AI service is reported in its own section.
+    page.on('console', (m) => { if (m.type() === 'error' && !/favicon|404 \(Not Found\)|503 \(Service Unavailable\)/.test(m.text())) errors.push(`${who} console: ${m.text()}`); });
     await page.goto(`${WEB}/login`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1800); // let the form hydrate before typing
     await page.fill('input[type="email"]', who.email);
@@ -77,66 +78,62 @@ const reg = async (p) => {
   const acrossLinks = await t.$$eval('nav[aria-label="Across all your courses"] a', (as) => as.map((a) => a.textContent.trim()));
   check('but they are reachable from the Courses page', 5, acrossLinks.length, acrossLinks.join(' | '));
 
-  console.log('\n=== Teacher: build a course through the wizard ===');
+  console.log('\n=== Teacher: build and publish a course ===');
+  // The studio itself is covered assertion by assertion in ui-studio.js; here
+  // we only need a published course to put a student through.
   await t.goto(`${WEB}/dashboard/teacher/create-course`, { waitUntil: 'domcontentloaded' });
-  await t.waitForTimeout(1200);
+  await t.waitForTimeout(1500);
   await t.fill('input#f-course-title', 'UI Built Course');
-  const subjectSel = await t.$('select#f-subject');
-  check('the create form renders', Boolean(subjectSel));
   const opts = await t.$$eval('select#f-subject option', (os) => os.map((o) => o.value).filter(Boolean));
+  check('the create form offers subjects', opts.length > 0);
   await t.selectOption('select#f-subject', opts[0]);
   await t.click('button:has-text("Create draft and continue")');
   await t.waitForURL(/\/teacher\/courses\/.+\/build/, { timeout: 20000 });
   const courseId = t.url().match(/courses\/([^/]+)\/build/)[1];
-  check('the builder opened for the new course', Boolean(courseId));
+  check('the studio opened', Boolean(courseId));
 
-  await t.waitForSelector('nav[aria-label="Course builder steps"] button', { timeout: 20000 });
-  const stepNames = await t.$$eval('nav[aria-label="Course builder steps"] button', (bs) => bs.map((b) => b.textContent.trim()));
-  check('all 12 wizard steps are shown', stepNames.length === 12, `saw ${stepNames.length}: ${stepNames.join(' | ')}`);
+  await t.waitForSelector('nav[aria-label="Course studio steps"] button', { timeout: 20000 });
+  await t.fill('textarea#f-full-description', 'A course built entirely through the Kidora studio to prove the flow works end to end.');
+  await t.fill('input#f-age-range', '9-12');
+  await t.fill('input[aria-label="New learning objective"]', 'Understand the basics');
+  await t.keyboard.press('Enter');
+  await t.waitForTimeout(3000);
 
-  // Description, so the publish checklist can pass.
-  await t.click('nav[aria-label="Course builder steps"] button:has-text("Basic information")');
-  await t.waitForTimeout(400);
-  await t.fill('textarea#f-full-description', 'A course built entirely through the Kidora course builder to prove the flow works end to end.');
-  await t.fill('input#f-age-range', '9-12'); // the checklist wants a grade or an age band
-  await t.waitForTimeout(3000); // autosave debounce
-  const savedTag = await t.evaluate(() => document.body.innerText);
-  check('autosave reports saving', /Saved|Saving/.test(savedTag), 'no save indicator appeared');
-
-  // Module + lesson
-  await t.click('nav[aria-label="Course builder steps"] button:has-text("Curriculum")');
-  await t.waitForTimeout(600);
-  await t.fill('input[aria-label="New module title"]', 'Module 1');
-  await t.click('button:has-text("Add module")');
-  await t.waitForTimeout(1200);
-  check('the module appears', (await t.evaluate(() => document.body.innerText)).includes('Module 1'));
-
-  await t.fill('input[aria-label="New lesson in Module 1"]', 'Lesson one');
-  await t.click('button:has-text("Add lesson")');
-  await t.waitForTimeout(1200);
-  check('the lesson appears', (await t.evaluate(() => document.body.innerText)).includes('Lesson one'));
-
-  // Content blocks
-  await t.click('button:has-text("Lesson one")');
-  await t.waitForTimeout(1200);
-  await t.click('button:has-text("Paragraph")');
-  await t.waitForTimeout(300);
-  await t.fill('textarea[aria-label="Paragraph text"]', 'Fractions are equal parts of a whole.');
-  await t.waitForTimeout(2500);
-  check('a content block was added and saved', (await t.$('textarea[aria-label="Paragraph text"]')) !== null);
-
-  // Publish
-  await t.click('nav[aria-label="Course builder steps"] button:has-text("Publish")');
+  await t.click('nav[aria-label="Course studio steps"] button:has-text("Curriculum")');
   await t.waitForTimeout(1500);
-  const checklistText = await t.evaluate(() => document.body.innerText);
-  check('the publish checklist renders', /Basic information|At least one lesson/i.test(checklistText));
+  await t.click('button:has-text("Add module")');
+  await t.waitForTimeout(400);
+  await t.fill('input[aria-label="New module title"]', 'Module 1');
+  await t.keyboard.press('Enter');
+  await t.waitForTimeout(2000);
+  check('the module appears', /Module 1/.test(await t.evaluate(() => document.body.innerText)));
+
+  await t.click('nav[aria-label="Course curriculum"] button:has-text("Add lesson")');
+  await t.waitForTimeout(300);
+  await t.fill('input[aria-label="New lesson in Module 1"]', 'Lesson one');
+  await t.keyboard.press('Enter');
+  await t.waitForTimeout(2500);
+  check('the lesson appears', /Lesson one/.test(await t.evaluate(() => document.body.innerText)));
+
+  await t.click('button:has-text("Add content")');
+  await t.waitForTimeout(700);
+  await t.click('[aria-labelledby="add-content-title"] button:has-text("Text")');
+  await t.waitForTimeout(1000);
+  await t.fill('textarea#f-text', 'Fractions are equal parts of a whole.');
+  await t.waitForTimeout(3000);
+  check('the item saved', /Saved|Saving/.test(await t.evaluate(() => document.body.innerText)));
+
+  await t.click('nav[aria-label="Course studio steps"] button:has-text("Publish")');
+  await t.waitForTimeout(2000);
   const publishBtn = await t.$('button:has-text("Publish course")');
   const disabled = publishBtn ? await publishBtn.isDisabled() : true;
   check('publish is enabled once the checklist passes', !disabled, 'publish button still disabled');
   if (!disabled) {
     await publishBtn.click();
-    await t.waitForTimeout(2500);
-    check('the course reports as published', /This course is published/i.test(await t.evaluate(() => document.body.innerText)));
+    await t.waitForTimeout(600);
+    await t.click('button:has-text("Yes, publish")');
+    await t.waitForTimeout(3000);
+    check('the course reports as published', /This course is published/.test(await t.evaluate(() => document.body.innerText)));
   }
 
   console.log('\n=== Student: find, enrol, learn ===');
@@ -221,8 +218,12 @@ const reg = async (p) => {
   await t.click('button:has-text("Write a plan")');
   await t.waitForTimeout(4000);
   const planBody = await t.evaluate(() => document.body.innerText);
-  check('with no model configured it says so instead of showing a fake plan',
-    /No AI model is configured/i.test(planBody), planBody.slice(0, 200));
+  if (/temporarily unavailable|Service Unavailable/i.test(planBody)) {
+    console.log('  SKIP  AI draft — the Python service is not running (start it on :8000)');
+  } else {
+    check('with no model configured it says so instead of showing a fake plan',
+      /No AI model is configured/i.test(planBody), planBody.slice(0, 200));
+  }
 
   console.log('\n=== Mobile width ===');
   await st.setViewportSize({ width: 390, height: 844 });
