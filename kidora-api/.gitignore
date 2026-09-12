@@ -2,4 +2,8 @@ node_modules
 dist
 .env
 *.log
-uploads
+# Runtime upload directory only. Anchored with a leading slash: a bare
+# "uploads" matches any directory of that name at any depth, and silently
+# swallowed src/lms/uploads/ — the source folder never reached the repo and
+# the API would not compile after a fresh clone.
+/uploads/
