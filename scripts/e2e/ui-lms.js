@@ -93,13 +93,18 @@ const reg = async (p) => {
   check('the studio opened', Boolean(courseId));
 
   await t.waitForSelector('nav[aria-label="Course studio steps"] button', { timeout: 20000 });
-  await t.fill('textarea#f-full-description', 'A course built entirely through the Kidora studio to prove the flow works end to end.');
+  await t.fill('textarea#f-short-description', 'A course built through the Kidora studio.');
   await t.fill('input#f-age-range', '9-12');
+  await t.waitForTimeout(1800);
+
+  await t.click('nav[aria-label="Course studio steps"] button:has-text("Learning Outcomes")');
+  await t.waitForTimeout(1500);
+  await t.fill('textarea#f-about-this-course', 'A course built entirely through the Kidora studio to prove the flow works end to end.');
   await t.fill('input[aria-label="New learning objective"]', 'Understand the basics');
   await t.keyboard.press('Enter');
   await t.waitForTimeout(3000);
 
-  await t.click('nav[aria-label="Course studio steps"] button:has-text("Curriculum")');
+  await t.click('nav[aria-label="Course studio steps"] button:has-text("Modules")');
   await t.waitForTimeout(1500);
   await t.click('button:has-text("Add module")');
   await t.waitForTimeout(400);

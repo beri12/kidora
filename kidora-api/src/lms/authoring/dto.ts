@@ -19,7 +19,7 @@ const notBlank = (_o: unknown, value: unknown) => typeof value === 'string' && v
 
 export class CourseBasicsDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(160) title!: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) shortDescription?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) shortDescription?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20000) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() subjectId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() subjectSlug?: string;

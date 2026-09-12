@@ -1,5 +1,5 @@
 /**
- * The course studio driven through the real browser: create, the five steps,
+ * The course studio driven through the real browser: create, the seven steps,
  * the three-column curriculum builder, the add-content modal, a real upload,
  * the video editor's timestamp questions, and publish.
  */
@@ -28,6 +28,14 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/favicon|404 \(Not Found\)/.test(m.text())) errors.push(m.text()); });
+  // A bare "400 (Bad Request)" in the console says nothing about which call
+  // failed, so record the request and its body too.
+  const failed = [];
+  page.on('response', async (r) => {
+    if (r.status() < 400 || !/\/api\//.test(r.url())) return;
+    const body = await r.text().catch(() => '');
+    failed.push(`${r.status()} ${r.request().method()} ${r.url().replace(/^https?:\/\/[^/]+/, '')} :: ${body.slice(0, 300)}`);
+  });
 
   const text = () => page.evaluate(() => document.body.innerText);
 
@@ -67,38 +75,69 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   const courseId = page.url().match(/courses\/([^/]+)\/build/)[1];
   check('the studio opened for the new course', Boolean(courseId));
 
-  console.log('\n=== Five steps, not twelve ===');
+  console.log('\n=== Seven steps ===');
   await page.waitForSelector('nav[aria-label="Course studio steps"] button', { timeout: 20000 });
   const steps = await page.$$eval('nav[aria-label="Course studio steps"] button', (bs) => bs.map((b) => b.textContent.trim().replace(/^\d+/, '')));
-  check('there are exactly five steps', steps.length === 5, `saw ${steps.length}: ${steps.join(' | ')}`);
-  check('named Basics, Curriculum, Content, Assessment, Publish',
-    ['Basics', 'Curriculum', 'Content', 'Assessment', 'Publish'].every((n) => steps.some((x) => x.includes(n))),
+  check('there are exactly seven steps', steps.length === 7, `saw ${steps.length}: ${steps.join(' | ')}`);
+  check('named Basics, Learning Outcomes, Modules, Content, Assessment, Preview, Publish',
+    ['Basics', 'Learning Outcomes', 'Modules', 'Content', 'Assessment', 'Preview', 'Publish']
+      .every((n) => steps.some((x) => x.includes(n))),
     steps.join(' | '));
 
-  console.log('\n=== Basics: description, objectives, thumbnail ===');
-  await page.fill('textarea#f-full-description', 'A complete introduction to Python for beginners, taught week by week with videos, readings and quizzes.');
+  console.log('\n=== Step 1 Basics ===');
+  await page.fill('textarea#f-short-description', 'Learn Python from scratch and build real projects, designed for young learners.');
+  await page.selectOption('select#f-course-level', 'EASY');
+  await page.fill('input#f-estimated-duration', '12');
   await page.fill('input#f-age-range', '9-12');
+  await page.waitForTimeout(600);
+  check('the short description counts characters against 500', /\/500/.test(await text()));
 
-  await page.fill('input[aria-label="New learning objective"]', 'Understand Python fundamentals');
-  await page.click('button:has-text("Add")');
-  await page.waitForTimeout(1200);
-  await page.fill('input[aria-label="New learning objective"]', 'Write basic Python programs');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(1500);
-  const basicsText = await text();
-  check('both objectives are listed', /Understand Python fundamentals/.test(basicsText) && /Write basic Python programs/.test(basicsText));
+  // The overview panel is a live read of the form, not a static mock.
+  const overview = await text();
+  check('the overview panel reflects what was typed',
+    /Course Overview/.test(overview) && /Beginner Level/.test(overview) && /12 hours/.test(overview),
+    overview.slice(0, 200));
 
-  const thumbInput = await page.$('input[type="file"][aria-label="Thumbnail"]');
+  const thumbInput = await page.$('input[type="file"][aria-label="Course thumbnail file"]');
   check('the thumbnail is a real file picker', Boolean(thumbInput));
   if (thumbInput) {
     await thumbInput.setInputFiles({ name: 'python.png', mimeType: 'image/png', buffer: PNG });
     await page.waitForTimeout(4000);
     check('the thumbnail uploaded', /python\.png/.test(await text()));
   }
-  await page.waitForTimeout(2500); // autosave
 
-  console.log('\n=== Curriculum: the three columns ===');
-  await page.click('nav[aria-label="Course studio steps"] button:has-text("Curriculum")');
+  // Save Draft must really save: reload and the values have to come back.
+  await page.click('button:has-text("Save Draft")');
+  await page.waitForTimeout(2500);
+  check('Save Draft confirms', /Draft saved/.test(await text()));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3000);
+  const afterReload = await page.$eval('textarea#f-short-description', (t) => t.value).catch(() => '');
+  check('the draft survived a reload', /Learn Python from scratch/.test(afterReload), afterReload.slice(0, 80));
+
+  console.log('\n=== Step 2 Learning Outcomes ===');
+  await page.click('nav[aria-label="Course studio steps"] button:has-text("Learning Outcomes")');
+  await page.waitForTimeout(1500);
+  await page.fill('textarea#f-about-this-course', 'A complete introduction to Python for beginners, taught week by week with videos, readings and quizzes.');
+  await page.fill('input[aria-label="New learning objective"]', 'Understand Python fundamentals');
+  await page.click('button:has-text("Add")');
+  await page.waitForTimeout(1200);
+  await page.fill('input[aria-label="New learning objective"]', 'Write basic Python programs');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const outcomesText = await text();
+  check('both objectives are listed', /Understand Python fundamentals/.test(outcomesText) && /Write basic Python programs/.test(outcomesText));
+  check('the objectives show in the overview panel under What You\u2019ll Learn',
+    /What You.{1,3}ll Learn/.test(outcomesText));
+
+  await page.fill('input[aria-label="Add to Prerequisites"]', 'Can read simple English');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(2000);
+  check('a prerequisite is recorded', /Can read simple English/.test(await text()));
+  await page.waitForTimeout(2000); // autosave
+
+  console.log('\n=== Step 3 Modules: the three columns ===');
+  await page.click('nav[aria-label="Course studio steps"] button:has-text("Modules")');
   await page.waitForTimeout(1500);
   check('the curriculum tree is present', Boolean(await page.$('nav[aria-label="Course curriculum"]')));
 
@@ -181,6 +220,18 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   check('exams list the course final and each module',
     /Course final exam/.test(await text()) && /Python Fundamentals/.test(await text()));
 
+  console.log('\n=== Step 6 Preview, inside the wizard ===');
+  await page.click('nav[aria-label="Course studio steps"] button:has-text("Preview")');
+  await page.waitForTimeout(2500);
+  const stepPreview = await text();
+  check('the preview step shows the course as a student sees it',
+    /Preview as a student/.test(stepPreview) && /Introduction to Python/.test(stepPreview),
+    stepPreview.slice(0, 200));
+  check('with the objectives and the module', /Understand Python fundamentals/.test(stepPreview) && /Python Fundamentals/.test(stepPreview));
+  check('and the prerequisite entered on step 2', /Can read simple English/.test(stepPreview));
+  check('the Start Learning button is inert in preview',
+    await page.$eval('button:has-text("Start Learning")', (b) => b.disabled).catch(() => false));
+
   console.log('\n=== Publish ===');
   await page.click('nav[aria-label="Course studio steps"] button:has-text("Publish")');
   await page.waitForTimeout(2000);
@@ -239,7 +290,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   check('the studio fits a phone', mobile.overflow <= 2, `overflow ${mobile.overflow}px — ${mobile.offenders.join(', ') || 'no element found'}`);
 
   console.log('\n=== Console ===');
-  check('no uncaught page errors', errors.length === 0, errors.slice(0, 5).join('\n        '));
+  check('no uncaught page errors', errors.length === 0,
+    [...errors.slice(0, 5), ...failed.slice(0, 5)].join('\n        '));
 
   await browser.close();
   console.log('\n======================================');

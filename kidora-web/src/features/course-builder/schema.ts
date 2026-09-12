@@ -8,7 +8,7 @@ import { z } from "zod";
 
 export const basicInfoSchema = z.object({
   title: z.string().trim().min(2, "Give the course a title.").max(160, "That title is too long."),
-  shortDescription: z.string().trim().max(300, "Keep the short description under 300 characters.").optional(),
+  shortDescription: z.string().trim().max(500, "Keep the short description under 500 characters.").optional(),
   description: z.string().trim().max(20000).optional(),
   subjectSlug: z.string().min(1, "Choose a subject."),
   gradeId: z.string().optional(),
