@@ -81,7 +81,7 @@ export function SchoolCoursesPage() {
     <SchoolShell header={({ onMenu }) => <TopHeader onMenu={onMenu} title="Courses" right={<>
       <SearchBar value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search courses" className="w-56" />
       <Select label="Status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={[{ value: "", label: "All" }, { value: "REVIEW", label: "Awaiting approval" }, { value: "PUBLISHED", label: "Published" }, { value: "DRAFT", label: "Draft" }, { value: "ARCHIVED", label: "Archived" }]} />
-      <Link href="/dashboard/teacher/create-course" className="btn-primary"><Plus size={16} /> New</Link></>} />}>
+      <Link href="/teacher/courses/new" className="btn-primary"><Plus size={16} /> New</Link></>} />}>
       {q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <Card><CardBody>
         <DataTable rows={q.data?.items ?? []} loading={q.isPending} page={page} pageSize={PAGE} total={q.data?.total ?? 0} onPage={setPage} empty={{ title: "No courses", body: "Teachers can create courses, or add one here." }}
           columns={[

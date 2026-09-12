@@ -92,7 +92,7 @@ export function TeacherLessonsPage() {
           icon={<BookOpen size={22} />}
           title="No lessons yet"
           body="Lessons live inside a course. Create a course, add a module, then add your first lesson."
-          action={{ label: "Create a course", href: "/dashboard/teacher/create-course" }}
+          action={{ label: "Create a course", href: "/teacher/courses/new" }}
         />
       }
     >

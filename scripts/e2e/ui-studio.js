@@ -39,8 +39,26 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   await page.waitForURL(/\/teacher\//, { timeout: 30000 });
 
   console.log('\n=== Create a course ===');
+  // The old URL must still land somewhere useful.
   await page.goto(`${WEB}/dashboard/teacher/create-course`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000);
+  check('the old create-course URL redirects to the new one', /\/teacher\/courses\/new/.test(page.url()), page.url());
+
+  await page.goto(`${WEB}/teacher/courses/new`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2000);
+
+  // One set of chrome, not two: /dashboard has its own Navbar+Sidebar layout,
+  // and a page there that also rendered TeacherShell stacked them. Count the
+  // shells, not the links: one DashboardLayout legitimately renders the nav
+  // three times (desktop aside, mobile drawer, bottom bar), so a doubled shell
+  // shows up as two bottom bars / four asides, not as two links.
+  const chrome = await page.evaluate(() => ({
+    shells: document.querySelectorAll('nav[aria-label="Quick navigation"]').length,
+    sidebars: document.querySelectorAll('nav[aria-label="Main"]').length,
+    oldSidebar: document.querySelectorAll('aside a[href="/dashboard"]').length,
+  }));
+  check('the page draws one sidebar, not two', chrome.shells === 1 && chrome.sidebars === 2 && chrome.oldSidebar === 0,
+    `${chrome.shells} bottom bars, ${chrome.sidebars} sidebar navs, ${chrome.oldSidebar} legacy links`);
   await page.fill('input#f-course-title', 'Introduction to Python');
   const subjects = await page.$$eval('select#f-subject option', (os) => os.map((o) => o.value).filter(Boolean));
   await page.selectOption('select#f-subject', subjects[0]);

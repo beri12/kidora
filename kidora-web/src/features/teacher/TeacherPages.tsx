@@ -115,7 +115,7 @@ export function TeacherCoursesPage() {
       title="My Courses"
       q={q}
       actions={
-        <Link href="/dashboard/teacher/create-course" className="btn-primary">
+        <Link href="/teacher/courses/new" className="btn-primary">
           <Plus size={16} /> Create New Course
         </Link>
       }
@@ -187,7 +187,7 @@ export function TeacherCoursesPage() {
           <EmptyState
             title={tab === "all" ? "No courses yet" : `Nothing in ${tab.toLowerCase()}`}
             body="Create a course, add modules and lessons, then publish it for your students."
-            action={{ label: "Create New Course", href: "/dashboard/teacher/create-course" }}
+            action={{ label: "Create New Course", href: "/teacher/courses/new" }}
           />
         )}
       </>}

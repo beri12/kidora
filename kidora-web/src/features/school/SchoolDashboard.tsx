@@ -26,7 +26,7 @@ export function SchoolDashboardPage() {
 function Body({ d }: { d: Data }) {
   const k = d.kpis; const h = d.studentHealth; const total = Math.max(1, h.total);
   const quick = [
-    ["Add Student", UserPlus, "/school/students/new"], ["Add Teacher", UserRoundPlus, "/school/teachers/new"], ["Create Course", FilePlus2, "/dashboard/teacher/create-course"],
+    ["Add Student", UserPlus, "/school/students/new"], ["Add Teacher", UserRoundPlus, "/school/teachers/new"], ["Create Course", FilePlus2, "/teacher/courses/new"],
     ["Create Exam", FileCheck2, "/school/exams/new"], ["Send Message", MessageSquare, "/school/messages/new"], ["View Reports", FileBarChart2, "/school/analytics"],
   ] as const;
   return (

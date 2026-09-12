@@ -81,7 +81,7 @@ const reg = async (p) => {
   console.log('\n=== Teacher: build and publish a course ===');
   // The studio itself is covered assertion by assertion in ui-studio.js; here
   // we only need a published course to put a student through.
-  await t.goto(`${WEB}/dashboard/teacher/create-course`, { waitUntil: 'domcontentloaded' });
+  await t.goto(`${WEB}/teacher/courses/new`, { waitUntil: 'domcontentloaded' });
   await t.waitForTimeout(1500);
   await t.fill('input#f-course-title', 'UI Built Course');
   const opts = await t.$$eval('select#f-subject option', (os) => os.map((o) => o.value).filter(Boolean));
