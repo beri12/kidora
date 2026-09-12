@@ -265,7 +265,7 @@ export class LearningService {
         sections: {
           orderBy: { order: 'asc' },
           select: {
-            id: true, title: true, description: true, order: true,
+            id: true, title: true, description: true, order: true, weekNumber: true,
             lessons: {
               where: { status: 'PUBLISHED' },
               orderBy: { order: 'asc' },
@@ -303,6 +303,7 @@ export class LearningService {
     // should see what is inside. Lesson bodies stay behind enrolment.
     const sections = course.sections.map((s) => ({
       id: s.id, title: s.title, description: s.description, order: s.order,
+      weekNumber: s.weekNumber,
       lessons: s.lessons.map((l) => ({
         id: l.id, title: l.title, description: l.description, type: l.type, order: l.order,
         estimatedMin: l.estimatedMin, isRequired: l.isRequired, objectives: l.objectives,
@@ -481,7 +482,7 @@ export class LearningService {
       where: { courseId },
       orderBy: { order: 'asc' },
       select: {
-        id: true, title: true, order: true,
+        id: true, title: true, order: true, weekNumber: true,
         lessons: {
           where: { status: 'PUBLISHED' },
           orderBy: { order: 'asc' },
@@ -495,7 +496,7 @@ export class LearningService {
     return sections.flatMap((s) =>
       s.lessons.map((l) => ({
         id: l.id, title: l.title, type: l.type, estimatedMin: l.estimatedMin, isRequired: l.isRequired,
-        sectionId: s.id, sectionTitle: s.title,
+        sectionId: s.id, sectionTitle: s.title, weekNumber: s.weekNumber,
         completed: l.progress[0]?.completed ?? false,
         percent: l.progress[0]?.percent ?? 0,
       })),

@@ -1,5 +1,5 @@
 import {
-  IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUrl, Max, MaxLength,
+  IsArray, IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUrl, Max, MaxLength,
   Min, MinLength, ValidateIf, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -58,6 +58,8 @@ export class CompletionRulesDto {
 export class SectionDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(160) title!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @ApiPropertyOptional({ description: 'Which week of the course this module is.' })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(104) weekNumber?: number;
 }
 export class UpdateSectionDto extends PartialType(SectionDto) {}
 
@@ -83,12 +85,51 @@ export class UpdateLessonDto extends PartialType(LessonDto) {}
 
 /* ---------------------------------------------------------- content blocks */
 
+export class CheckpointDto {
+  @ApiProperty({ description: 'Seconds into the video where the video pauses.' })
+  @Type(() => Number) @IsInt() @Min(0) atSeconds!: number;
+  @ApiProperty() @IsString() @MinLength(2) @MaxLength(500) prompt!: string;
+  @ApiProperty({ type: [String] }) @IsArray() @IsString({ each: true }) options!: string[];
+  @ApiProperty() @Type(() => Number) @IsInt() @Min(0) correct!: number;
+}
+
+export class DownloadDto {
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(300) name!: string;
+  @ApiProperty() @IsString() url!: string;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) sizeBytes?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() mimeType?: string;
+}
+
 export class ContentBlockDto {
   @ApiProperty({ enum: ContentType }) @IsEnum(ContentType) type!: ContentType;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100000) body?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() url?: string;
   @ApiPropertyOptional() @IsOptional() meta?: Record<string, unknown>;
+
+  // --- item metadata ---
+  @ApiPropertyOptional({ description: 'How long this item takes, in minutes.' })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(600) estimatedMin?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isRequired?: boolean;
+
+  // --- video ---
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) durationSeconds?: number;
+  @ApiPropertyOptional({ description: 'WebVTT captions.' })
+  @IsOptional() @IsString() @MaxLength(500000) transcriptVtt?: string;
+  @ApiPropertyOptional({ type: [CheckpointDto], description: 'Ungraded in-video checks.' })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CheckpointDto)
+  checkpoints?: CheckpointDto[];
+
+  // --- reading ---
+  @ApiPropertyOptional({ type: [DownloadDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => DownloadDto)
+  downloadUrls?: DownloadDto[];
+
+  // --- assessment items ---
+  @ApiPropertyOptional({ description: 'For a QUIZ item: the quiz it points at.' })
+  @IsOptional() @IsString() quizId?: string;
+  @ApiPropertyOptional({ description: 'For an ASSIGNMENT or PEER_REVIEW item.' })
+  @IsOptional() @IsString() assignmentId?: string;
 }
 export class UpdateContentBlockDto extends PartialType(ContentBlockDto) {}
 
@@ -134,6 +175,8 @@ export class QuizDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowRetry?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isRequired?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() published?: boolean;
+  @ApiPropertyOptional({ enum: ['FORMATIVE', 'SUMMATIVE'], description: 'Formative is practice; summative counts.' })
+  @IsOptional() @IsIn(['FORMATIVE', 'SUMMATIVE']) grading?: 'FORMATIVE' | 'SUMMATIVE';
   @ApiPropertyOptional({ type: [QuestionDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => QuestionDto)
   questions?: QuestionDto[];
@@ -164,6 +207,10 @@ export class AssignmentDto {
   @ApiPropertyOptional({ type: [RubricRowDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RubricRowDto)
   rubric?: RubricRowDto[];
+  @ApiPropertyOptional({ description: 'How many classmates review each submission. 0 = teacher grades it.' })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(10) peerReviewCount?: number;
+  @ApiPropertyOptional({ description: 'Reviews a student must complete before their own marks are released.' })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(10) peerReviewsDue?: number;
   @ApiPropertyOptional() @IsOptional() @IsArray() attachments?: { name: string; url: string; sizeBytes?: number }[];
 }
 export class UpdateAssignmentDto extends PartialType(AssignmentDto) {}

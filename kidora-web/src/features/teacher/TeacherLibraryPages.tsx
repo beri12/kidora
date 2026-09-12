@@ -3,10 +3,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { BookOpen, FileCheck2, FolderOpen, ListChecks, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { TeacherShell } from "./TeacherShell";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useTeacherLessons, useTeacherQuizzes, useTeacherExams, useTeacherResources,
-  useTeacherCourses, useTeacherClasses, useAddResource, useAttachResource, useDeleteResource,
+  useTeacherCourses, useTeacherClasses, useDeleteResource,
 } from "@/lib/hooks/queries";
+import { FileUpload } from "@/features/course-builder/FileUpload";
 import {
   TopHeader, Card, CardBody, CardHeader, Pill, ProgressBar, EmptyState, ErrorState, Skeleton,
   SearchBar, Select, cn,
@@ -346,11 +348,9 @@ export function TeacherResourcesPage() {
 }
 
 function AddResourceDialog({ onClose }: { onClose: () => void }) {
-  const add = useAddResource();
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
+  const [uploaded, setUploaded] = useState<{ url: string; name: string } | null>(null);
   const [description, setDescription] = useState("");
-  const valid = name.trim().length > 0 && /^https?:\/\/\S+$/.test(url.trim());
+  const qc = useQueryClient();
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="add-resource-title">
@@ -358,31 +358,34 @@ function AddResourceDialog({ onClose }: { onClose: () => void }) {
         <CardHeader title="Add a resource" />
         <CardBody className="space-y-3">
           <h2 id="add-resource-title" className="sr-only">Add a resource</h2>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">Name</span>
-            <input className="input w-full" value={name} onChange={(e) => setName(e.target.value)} placeholder="Fractions worksheet.pdf" />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">File URL</span>
-            <input className="input w-full" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." />
-            <span className="mt-1 block text-xs text-muted">Upload the file first, then paste its link here.</span>
-          </label>
+
+          {/* Uploading creates the library row, so there is nothing to save
+              afterwards — the dialog just confirms and closes. */}
+          <FileUpload
+            label="File"
+            slot="any"
+            value={uploaded?.url ?? null}
+            onUploaded={(f) => {
+              setUploaded({ url: f.url, name: f.name });
+              qc.invalidateQueries({ queryKey: ["teacher", "resources"] });
+            }}
+            onClear={() => setUploaded(null)}
+            hint="Videos, images, audio, PDFs and Office documents."
+          />
+
           <label className="block text-sm">
             <span className="mb-1 block font-medium">Description <span className="font-normal text-muted">(optional)</span></span>
             <textarea className="input w-full" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
-          {add.isError && <p className="text-sm text-danger-600">{(add.error as Error).message}</p>}
+
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={!valid || add.isPending}
-              onClick={() => add.mutate({ name: name.trim(), url: url.trim(), description: description.trim() || undefined }, { onSuccess: onClose })}
-            >
-              <Upload size={16} aria-hidden /> {add.isPending ? "Saving…" : "Add resource"}
-            </button>
+            <button type="button" className="btn-ghost" onClick={onClose}>{uploaded ? "Done" : "Cancel"}</button>
           </div>
+          {uploaded && (
+            <p className="text-xs text-success-700">
+              Uploaded. It is in your library and can be attached to any lesson.
+            </p>
+          )}
         </CardBody>
       </Card>
     </div>

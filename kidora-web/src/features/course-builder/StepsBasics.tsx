@@ -5,6 +5,7 @@ import { useBrowseFilters, useSetCompletionRules, useUpdateAuthoredCourse } from
 import type { CourseTree } from "@/lib/api/authoring";
 import { basicInfoSchema, detailsSchema, fieldError } from "./schema";
 import { Field, SaveIndicator, SelectField, StringList, TextArea, TextField, Toggle, useAutosave } from "./parts";
+import { FileUpload } from "./FileUpload";
 
 /* ------------------------------------------------------- 1. Basic details */
 
@@ -133,26 +134,31 @@ export function DetailsStep({ course }: { course: CourseTree }) {
           />
         </div>
 
-        <TextField
-          label="Thumbnail URL" value={form.thumbnailUrl} onChange={(v) => set("thumbnailUrl", v)}
-          error={fieldError(result, "thumbnailUrl")} placeholder="https://…"
-          hint="Shown on the course card. Upload the image first, then paste the link."
+        <FileUpload
+          label="Thumbnail" slot="image" value={form.thumbnailUrl || null}
+          onUploaded={(f) => set("thumbnailUrl", f.url)}
+          onClear={() => set("thumbnailUrl", "")}
+          hint="Shown on the course card while students browse."
         />
-        <TextField
-          label="Banner URL" value={form.bannerUrl} onChange={(v) => set("bannerUrl", v)}
-          error={fieldError(result, "bannerUrl")} placeholder="https://…"
-        />
-        <TextField
-          label="Trailer video URL" value={form.trailerUrl} onChange={(v) => set("trailerUrl", v)}
-          error={fieldError(result, "trailerUrl")} placeholder="https://…"
-        />
-
         {form.thumbnailUrl && (
           <Field label="Thumbnail preview">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={form.thumbnailUrl} alt="" className="max-h-40 rounded-xl border border-slate-200 object-cover" />
           </Field>
         )}
+
+        <FileUpload
+          label="Banner" slot="image" value={form.bannerUrl || null}
+          onUploaded={(f) => set("bannerUrl", f.url)}
+          onClear={() => set("bannerUrl", "")}
+          hint="The wide image at the top of the course page."
+        />
+        <FileUpload
+          label="Trailer video" slot="video" value={form.trailerUrl || null}
+          onUploaded={(f) => set("trailerUrl", f.url)}
+          onClear={() => set("trailerUrl", "")}
+          hint="A short clip on the course page. Optional."
+        />
       </CardBody>
     </Card>
   );

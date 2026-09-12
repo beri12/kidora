@@ -148,7 +148,13 @@ export class AuthoringService {
       where: { courseId }, orderBy: { order: 'desc' }, select: { order: true },
     });
     return this.prisma.section.create({
-      data: { courseId, title: dto.title, description: dto.description ?? '', order: (last?.order ?? -1) + 1 },
+      data: {
+        courseId, title: dto.title, description: dto.description ?? '',
+        // Default the week to the module's position, which is what a
+        // week-by-week course wants without the teacher typing it.
+        weekNumber: dto.weekNumber ?? (last?.order ?? -1) + 2,
+        order: (last?.order ?? -1) + 1,
+      },
     });
   }
 
@@ -157,7 +163,7 @@ export class AuthoringService {
     await this.assertAuthor(u, section.courseId);
     return this.prisma.section.update({
       where: { id: sectionId },
-      data: { title: dto.title, description: dto.description },
+      data: { title: dto.title, description: dto.description, weekNumber: dto.weekNumber },
     });
   }
 
@@ -355,8 +361,8 @@ export class AuthoringService {
     });
     return this.prisma.lessonContent.create({
       data: {
-        lessonId, type: dto.type, title: dto.title ?? '', body: dto.body, url: dto.url,
-        meta: (dto.meta ?? {}) as Prisma.InputJsonValue, order: (last?.order ?? -1) + 1,
+        lessonId, order: (last?.order ?? -1) + 1,
+        ...(await this.createItemData(dto, lesson.courseId)),
       },
     });
   }
@@ -369,10 +375,7 @@ export class AuthoringService {
     await this.assertAuthor(u, block.lesson.courseId);
     return this.prisma.lessonContent.update({
       where: { id: blockId },
-      data: {
-        type: dto.type, title: dto.title, body: dto.body, url: dto.url,
-        ...(dto.meta ? { meta: dto.meta as Prisma.InputJsonValue } : {}),
-      },
+      data: await this.patchItemData(dto, block.lesson.courseId),
     });
   }
 
@@ -393,12 +396,12 @@ export class AuthoringService {
     return this.prisma.$transaction(async (tx) => {
       await tx.lessonContent.deleteMany({ where: { lessonId } });
       if (dto.blocks.length) {
-        await tx.lessonContent.createMany({
-          data: dto.blocks.map((b, order) => ({
-            lessonId, type: b.type, order, title: b.title ?? '', body: b.body, url: b.url,
-            meta: (b.meta ?? {}) as Prisma.InputJsonValue,
-          })),
-        });
+        // Resolved outside the loop so one bad quizId fails the whole save
+        // rather than leaving the lesson half-written.
+        const rows = await Promise.all(
+          dto.blocks.map(async (b, order) => ({ lessonId, order, ...(await this.createItemData(b, lesson.courseId)) })),
+        );
+        await tx.lessonContent.createMany({ data: rows });
       }
       return tx.lessonContent.findMany({ where: { lessonId }, orderBy: { order: 'asc' } });
     }, { timeout: 20000 });
@@ -478,4 +481,58 @@ export class AuthoringService {
       throw new BadRequestException(`The ${label} order must list every ${label} in this parent exactly once.`);
     }
   }
+  /**
+   * Fields shared by create and update.
+   *
+   * An item that IS an assessment carries the id of the real Quiz or
+   * Assignment row; both are checked to belong to this course, so a block
+   * cannot smuggle in another course's quiz.
+   */
+  private async itemFields(dto: ContentBlockDto | UpdateContentBlockDto, courseId: string) {
+    if (dto.quizId) {
+      const q = await this.prisma.quiz.findUnique({
+        where: { id: dto.quizId },
+        select: { courseId: true, lesson: { select: { courseId: true } } },
+      });
+      if (!q) throw new NotFoundException('Quiz not found.');
+      if ((q.courseId ?? q.lesson?.courseId) !== courseId) {
+        throw new BadRequestException('That quiz belongs to another course.');
+      }
+    }
+    if (dto.assignmentId) {
+      const a = await this.prisma.assignment.findUnique({ where: { id: dto.assignmentId }, select: { courseId: true } });
+      if (!a) throw new NotFoundException('Assignment not found.');
+      if (a.courseId !== courseId) throw new BadRequestException('That assignment belongs to another course.');
+    }
+    return {
+      body: dto.body,
+      url: dto.url,
+      estimatedMin: dto.estimatedMin,
+      isRequired: dto.isRequired,
+      durationSeconds: dto.durationSeconds,
+      transcriptVtt: dto.transcriptVtt,
+      quizId: dto.quizId,
+      assignmentId: dto.assignmentId,
+      ...(dto.meta ? { meta: dto.meta as Prisma.InputJsonValue } : {}),
+      ...(dto.checkpoints ? { checkpoints: dto.checkpoints as unknown as Prisma.InputJsonValue } : {}),
+      ...(dto.downloadUrls ? { downloadUrls: dto.downloadUrls as unknown as Prisma.InputJsonValue } : {}),
+    };
+  }
+
+  /** Create needs the non-nullable columns filled in. */
+  private async createItemData(dto: ContentBlockDto, courseId: string) {
+    return {
+      ...(await this.itemFields(dto, courseId)),
+      type: dto.type,
+      title: dto.title ?? '',
+      estimatedMin: dto.estimatedMin ?? 3,
+      isRequired: dto.isRequired ?? true,
+    };
+  }
+
+  /** Update leaves anything the caller omitted alone. */
+  private async patchItemData(dto: UpdateContentBlockDto, courseId: string) {
+    return { ...(await this.itemFields(dto, courseId)), type: dto.type, title: dto.title };
+  }
+
 }

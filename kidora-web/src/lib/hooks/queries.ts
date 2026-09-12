@@ -262,14 +262,14 @@ export const useArchiveCourse = (courseId: string) => {
 export const useCreateSection = (courseId: string) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dto: { title: string; description?: string }) => authoringApi.createSection(courseId, dto),
+    mutationFn: (dto: { title: string; description?: string; weekNumber?: number }) => authoringApi.createSection(courseId, dto),
     onSuccess: () => invalidateCourse(qc, courseId),
   });
 };
 export const useUpdateSection = (courseId: string) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...dto }: { id: string; title?: string; description?: string }) => authoringApi.updateSection(id, dto),
+    mutationFn: ({ id, ...dto }: { id: string; title?: string; description?: string; weekNumber?: number }) => authoringApi.updateSection(id, dto),
     onSuccess: () => invalidateCourse(qc, courseId),
   });
 };

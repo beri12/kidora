@@ -22,6 +22,7 @@ In a second terminal, from the repo root:
 node scripts/e2e/roles.js
 node scripts/e2e/course-flow.js
 node scripts/e2e/lms-workflow.js
+node scripts/e2e/coursera-structure.js
 node scripts/e2e/cal-support.js
 node scripts/e2e/settings.js
 node scripts/e2e/ai.js        # needs the AI service running, see below
@@ -50,7 +51,8 @@ failed.
 | `settings.js` | Profile and settings updates, and the fields a user is not allowed to change about themselves |
 | `ai.js` | AI tutor: structured responses, the degraded response when no LLM is configured, moderation, and the authorisation rules that stop one user asking about another user's child |
 | `lms-workflow.js` | The whole course workflow: teacher builds a course (modules, lessons, content, quiz, assignment, final exam), publishes it against a validated checklist, then a student browses, enrols, learns, is graded, sits the exam, completes the course and gets a verifiable certificate. Also the teacher library pages and cross-teacher isolation. |
-| `ui-lms.js` | The same journey driven through the real browser (Playwright): every teacher sidebar page, the 12-step builder, enrolment and the lesson player, plus phone-width layout checks |
+| `ui-lms.js` | The same journey driven through the real browser (Playwright): every teacher page, the 12-step builder, a real file upload, enrolment and the lesson player, plus phone-width layout checks |
+| `coursera-structure.js` | Teacher file uploads, modules numbered as weeks, typed lesson items (video with captions and in-video questions, readings with attachments), formative vs summative quizzes, and peer review end to end |
 
 ## The AI service
 
@@ -75,3 +77,9 @@ Its own unit tests run separately:
 cd apps/ai-service
 python -m pytest
 ```
+
+## Uploads
+
+`uploads.js` and the upload section of `ui-lms.js` write real files. With
+`STORAGE_DRIVER=local` (the default) they land in `kidora-api/uploads/` and are
+served at `/uploads/...`. Delete that folder to clean up after a test run.

@@ -45,11 +45,12 @@ const reg = async (p) => {
   const t = await login(teacher);
   const TEACHER_PAGES = [
     ['/teacher/dashboard', 'Dashboard'], ['/teacher/classes', 'My Classes'], ['/teacher/courses', 'Courses'],
-    ['/teacher/lessons', 'Lessons'], ['/teacher/assignments', 'Assignments'], ['/teacher/quizzes', 'Quizzes'],
-    ['/teacher/exams', 'Exams'], ['/teacher/students', 'Students'], ['/teacher/gradebook', 'Gradebook'],
-    ['/teacher/analytics', 'Analytics'], ['/teacher/attendance', 'Attendance'], ['/teacher/messages', 'Messages'],
-    ['/teacher/resources', 'Resources'], ['/teacher/calendar', 'Calendar'], ['/teacher/settings', 'Settings'],
-    ['/teacher/ai', 'AI Teaching Assistant'],
+    ['/teacher/assignments', 'Assignments'], ['/teacher/students', 'Students'], ['/teacher/gradebook', 'Gradebook'],
+    ['/teacher/analytics', 'Analytics'], ['/teacher/messages', 'Messages'], ['/teacher/calendar', 'Calendar'],
+    ['/teacher/settings', 'Settings'], ['/teacher/support', 'Support'],
+    // Not in the sidebar any more — reached from the Courses page.
+    ['/teacher/lessons', 'Lessons'], ['/teacher/quizzes', 'Quizzes'], ['/teacher/exams', 'Exams'],
+    ['/teacher/attendance', 'Attendance'], ['/teacher/resources', 'Resources'], ['/teacher/ai', 'AI Teaching Assistant'],
   ];
   for (const [href, label] of TEACHER_PAGES) {
     const res = await t.goto(`${WEB}${href}`, { waitUntil: 'domcontentloaded' });
@@ -58,6 +59,23 @@ const reg = async (p) => {
     const broken = /Application error|Unhandled Runtime Error|This page could not be found/i.test(body || '');
     check(`${label} (${href})`, res.status() < 400 && !broken, broken ? 'page rendered an error' : `status ${res.status()}`);
   }
+
+  console.log('\n=== The teacher sidebar is the short one ===');
+  await t.goto(`${WEB}/teacher/dashboard`, { waitUntil: 'domcontentloaded' });
+  await t.waitForTimeout(1800);
+  const navLabels = await t.$$eval('nav a', (as) => as.map((a) => a.textContent.trim()).filter(Boolean));
+  const sidebarHas = (label) => navLabels.some((l) => l === label || l.startsWith(label));
+  check('Courses is in the sidebar', sidebarHas('Courses'));
+  check('Lessons is not', !sidebarHas('Lessons'), navLabels.join(' | '));
+  check('Quizzes is not', !sidebarHas('Quizzes'));
+  check('Exams is not', !sidebarHas('Exams'));
+  check('Attendance is not', !sidebarHas('Attendance'));
+  check('Resources is not', !sidebarHas('Resources'));
+
+  await t.goto(`${WEB}/teacher/courses`, { waitUntil: 'domcontentloaded' });
+  await t.waitForTimeout(1500);
+  const acrossLinks = await t.$$eval('nav[aria-label="Across all your courses"] a', (as) => as.map((a) => a.textContent.trim()));
+  check('but they are reachable from the Courses page', 5, acrossLinks.length, acrossLinks.join(' | '));
 
   console.log('\n=== Teacher: build a course through the wizard ===');
   await t.goto(`${WEB}/dashboard/teacher/create-course`, { waitUntil: 'domcontentloaded' });
@@ -158,6 +176,36 @@ const reg = async (p) => {
     await st.goto(`${WEB}/student/courses/${courseId}`, { waitUntil: 'domcontentloaded' });
     await st.waitForTimeout(1800);
     check('the course now reads 100%', /100%/.test(await st.evaluate(() => document.body.innerText)));
+  }
+
+  console.log('\n=== Teacher uploads a real file ===');
+  // Straight into the Resources library, which is the simplest upload path.
+  await t.goto(`${WEB}/teacher/resources`, { waitUntil: 'domcontentloaded' });
+  await t.waitForTimeout(1800);
+  const addBtn = await t.$('button:has-text("Add resource"), button:has-text("Add your first resource")');
+  check('an add-resource button is offered', Boolean(addBtn));
+  if (addBtn) {
+    await addBtn.click();
+    await t.waitForTimeout(800);
+
+    // A real 1x1 PNG through the real file input.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const input = await t.$('input[type="file"]');
+    check('there is a real file input, not a URL box', Boolean(input));
+    if (input) {
+      await input.setInputFiles({ name: 'kidora-test.png', mimeType: 'image/png', buffer: png });
+      await t.waitForTimeout(4000);
+      const dialogText = await t.evaluate(() => document.body.innerText);
+      check('the upload confirms', /Uploaded|kidora-test\.png/i.test(dialogText), dialogText.slice(0, 300));
+
+      const done = await t.$('button:has-text("Done")');
+      if (done) await done.click();
+      await t.waitForTimeout(2000);
+      await t.reload({ waitUntil: 'domcontentloaded' });
+      await t.waitForTimeout(2000);
+      const libraryText = await t.evaluate(() => document.body.innerText);
+      check('and the file is in the library', /kidora-test\.png/.test(libraryText), libraryText.slice(0, 300));
+    }
   }
 
   console.log('\n=== AI teaching assistant ===');

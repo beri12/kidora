@@ -59,7 +59,7 @@ export interface StudentCourseDetail {
   subject: { id: string; name: string; accent: string } | null;
   grade: { id: string; name: string } | null;
   teacher: { id: string; name: string; avatarUrl: string | null } | null;
-  sections: { id: string; title: string; description: string; order: number; lessons: StudentLesson[] }[];
+  sections: { id: string; title: string; description: string; order: number; weekNumber?: number | null; lessons: StudentLesson[] }[];
   exam: {
     id: string; title: string; durationMin: number | null; passingScore: number;
     scheduledAt: string | null; availableFrom: string | null; availableUntil: string | null;
@@ -96,7 +96,8 @@ export interface PlayerLesson {
 
 export interface CurriculumEntry {
   id: string; title: string; type: string; estimatedMin: number; isRequired: boolean;
-  sectionId: string; sectionTitle: string; completed: boolean; percent: number;
+  sectionId: string; sectionTitle: string; weekNumber?: number | null;
+  completed: boolean; percent: number;
 }
 
 export interface PlayerPayload {

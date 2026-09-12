@@ -33,6 +33,9 @@ import { AuthoringService } from './authoring/authoring.service';
 import { AssessmentAuthoringService } from './authoring/assessment-authoring.service';
 import { PublishService } from './authoring/publish.service';
 import { AuthoringController } from './authoring/authoring.controller';
+import { PeerReviewService } from './peer-review/peer-review.service';
+import { UploadsController } from './uploads/uploads.controller';
+import { PeerReviewController, TeacherPeerReviewController } from './peer-review/peer-review.controller';
 import { CompletionService } from './learning/completion.service';
 import { LearningService } from './learning/learning.service';
 import { LearningController, BrowseFiltersController } from './learning/learning.controller';
@@ -48,11 +51,11 @@ import { LearningController, BrowseFiltersController } from './learning/learning
  *   3. KIDORA_REDIS   -> your ioredis client; KIDORA_AI_PROVIDER -> your AI service.
  */
 @Module({
-  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController, BrowseFiltersController],
+  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController, BrowseFiltersController, PeerReviewController, TeacherPeerReviewController, UploadsController],
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
     StudentService, TeacherService, TeacherLibraryService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
-    AuthoringService, AssessmentAuthoringService, PublishService, CompletionService, LearningService,
+    AuthoringService, AssessmentAuthoringService, PublishService, CompletionService, LearningService, PeerReviewService,
     { provide: KIDORA_REDIS, useValue: undefined }, // e.g. { provide: KIDORA_REDIS, useFactory: (r: RedisService) => r.getClient(), inject: [RedisService] }
     { provide: KIDORA_AI_PROVIDER, useClass: UnconfiguredAiProvider },
   ],

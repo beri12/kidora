@@ -97,7 +97,15 @@ export function TeacherCoursesPage() {
   const tone = (s: string) => s === "PUBLISHED" ? "success" : s === "REVIEW" ? "warning" : s === "ARCHIVED" ? "neutral" : "info";
   return (
     <Page title="Courses" q={q} actions={<><Tabs value={tab} onChange={setTab} options={["all", "DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"].map((v) => ({ value: v as typeof tab, label: v === "all" ? "All" : v[0] + v.slice(1).toLowerCase() }))} /><Link href="/dashboard/teacher/create-course" className="btn-primary"><Plus size={16} /> New course</Link></>}>
-      {(list) => list.length ? (
+      {(list) => <>
+        {/* These live here rather than in the sidebar: they are views across
+            your courses, not separate destinations. */}
+        <nav aria-label="Across all your courses" className="mb-4 flex flex-wrap gap-2">
+          {([["Lessons", "/teacher/lessons"], ["Quizzes", "/teacher/quizzes"], ["Exams", "/teacher/exams"], ["Resources", "/teacher/resources"], ["Attendance", "/teacher/attendance"]] as const).map(([label, href]) => (
+            <Link key={href} href={href} className="focus-ring rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium hover:bg-brand-50">{label}</Link>
+          ))}
+        </nav>
+        {list.length ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {list.map((c) => (
             <Card key={c.id} as="article" className="overflow-hidden">
@@ -110,7 +118,8 @@ export function TeacherCoursesPage() {
             </Card>
           ))}
         </div>
-      ) : <EmptyState title="No courses yet" body="Create your first course and add sections, lessons and quizzes." action={{ label: "Create course", href: "/dashboard/teacher/create-course" }} />}
+      ) : <EmptyState title="No courses yet" body="Create your first course and add modules, lessons and quizzes." action={{ label: "Create course", href: "/dashboard/teacher/create-course" }} />}
+      </>}
     </Page>
   );
 }

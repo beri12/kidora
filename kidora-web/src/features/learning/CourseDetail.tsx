@@ -109,8 +109,15 @@ function Detail({ courseId }: { courseId: string }) {
                   {c.sections.map((s) => (
                     <li key={s.id} className="border-b border-slate-100 last:border-0">
                       <div className="bg-slate-50/60 px-4 py-2">
-                        <p className="text-sm font-semibold">{s.title}</p>
+                        <p className="text-sm font-semibold">
+                          {s.weekNumber ? <span className="text-muted">Week {s.weekNumber} · </span> : null}
+                          {s.title}
+                        </p>
                         {s.description && <p className="text-xs text-muted">{s.description}</p>}
+                        <p className="text-[11px] text-muted">
+                          {s.lessons.length} lesson{s.lessons.length === 1 ? "" : "s"} ·{" "}
+                          {s.lessons.reduce((a, l) => a + l.estimatedMin, 0)} min
+                        </p>
                       </div>
                       <ul className="divide-y divide-slate-50">
                         {s.lessons.map((l) => {

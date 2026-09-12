@@ -308,18 +308,20 @@ function Curriculum({
 }: { entries: CurriculumEntry[]; courseId: string; currentId: string; open: boolean; onClose: () => void }) {
   // Grouped back into modules for display; the API sends one flat ordered walk
   // so the rail and the next/previous buttons cannot disagree.
-  const groups: { id: string; title: string; lessons: CurriculumEntry[] }[] = [];
+  const groups: { id: string; title: string; weekNumber?: number | null; lessons: CurriculumEntry[] }[] = [];
   for (const e of entries) {
     const last = groups[groups.length - 1];
     if (last && last.id === e.sectionId) last.lessons.push(e);
-    else groups.push({ id: e.sectionId, title: e.sectionTitle, lessons: [e] });
+    else groups.push({ id: e.sectionId, title: e.sectionTitle, weekNumber: e.weekNumber, lessons: [e] });
   }
 
   const list = (
     <ol className="space-y-2">
       {groups.map((g) => (
         <li key={g.id}>
-          <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted">{g.title}</p>
+          <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted">
+            {g.weekNumber ? `Week ${g.weekNumber} · ` : ""}{g.title}
+          </p>
           <ul>
             {g.lessons.map((l) => (
               <li key={l.id}>

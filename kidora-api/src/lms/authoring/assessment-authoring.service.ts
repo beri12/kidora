@@ -298,6 +298,7 @@ export class AssessmentAuthoringService {
       allowRetry: dto.allowRetry,
       isRequired: dto.isRequired,
       published: dto.published,
+      grading: dto.grading,
     };
   }
 
@@ -312,6 +313,8 @@ export class AssessmentAuthoringService {
       isRequired: dto.isRequired,
       submissionType: dto.submissionType,
       allowedFileTypes: dto.allowedFileTypes,
+      peerReviewCount: dto.peerReviewCount,
+      peerReviewsDue: dto.peerReviewsDue,
       ...(dto.rubric ? { rubric: dto.rubric as unknown as Prisma.InputJsonValue } : {}),
       ...(dto.attachments ? { attachments: dto.attachments as unknown as Prisma.InputJsonValue } : {}),
     };

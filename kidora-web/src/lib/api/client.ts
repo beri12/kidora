@@ -52,6 +52,13 @@ export class ApiError extends Error {
 let tokenGetter: () => string | null = () => null;
 export function setAuthTokenGetter(fn: () => string | null) { tokenGetter = fn; }
 
+/**
+ * The current access token, for requests that cannot go through `api` —
+ * uploads use XMLHttpRequest so they can report progress, and still need to be
+ * authenticated the same way.
+ */
+export function getAuthToken(): string | null { return tokenGetter(); }
+
 /** Exchanges the refresh token for a new access token, or null if it failed. */
 let tokenRefresher: (() => Promise<string | null>) | null = null;
 export function setAuthTokenRefresher(fn: () => Promise<string | null>) { tokenRefresher = fn; }

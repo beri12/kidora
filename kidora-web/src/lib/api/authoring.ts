@@ -13,6 +13,21 @@ export type ContentType =
   | "HEADING" | "PARAGRAPH" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT"
   | "CODE" | "CALLOUT" | "EXAMPLE" | "QUESTION" | "INTERACTIVE" | "RESOURCE" | "TEXT";
 
+export interface Checkpoint {
+  atSeconds: number;
+  prompt: string;
+  options: string[];
+  correct: number;
+}
+
+export interface Download {
+  name: string;
+  url: string;
+  sizeBytes?: number;
+  mimeType?: string;
+}
+
+/** One item in a lesson — Coursera's `course_items`. */
 export interface ContentBlock {
   id?: string;
   type: ContentType;
@@ -21,6 +36,21 @@ export interface ContentBlock {
   url?: string | null;
   meta?: Record<string, unknown>;
   order?: number;
+
+  estimatedMin?: number;
+  isRequired?: boolean;
+
+  // video
+  durationSeconds?: number | null;
+  transcriptVtt?: string | null;
+  checkpoints?: Checkpoint[];
+
+  // reading
+  downloadUrls?: Download[];
+
+  // an item that IS an assessment
+  quizId?: string | null;
+  assignmentId?: string | null;
 }
 
 export interface AuthoredLesson {
@@ -33,7 +63,10 @@ export interface AuthoredLesson {
 }
 
 export interface AuthoredSection {
-  id: string; title: string; description: string; order: number; lessons: AuthoredLesson[];
+  id: string; title: string; description: string; order: number;
+  /** Which week of the course this module is. */
+  weekNumber?: number | null;
+  lessons: AuthoredLesson[];
 }
 
 export interface AuthoredQuestion {
@@ -58,6 +91,7 @@ export interface AuthoredQuiz {
   published: boolean; passingScore: number; maxAttempts: number; timeLimitSec?: number | null;
   shuffle: boolean; shuffleAnswers: boolean; showExplanations: boolean; showScore: boolean;
   allowRetry: boolean; isRequired: boolean;
+  grading: "FORMATIVE" | "SUMMATIVE";
   questions: AuthoredQuestion[];
 }
 
@@ -67,6 +101,7 @@ export interface AuthoredAssignment {
   id: string; title: string; description: string; instructions: string;
   status: "DRAFT" | "PUBLISHED" | "CLOSED"; dueAt: string | null; maxScore: number;
   allowLate: boolean; allowResubmit: boolean; isRequired: boolean;
+  peerReviewCount: number; peerReviewsDue: number;
   submissionType: "TEXT" | "FILE" | "BOTH"; allowedFileTypes: string[];
   rubric: RubricRow[]; lessonId?: string | null;
 }
@@ -175,9 +210,9 @@ export const authoringApi = {
   archive: (courseId: string) => api.post<CourseTree>(`/authoring/courses/${courseId}/archive`, {}),
 
   // sections
-  createSection: (courseId: string, dto: { title: string; description?: string }) =>
+  createSection: (courseId: string, dto: { title: string; description?: string; weekNumber?: number }) =>
     api.post<AuthoredSection>(`/authoring/courses/${courseId}/sections`, dto),
-  updateSection: (id: string, dto: { title?: string; description?: string }) =>
+  updateSection: (id: string, dto: { title?: string; description?: string; weekNumber?: number }) =>
     api.patch<AuthoredSection>(`/authoring/sections/${id}`, dto),
   deleteSection: (id: string) => api.delete<{ ok: true }>(`/authoring/sections/${id}`),
   duplicateSection: (id: string) => api.post<AuthoredSection>(`/authoring/sections/${id}/duplicate`, {}),

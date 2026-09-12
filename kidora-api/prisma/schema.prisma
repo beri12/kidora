@@ -203,7 +203,8 @@ model User {
   // ============================================================
   // INDEXES
   // ============================================================
-  ownedResources Resource[] @relation("TeacherResources")
+  ownedResources Resource[]   @relation("TeacherResources")
+  peerReviews    PeerReview[] @relation("PeerReviewer")
 
   @@index([schoolId, role])
   @@index([schoolId, gradeId])
@@ -488,6 +489,9 @@ model Section {
 
   // --- LMS additions ---
   description String   @default("")
+  /// Coursera-style module: a week of study. Optional, because a course does
+  /// not have to be organised by week.
+  weekNumber  Int?
   lessons     Lesson[]
 }
 
@@ -542,18 +546,47 @@ model Lesson {
 /// Ordered content blocks inside a lesson (video / text / audio / image /
 /// interactive / resource).
 model LessonContent {
-  id        String      @id @default(cuid())
-  lessonId  String
-  type      ContentType
-  order     Int         @default(0)
-  title     String      @default("")
-  body      String? // text / markdown
-  url       String? // video, audio, image, file
-  meta      Json        @default("{}")
-  createdAt DateTime    @default(now())
-  lesson    Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id       String      @id @default(cuid())
+  lessonId String
+  type     ContentType
+  order    Int         @default(0)
+  title    String      @default("")
+  body     String? // text / markdown
+  url      String? // video, audio, image, file
+  meta     Json        @default("{}")
+
+  // --- item metadata (Coursera "course_items") ---
+  /// How long this single item should take, not the whole lesson.
+  estimatedMin Int     @default(3)
+  isRequired   Boolean @default(true)
+
+  // --- video items ---
+  durationSeconds Int?
+  /// WebVTT captions, stored inline so the player needs no second request.
+  transcriptVtt   String?
+  /// Ungraded in-video checks: [{ atSeconds, prompt, options, correct }].
+  /// Never scored — they exist to make a child pause and think.
+  checkpoints     Json    @default("[]")
+
+  // --- reading items ---
+  /// Downloadable attachments: [{ name, url, sizeBytes, mimeType }].
+  downloadUrls Json @default("[]")
+
+  // --- assessment items ---
+  /// An item of type QUIZ, ASSIGNMENT or PEER_REVIEW points at the real row
+  /// rather than duplicating it, so one ordered sequence per lesson covers
+  /// every item type while the existing attempt and grading engines stay the
+  /// single source of truth.
+  quizId       String?
+  assignmentId String?
+  createdAt    DateTime    @default(now())
+  lesson       Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  quiz         Quiz?       @relation("QuizItem", fields: [quizId], references: [id], onDelete: Cascade)
+  assignment   Assignment? @relation("AssignmentItem", fields: [assignmentId], references: [id], onDelete: Cascade)
 
   @@index([lessonId, order])
+  @@index([quizId])
+  @@index([assignmentId])
 }
 
 model LessonActivity {
@@ -606,25 +639,27 @@ model Quiz {
   questions QuizQuestion[]
 
   // --- LMS additions ---
-  kind             QuizKind      @default(LESSON)
-  description      String        @default("")
+  kind             QuizKind        @default(LESSON)
+  description      String          @default("")
   courseId         String?
   timeLimitSec     Int?
-  maxAttempts      Int           @default(3)
-  passingScore     Int           @default(60) // percent
-  shuffle          Boolean       @default(false)
-  shuffleAnswers   Boolean       @default(false)
-  showExplanations Boolean       @default(true)
-  showScore        Boolean       @default(true)
-  allowRetry       Boolean       @default(true)
-  isRequired       Boolean       @default(false)
+  maxAttempts      Int             @default(3)
+  passingScore     Int             @default(60) // percent
+  shuffle          Boolean         @default(false)
+  shuffleAnswers   Boolean         @default(false)
+  showExplanations Boolean         @default(true)
+  showScore        Boolean         @default(true)
+  allowRetry       Boolean         @default(true)
+  isRequired       Boolean         @default(false)
+  grading          QuizGrading     @default(FORMATIVE)
   sectionId        String?
-  published        Boolean       @default(true)
-  xpReward         Int           @default(20)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @default(now()) @updatedAt
-  course           Course?       @relation(fields: [courseId], references: [id])
+  published        Boolean         @default(true)
+  xpReward         Int             @default(20)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @default(now()) @updatedAt
+  course           Course?         @relation(fields: [courseId], references: [id])
   attempts         QuizAttempt[]
+  items            LessonContent[] @relation("QuizItem")
   exam             Exam?
 
   @@index([courseId, kind])
@@ -750,6 +785,12 @@ model Assignment {
   allowedFileTypes String[]               @default([])
   allowResubmit    Boolean                @default(false)
   isRequired       Boolean                @default(false)
+  /// > 0 turns this into a peer-reviewed assignment: each submission is sent
+  /// to this many classmates to score against the rubric.
+  peerReviewCount  Int                    @default(0)
+  /// Reviews a student must complete before their own marks are released,
+  /// which is what stops everyone submitting and nobody reviewing.
+  peerReviewsDue   Int                    @default(0)
   xpReward         Int                    @default(30)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @default(now()) @updatedAt
@@ -759,6 +800,7 @@ model Assignment {
   class            SchoolClass?           @relation(fields: [classId], references: [id])
   teacher          User                   @relation("AssignmentTeacher", fields: [teacherId], references: [id])
   submissions      AssignmentSubmission[]
+  items            LessonContent[]        @relation("AssignmentItem")
 
   @@index([schoolId, status, dueAt])
   @@index([classId, dueAt])
@@ -775,6 +817,9 @@ model AssignmentSubmission {
   attemptNo    Int              @default(1)
   /// Per-criterion scores mirroring Assignment.rubric.
   rubricScores Json             @default("[]")
+  /// Mean of the completed peer reviews, once enough have come in.
+  peerScore    Int?
+  peerReviews  PeerReview[]
   submittedAt  DateTime         @default(now())
   isLate       Boolean          @default(false)
   score        Int?
@@ -1385,6 +1430,9 @@ enum ContentType {
   CALLOUT
   EXAMPLE
   QUESTION
+  QUIZ
+  ASSIGNMENT
+  PEER_REVIEW
 }
 
 enum LessonActivityType {
@@ -1679,4 +1727,41 @@ model CoursePrerequisite {
 
   @@unique([courseId, prerequisiteId])
   @@index([prerequisiteId])
+}
+
+/// Coursera's distinction: a formative quiz is practice (instant feedback,
+/// retry freely, not counted); a summative one is assessed.
+enum QuizGrading {
+  FORMATIVE
+  SUMMATIVE
+}
+
+enum PeerReviewStatus {
+  ASSIGNED
+  SUBMITTED
+  SKIPPED
+}
+
+/// One classmate's review of one submission.
+///
+/// Reviewer and author are both Users, so the pair is unique and a student can
+/// never be assigned their own work — the service enforces that, and the
+/// unique constraint stops a double assignment.
+model PeerReview {
+  id           String           @id @default(cuid())
+  submissionId String
+  reviewerId   String
+  status       PeerReviewStatus @default(ASSIGNED)
+  /// Per-criterion scores mirroring Assignment.rubric.
+  scores       Json             @default("[]")
+  total        Int?
+  comment      String?
+  assignedAt   DateTime         @default(now())
+  submittedAt  DateTime?
+
+  submission AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   User                 @relation("PeerReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, reviewerId])
+  @@index([reviewerId, status])
 }

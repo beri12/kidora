@@ -5,10 +5,11 @@ import { TenancyService } from '../common/tenancy.service';
 import { ActivityService } from '../common/activity.service';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
 import type { CreateAssignmentDto, GradeSubmissionDto, SubmitAssignmentDto } from './dto';
+import { PeerReviewService } from '../peer-review/peer-review.service';
 
 @Injectable()
 export class AssignmentsService {
-  constructor(private prisma: PrismaService, private rewards: RewardsService, private tenancy: TenancyService, private activity: ActivityService) {}
+  constructor(private prisma: PrismaService, private rewards: RewardsService, private tenancy: TenancyService, private activity: ActivityService, private peerReview: PeerReviewService) {}
 
   async create(u: AuthUser, dto: CreateAssignmentDto) {
     if (dto.classId) await this.tenancy.assertTeacherOfClass(u, dto.classId);
@@ -28,7 +29,7 @@ export class AssignmentsService {
   }
 
   async submit(studentId: string, assignmentId: string, dto: SubmitAssignmentDto) {
-    const a = await this.prisma.assignment.findUnique({ where: { id: assignmentId }, select: { id: true, title: true, status: true, dueAt: true, allowLate: true, classId: true, courseId: true, schoolId: true, xpReward: true, teacherId: true } });
+    const a = await this.prisma.assignment.findUnique({ where: { id: assignmentId }, select: { id: true, title: true, status: true, dueAt: true, allowLate: true, classId: true, courseId: true, schoolId: true, xpReward: true, teacherId: true, peerReviewCount: true } });
     if (!a || a.status !== 'PUBLISHED') throw new NotFoundException('Assignment not found.');
     const ok = a.classId ? await this.prisma.classEnrollment.count({ where: { studentId, classId: a.classId } }) : await this.prisma.courseEnrollment.count({ where: { studentId, courseId: a.courseId! } });
     if (!ok) throw new ForbiddenException('This assignment is not for you.');
@@ -37,6 +38,15 @@ export class AssignmentsService {
     const existing = await this.prisma.assignmentSubmission.findUnique({ where: { assignmentId_studentId: { assignmentId, studentId } } });
     if (existing?.status === 'GRADED') throw new BadRequestException('This assignment was already graded.');
     const s = await this.prisma.assignmentSubmission.upsert({ where: { assignmentId_studentId: { assignmentId, studentId } }, create: { assignmentId, studentId, content: dto.content, attachments: dto.attachments ?? [], isLate }, update: { content: dto.content, attachments: dto.attachments ?? [], submittedAt: new Date(), isLate, status: 'SUBMITTED' } });
+    if (a.peerReviewCount > 0) {
+      // Hand it to classmates. Also top up earlier submissions, which could
+      // not be fully assigned when they were the only one in.
+      await this.peerReview.assignReviewers(s.id);
+      const others = await this.prisma.assignmentSubmission.findMany({
+        where: { assignmentId, id: { not: s.id } }, select: { id: true },
+      });
+      for (const o of others) await this.peerReview.assignReviewers(o.id);
+    }
     if (!existing) {
       await this.rewards.onAssignmentSubmitted(studentId, { assignmentId, submissionId: s.id, title: a.title, xpReward: a.xpReward, schoolId: a.schoolId, courseId: a.courseId });
       await this.prisma.notification.create({ data: { userId: a.teacherId, type: 'SUBMISSION_RECEIVED', title: 'New submission', body: `${a.title} has a new submission to grade.`, link: `/teacher/assignments/${a.id}` } });
