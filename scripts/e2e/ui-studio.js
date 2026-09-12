@@ -3,9 +3,9 @@
  * the three-column curriculum builder, the add-content modal, a real upload,
  * the video editor's timestamp questions, and publish.
  */
-const { chromium } = require('/home/user/kidora/kidora-web/node_modules/playwright-core');
-const API = 'http://localhost:4000/api';
-const WEB = 'http://localhost:3000';
+const { launchBrowser } = require('./browser');
+const API = process.env.API_URL || 'http://localhost:4000/api';
+const WEB = process.env.WEB_URL || 'http://localhost:3000';
 let pass = 0, fail = 0;
 const check = (l, cond, extra = '') => {
   if (cond) { console.log(`  PASS  ${l}`); pass++; }
@@ -22,7 +22,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   const teacher = { name: 'Studio UI Teacher', email: `sui.${s}@k.test`, password: 'Password123', role: 'TEACHER', subject: 'Mathematics' };
   await reg(teacher);
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await launchBrowser();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   const page = await ctx.newPage();
   const errors = [];

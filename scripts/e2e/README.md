@@ -16,7 +16,18 @@ npx prisma migrate deploy
 npm run start:dev
 ```
 
-In a second terminal, from the repo root:
+In a second terminal, from the repo root, run everything:
+
+```powershell
+node scripts/e2e/all.js
+```
+
+That checks the API is answering before it starts, runs every suite in order,
+and prints one summary. It exits non-zero if any suite failed. If the web app
+is not running it says so and runs the API suites only, rather than reporting
+a wall of connection failures as test failures.
+
+To run one suite on its own:
 
 ```powershell
 node scripts/e2e/roles.js
@@ -29,11 +40,13 @@ node scripts/e2e/settings.js
 node scripts/e2e/ai.js        # needs the AI service running, see below
 ```
 
-`ui-lms.js` additionally needs the web app running on http://localhost:3000
+The two browser suites additionally need the web app on http://localhost:3000
 and Playwright installed:
 
 ```powershell
 cd kidora-web
+npm install -D playwright
+npx playwright install chromium
 npm run dev
 # then, in another terminal, from the repo root
 node scripts/e2e/ui-lms.js
@@ -42,6 +55,10 @@ node scripts/e2e/ui-studio.js
 
 Each script prints `PASS`/`FAIL` per assertion and exits non-zero if anything
 failed.
+
+Both the API and the web address can be overridden with `API_URL` and
+`WEB_URL`, and `PLAYWRIGHT_CHROMIUM` points the browser suites at a specific
+Chromium binary when you do not want the one Playwright downloaded.
 
 ## What each one covers
 
@@ -53,8 +70,9 @@ failed.
 | `settings.js` | Profile and settings updates, and the fields a user is not allowed to change about themselves |
 | `ai.js` | AI tutor: structured responses, the degraded response when no LLM is configured, moderation, and the authorisation rules that stop one user asking about another user's child |
 | `lms-workflow.js` | The whole course workflow: teacher builds a course (modules, lessons, content, quiz, assignment, final exam), publishes it against a validated checklist, then a student browses, enrols, learns, is graded, sits the exam, completes the course and gets a verifiable certificate. Also the teacher library pages and cross-teacher isolation. |
-| `ui-lms.js` | The same journey driven through the real browser (Playwright): every teacher page, the 12-step builder, a real file upload, enrolment and the lesson player, plus phone-width layout checks |
-| `studio.js` | The course studio: learning outcomes, co-instructors, per-item publishing, module exams, publish readiness and the version snapshot taken at each publish |
+| `ui-lms.js` | The same journey driven through the real browser (Playwright): every teacher page, the course studio, a real file upload, enrolment and the lesson player, the AI assistant, plus phone-width layout checks |
+| `studio.js` | The course studio API: learning outcomes, co-instructors, per-item publishing, module exams, publish readiness and the version snapshot taken at each publish |
+| `ui-studio.js` | The seven-step course wizard in the browser: Basics through Publish, the live course overview panel, Save Draft surviving a reload, the three-column curriculum builder, the add-content modal, the video editor's timestamp questions, the in-wizard preview, and publishing |
 | `coursera-structure.js` | Teacher file uploads, modules numbered as weeks, typed lesson items (video with captions and in-video questions, readings with attachments), formative vs summative quizzes, and peer review end to end |
 
 ## The AI service
@@ -83,6 +101,6 @@ python -m pytest
 
 ## Uploads
 
-`uploads.js` and the upload section of `ui-lms.js` write real files. With
+The upload sections of `ui-lms.js` and `ui-studio.js` write real files. With
 `STORAGE_DRIVER=local` (the default) they land in `kidora-api/uploads/` and are
 served at `/uploads/...`. Delete that folder to clean up after a test run.

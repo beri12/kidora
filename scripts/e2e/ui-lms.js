@@ -2,9 +2,9 @@
  * Drives the real UI: teacher builds and publishes a course through the
  * builder, then a student finds it, enrols and opens the player.
  */
-const { chromium } = require('/home/user/kidora/kidora-web/node_modules/playwright-core');
-const API = 'http://localhost:4000/api';
-const WEB = 'http://localhost:3000';
+const { launchBrowser } = require('./browser');
+const API = process.env.API_URL || 'http://localhost:4000/api';
+const WEB = process.env.WEB_URL || 'http://localhost:3000';
 let pass = 0, fail = 0;
 const check = (l, cond, extra = '') => {
   if (cond) { console.log(`  PASS  ${l}`); pass++; }
@@ -24,7 +24,7 @@ const reg = async (p) => {
   const student = { name: 'UI Student', email: `uis.${s}@k.test`, password: 'Password123', role: 'CHILD', gradeLevel: 'Grade 5' };
   await reg(teacher); await reg(student);
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await launchBrowser();
   const errors = [];
 
   const login = async (who) => {
