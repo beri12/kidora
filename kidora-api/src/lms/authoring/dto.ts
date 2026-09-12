@@ -1,6 +1,6 @@
 import {
   IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUrl, Max, MaxLength,
-  Min, MinLength, ValidateNested,
+  Min, MinLength, ValidateIf, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -8,6 +8,12 @@ import {
   ContentType, CourseAccess, Difficulty, LessonStatus, LessonType, QuestionType,
   SubmissionType,
 } from '@prisma/client';
+
+/**
+ * Skip URL validation when the field was emptied. A cleared image field posts
+ * "", which is the teacher asking to remove the image, not a malformed URL.
+ */
+const notBlank = (_o: unknown, value: unknown) => typeof value === 'string' && value.trim().length > 0;
 
 /* ------------------------------------------------------------------ course */
 
@@ -28,9 +34,9 @@ export class CourseBasicsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) category?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) subCategory?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) topic?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) thumbnailUrl?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) bannerUrl?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) trailerUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(notBlank) @IsUrl({ require_tld: false }) thumbnailUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(notBlank) @IsUrl({ require_tld: false }) bannerUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @ValidateIf(notBlank) @IsUrl({ require_tld: false }) trailerUrl?: string;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000) estimatedMinutes?: number;
   @ApiPropertyOptional({ enum: CourseAccess }) @IsOptional() @IsEnum(CourseAccess) access?: CourseAccess;
 }

@@ -27,7 +27,7 @@ export default function TeacherCoursesPage() {
     <div className="max-w-4xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">My Courses</h1>
-        <Link href="/dashboard/teacher/create-course/basic-info" className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold">
+        <Link href="/dashboard/teacher/create-course" className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold">
           + New course
         </Link>
       </div>

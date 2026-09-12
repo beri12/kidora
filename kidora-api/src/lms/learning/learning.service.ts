@@ -336,7 +336,9 @@ export class LearningService {
         lessons: sections.reduce((a, s) => a + s.lessons.length, 0),
         estimatedMinutes: course.estimatedMinutes ?? sections.reduce((a, s) => a + s.lessons.reduce((x, l) => x + l.estimatedMin, 0), 0),
       },
-      access: decision,
+      // Named apart from `course.access`, which the spread above carries as the
+      // FREE/PREMIUM/SCHOOL_ONLY enum — one must not shadow the other.
+      accessDecision: decision,
       enrolled: Boolean(enrollment),
       enrollment,
       completion: state,

@@ -12,9 +12,9 @@ export interface NavConfig { role: "student" | "teacher" | "school" | "parent"; 
 // suite walks each one and fails on a 404.
 //
 // Still absent, because they need backend endpoints that do not exist yet:
-// teacher lessons/quizzes/exams/attendance/resources, school grades/learning/
-// exams/assignments/attendance/certificates, parent ai-tutor. They return
-// alongside their pages rather than standing here as dead links.
+// school grades/learning/exams/assignments/attendance/certificates, and
+// parent ai-tutor. They return alongside their pages rather than standing
+// here as dead links.
 
 export const studentNav: NavConfig = {
   role: "student", tagline: "Learn • Play • Grow",
@@ -46,11 +46,16 @@ export const teacherNav: NavConfig = {
     { label: "Dashboard", href: "/teacher/dashboard", icon: Home },
     { label: "My Classes", href: "/teacher/classes", icon: Users },
     { label: "Courses", href: "/teacher/courses", icon: BookOpen },
+    { label: "Lessons", href: "/teacher/lessons", icon: Layers },
     { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
+    { label: "Quizzes", href: "/teacher/quizzes", icon: ListChecks },
+    { label: "Exams", href: "/teacher/exams", icon: FileCheck2 },
     { label: "Students", href: "/teacher/students", icon: GraduationCap },
     { label: "Gradebook", href: "/teacher/gradebook", icon: Table2 },
     { label: "Analytics", href: "/teacher/analytics", icon: BarChart3 },
+    { label: "Attendance", href: "/teacher/attendance", icon: CalendarCheck },
     { label: "Messages", href: "/teacher/messages", icon: MessageSquare, badgeKey: "messages" },
+    { label: "Resources", href: "/teacher/resources", icon: FolderOpen },
     { label: "Calendar", href: "/teacher/calendar", icon: Calendar },
   ],
   footer: [

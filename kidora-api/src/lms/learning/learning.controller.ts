@@ -6,6 +6,7 @@ import { Roles, STUDENT_ROLES } from '../common/decorators/roles.decorator';
 import { CurrentUser, type AuthUser } from '../common/decorators/current-user.decorator';
 import { LearningService } from './learning.service';
 import { BrowseCoursesDto, LessonProgressDto } from './dto';
+import { SCHOOL_ADMIN_ROLES, TEACHER_ROLES } from '../common/decorators/roles.decorator';
 
 /**
  * The student's learning surface. Every route resolves the student from the
@@ -24,12 +25,6 @@ export class LearningController {
   @ApiOperation({ summary: 'Published courses this student may open, filtered and paged.' })
   browse(@CurrentUser() u: AuthUser, @Query() q: BrowseCoursesDto) {
     return this.svc.browse(u, q);
-  }
-
-  @Get('browse/filters')
-  @ApiOperation({ summary: 'The filter values the browse page offers.' })
-  filters(@CurrentUser() u: AuthUser) {
-    return this.svc.browseFilters(u);
   }
 
   @Get('my-courses')
@@ -85,5 +80,29 @@ export class LearningController {
     @Query('timeSpentSec') timeSpentSec?: string,
   ) {
     return this.svc.completeLesson(u, lessonId, Number(timeSpentSec ?? 0) || 0);
+  }
+}
+
+
+/**
+ * Subject, grade and language lists.
+ *
+ * Split out of LearningController because it is student-only: the course
+ * builder needs exactly these lists to populate its subject and grade
+ * pickers, and a teacher hitting the student route got a 403 and an empty
+ * dropdown. Nothing here is specific to one learner.
+ */
+@ApiTags('learning')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(...STUDENT_ROLES, ...TEACHER_ROLES, ...SCHOOL_ADMIN_ROLES)
+@Controller('learning/browse')
+export class BrowseFiltersController {
+  constructor(private readonly svc: LearningService) {}
+
+  @Get('filters')
+  @ApiOperation({ summary: 'The subject, grade and language lists the pickers offer.' })
+  filters(@CurrentUser() u: AuthUser) {
+    return this.svc.browseFilters(u);
   }
 }

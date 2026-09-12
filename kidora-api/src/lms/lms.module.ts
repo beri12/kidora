@@ -35,7 +35,7 @@ import { PublishService } from './authoring/publish.service';
 import { AuthoringController } from './authoring/authoring.controller';
 import { CompletionService } from './learning/completion.service';
 import { LearningService } from './learning/learning.service';
-import { LearningController } from './learning/learning.controller';
+import { LearningController, BrowseFiltersController } from './learning/learning.controller';
 
 /**
  * Add `LmsModule` to the `imports` array of your existing AppModule.
@@ -48,7 +48,7 @@ import { LearningController } from './learning/learning.controller';
  *   3. KIDORA_REDIS   -> your ioredis client; KIDORA_AI_PROVIDER -> your AI service.
  */
 @Module({
-  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController],
+  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController, BrowseFiltersController],
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
     StudentService, TeacherService, TeacherLibraryService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,

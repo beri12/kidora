@@ -60,6 +60,13 @@ const reg = async (p) => (await post('/auth/register', null, p)).body;
   check('PATCH course -> 200', 200, saved.status);
   check('tags persisted', ['maths', 'fractions'], saved.body.tags);
 
+  // A cleared picker posts "", which is a valid string but not a valid id.
+  const blanked = await patch(`/authoring/courses/${courseId}`, T, { gradeId: '', language: '', thumbnailUrl: '' });
+  check('clearing a grade picker does not blow up on the foreign key', 200, blanked.status);
+  check('the grade is cleared, not set to an empty id', null, blanked.body.gradeId);
+  check('and a cleared URL becomes null', null, blanked.body.thumbnailUrl);
+  await patch(`/authoring/courses/${courseId}`, T, { thumbnailUrl: 'https://cdn.kidora.test/frac.png' });
+
   console.log('\n=== 4. Course structure: modules ===');
   const m1 = await post(`/authoring/courses/${courseId}/sections`, T, { title: 'Module 1: What is a fraction?' });
   const m2 = await post(`/authoring/courses/${courseId}/sections`, T, { title: 'Module 2: Adding fractions' });
@@ -236,6 +243,9 @@ const reg = async (p) => (await post('/auth/register', null, p)).body;
   check('curriculum is visible to help them decide', 2, detailBefore.body.sections.length);
   check('but every lesson is locked', [true, true, true], detailBefore.body.sections.flatMap((x) => x.lessons).map((l) => l.locked));
   check('the player refuses before enrolment', 403, (await j(`/learning/courses/${courseId}/lessons/${l1.body.id}`, { token: S })).status);
+
+  check('the course access rule is still readable alongside the decision', 'FREE', detailBefore.body.access);
+  check('and the access decision is its own field', true, detailBefore.body.accessDecision.allowed);
 
   console.log('\n=== 17. Enrol ===');
   const enrolled = await post(`/learning/courses/${courseId}/enroll`, S);

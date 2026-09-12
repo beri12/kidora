@@ -96,7 +96,7 @@ export function TeacherCoursesPage() {
   const q = useTeacherCourses(tab === "all" ? undefined : tab);
   const tone = (s: string) => s === "PUBLISHED" ? "success" : s === "REVIEW" ? "warning" : s === "ARCHIVED" ? "neutral" : "info";
   return (
-    <Page title="Courses" q={q} actions={<><Tabs value={tab} onChange={setTab} options={["all", "DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"].map((v) => ({ value: v as typeof tab, label: v === "all" ? "All" : v[0] + v.slice(1).toLowerCase() }))} /><Link href="/dashboard/teacher/create-course/basic-info" className="btn-primary"><Plus size={16} /> New course</Link></>}>
+    <Page title="Courses" q={q} actions={<><Tabs value={tab} onChange={setTab} options={["all", "DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"].map((v) => ({ value: v as typeof tab, label: v === "all" ? "All" : v[0] + v.slice(1).toLowerCase() }))} /><Link href="/dashboard/teacher/create-course" className="btn-primary"><Plus size={16} /> New course</Link></>}>
       {(list) => list.length ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {list.map((c) => (
@@ -105,12 +105,12 @@ export function TeacherCoursesPage() {
               <div className="p-4">
                 <div className="flex items-center justify-between gap-2"><p className="truncate font-semibold">{c.title}</p><Pill tone={tone(c.status)}>{c.status[0] + c.status.slice(1).toLowerCase()}</Pill></div>
                 <p className="mt-0.5 text-xs text-muted">{c.subject}{c.grade ? ` · ${c.grade}` : ""} · {c.totalLessons} lessons{c.studentCount !== undefined ? ` · ${c.studentCount} students` : ""}</p>
-                <div className="mt-3 flex gap-2"><Link href={`/teacher/courses/${c.id}`} className="btn-primary flex-1">Edit</Link><Link href={`/teacher/courses/${c.id}/lessons`} className="btn-secondary flex-1">Lessons</Link></div>
+                <div className="mt-3 flex gap-2"><Link href={`/teacher/courses/${c.id}/build`} className="btn-primary flex-1">Edit</Link><Link href={`/teacher/courses/${c.id}/build`} className="btn-secondary flex-1">Preview</Link></div>
               </div>
             </Card>
           ))}
         </div>
-      ) : <EmptyState title="No courses yet" body="Create your first course and add sections, lessons and quizzes." action={{ label: "Create course", href: "/dashboard/teacher/create-course/basic-info" }} />}
+      ) : <EmptyState title="No courses yet" body="Create your first course and add sections, lessons and quizzes." action={{ label: "Create course", href: "/dashboard/teacher/create-course" }} />}
     </Page>
   );
 }

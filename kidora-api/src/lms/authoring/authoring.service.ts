@@ -8,6 +8,11 @@ import {
   SectionDto, UpdateContentBlockDto, UpdateCourseDto, UpdateLessonDto, UpdateSectionDto,
 } from './dto';
 
+/** "" from a cleared form field means "unset", not the empty string. */
+function blankToNull(v: string | undefined): string | null | undefined {
+  return v === undefined ? undefined : v.trim() || null;
+}
+
 function slugify(title: string): string {
   return title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') || 'course';
 }
@@ -412,10 +417,13 @@ export class AuthoringService {
       title: dto.title,
       shortDescription: dto.shortDescription,
       description: dto.description,
-      gradeId: dto.gradeId,
-      ageBand: dto.ageBand,
-      language: dto.language,
-      subtitleLanguage: dto.subtitleLanguage,
+      // A "no grade" picker sends "", which is a valid string but not a valid
+      // Grade id — it reached the database as a foreign key and failed there.
+      // Empty means "clear it".
+      gradeId: dto.gradeId === undefined ? undefined : dto.gradeId || null,
+      ageBand: blankToNull(dto.ageBand),
+      language: blankToNull(dto.language),
+      subtitleLanguage: blankToNull(dto.subtitleLanguage),
       difficulty: dto.difficulty,
       learningPoints: dto.learningPoints,
       requirements: dto.requirements,
@@ -423,9 +431,9 @@ export class AuthoringService {
       category: dto.category,
       subCategory: dto.subCategory,
       topic: dto.topic,
-      thumbnailUrl: dto.thumbnailUrl,
-      bannerUrl: dto.bannerUrl,
-      trailerUrl: dto.trailerUrl,
+      thumbnailUrl: blankToNull(dto.thumbnailUrl),
+      bannerUrl: blankToNull(dto.bannerUrl),
+      trailerUrl: blankToNull(dto.trailerUrl),
       estimatedMinutes: dto.estimatedMinutes,
       access: dto.access,
       isPremium: dto.access ? dto.access === 'PREMIUM' : undefined,

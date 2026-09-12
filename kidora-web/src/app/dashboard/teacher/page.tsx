@@ -14,7 +14,7 @@ export default function TeacherDashboard() {
   function startNewCourse() {
     // Clear any leftover draft from a previous session so Basic Info starts blank.
     resetWizard();
-    router.push('/dashboard/teacher/create-course/basic-info');
+    router.push('/dashboard/teacher/create-course');
   }
 
   return (

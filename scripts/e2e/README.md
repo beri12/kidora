@@ -21,9 +21,20 @@ In a second terminal, from the repo root:
 ```powershell
 node scripts/e2e/roles.js
 node scripts/e2e/course-flow.js
+node scripts/e2e/lms-workflow.js
 node scripts/e2e/cal-support.js
 node scripts/e2e/settings.js
 node scripts/e2e/ai.js        # needs the AI service running, see below
+```
+
+`ui-lms.js` additionally needs the web app running on http://localhost:3000
+and Playwright installed:
+
+```powershell
+cd kidora-web
+npm run dev
+# then, in another terminal, from the repo root
+node scripts/e2e/ui-lms.js
 ```
 
 Each script prints `PASS`/`FAIL` per assertion and exits non-zero if anything
@@ -38,6 +49,8 @@ failed.
 | `cal-support.js` | Calendar events and support tickets, including who is allowed to see and edit each |
 | `settings.js` | Profile and settings updates, and the fields a user is not allowed to change about themselves |
 | `ai.js` | AI tutor: structured responses, the degraded response when no LLM is configured, moderation, and the authorisation rules that stop one user asking about another user's child |
+| `lms-workflow.js` | The whole course workflow: teacher builds a course (modules, lessons, content, quiz, assignment, final exam), publishes it against a validated checklist, then a student browses, enrols, learns, is graded, sits the exam, completes the course and gets a verifiable certificate. Also the teacher library pages and cross-teacher isolation. |
+| `ui-lms.js` | The same journey driven through the real browser (Playwright): every teacher sidebar page, the 12-step builder, enrolment and the lesson player, plus phone-width layout checks |
 
 ## The AI service
 

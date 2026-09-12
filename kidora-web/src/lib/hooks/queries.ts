@@ -4,6 +4,8 @@ import { studentApi } from "@/lib/api/student";
 import { teacherApi, type AnalyticsFilters } from "@/lib/api/teacher";
 import { schoolApi, type ListQuery } from "@/lib/api/school";
 import { parentApi } from "@/lib/api/parent";
+import { authoringApi, teacherLibraryApi } from "@/lib/api/authoring";
+import { learningApi, type BrowseQuery } from "@/lib/api/learning";
 
 // Query keys are namespaced by role so invalidation stays targeted.
 export const keys = {
@@ -31,6 +33,26 @@ export const keys = {
     gradebook: (q: object) => ["teacher", "gradebook", q] as const,
     analytics: (f: object) => ["teacher", "analytics", f] as const,
     assignments: (q: object) => ["teacher", "assignments", q] as const,
+    lessons: (q: object) => ["teacher", "lessons", q] as const,
+    quizzes: (q: object) => ["teacher", "quizzes", q] as const,
+    exams: (q: object) => ["teacher", "exams", q] as const,
+    resources: (q: object) => ["teacher", "resources", q] as const,
+  },
+  authoring: {
+    tree: (id: string) => ["authoring", "course", id] as const,
+    checklist: (id: string) => ["authoring", "checklist", id] as const,
+    preview: (id: string) => ["authoring", "preview", id] as const,
+    quiz: (id: string) => ["authoring", "quiz", id] as const,
+    lesson: (id: string) => ["authoring", "lesson", id] as const,
+    exam: (id: string) => ["authoring", "exam", id] as const,
+  },
+  learning: {
+    browse: (q: object) => ["learning", "browse", q] as const,
+    filters: ["learning", "filters"] as const,
+    myCourses: (s?: string) => ["learning", "my-courses", s ?? "all"] as const,
+    course: (id: string) => ["learning", "course", id] as const,
+    progress: (id: string) => ["learning", "progress", id] as const,
+    player: (c: string, l: string) => ["learning", "player", c, l] as const,
   },
   school: {
     dashboard: (r?: string) => ["school", "dashboard", r ?? "week"] as const,
@@ -148,5 +170,292 @@ export const useSendMessage = (id: string) => {
   return useMutation({
     mutationFn: (body: string) => parentApi.send(id, body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: keys.parent.messages(id) }); qc.invalidateQueries({ queryKey: keys.parent.conversations }); },
+  });
+};
+
+/* ------------------------------------------------ teacher library (sidebar) */
+
+export const useTeacherLessons = (q: Parameters<typeof teacherLibraryApi.lessons>[0]) =>
+  useQuery({ queryKey: keys.teacher.lessons(q), queryFn: () => teacherLibraryApi.lessons(q), staleTime: SHORT });
+export const useTeacherQuizzes = (q: Parameters<typeof teacherLibraryApi.quizzes>[0]) =>
+  useQuery({ queryKey: keys.teacher.quizzes(q), queryFn: () => teacherLibraryApi.quizzes(q), staleTime: SHORT });
+export const useTeacherExams = (q: Parameters<typeof teacherLibraryApi.exams>[0]) =>
+  useQuery({ queryKey: keys.teacher.exams(q), queryFn: () => teacherLibraryApi.exams(q), staleTime: SHORT });
+export const useTeacherResources = (q: Parameters<typeof teacherLibraryApi.resources>[0]) =>
+  useQuery({ queryKey: keys.teacher.resources(q), queryFn: () => teacherLibraryApi.resources(q), staleTime: SHORT });
+
+export const useAddResource = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: teacherLibraryApi.addResource,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teacher", "resources"] }),
+  });
+};
+export const useAttachResource = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, lessonId }: { id: string; lessonId: string | null }) => teacherLibraryApi.attachResource(id, lessonId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teacher", "resources"] }),
+  });
+};
+export const useDeleteResource = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: teacherLibraryApi.deleteResource,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teacher", "resources"] }),
+  });
+};
+
+/* ----------------------------------------------------------- authoring */
+
+// The whole wizard reads one tree, so every mutation invalidates it (and the
+// checklist, which is derived from it) rather than each step patching locally.
+const invalidateCourse = (qc: ReturnType<typeof useQueryClient>, courseId: string) => {
+  qc.invalidateQueries({ queryKey: keys.authoring.tree(courseId) });
+  qc.invalidateQueries({ queryKey: keys.authoring.checklist(courseId) });
+  qc.invalidateQueries({ queryKey: keys.authoring.preview(courseId) });
+  qc.invalidateQueries({ queryKey: ["teacher", "courses"] });
+};
+
+export const useCourseTree = (courseId: string) =>
+  useQuery({ queryKey: keys.authoring.tree(courseId), queryFn: () => authoringApi.courseTree(courseId), enabled: !!courseId });
+export const usePublishChecklist = (courseId: string) =>
+  useQuery({ queryKey: keys.authoring.checklist(courseId), queryFn: () => authoringApi.checklist(courseId), enabled: !!courseId });
+export const useCoursePreview = (courseId: string) =>
+  useQuery({ queryKey: keys.authoring.preview(courseId), queryFn: () => authoringApi.preview(courseId), enabled: !!courseId });
+export const useCourseExam = (courseId: string) =>
+  useQuery({ queryKey: keys.authoring.exam(courseId), queryFn: () => authoringApi.getExam(courseId), enabled: !!courseId });
+export const useAuthoredQuiz = (quizId: string) =>
+  useQuery({ queryKey: keys.authoring.quiz(quizId), queryFn: () => authoringApi.getQuiz(quizId), enabled: !!quizId });
+
+export const useCreateAuthoredCourse = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: authoringApi.createCourse,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teacher", "courses"] }),
+  });
+};
+export const useUpdateAuthoredCourse = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: Parameters<typeof authoringApi.updateCourse>[1]) => authoringApi.updateCourse(courseId, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useSetCompletionRules = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: Parameters<typeof authoringApi.setCompletionRules>[1]) => authoringApi.setCompletionRules(courseId, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const usePublishAuthoredCourse = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => authoringApi.publish(courseId), onSuccess: () => invalidateCourse(qc, courseId) });
+};
+export const useArchiveCourse = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => authoringApi.archive(courseId), onSuccess: () => invalidateCourse(qc, courseId) });
+};
+
+export const useCreateSection = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: { title: string; description?: string }) => authoringApi.createSection(courseId, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useUpdateSection = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: string; title?: string; description?: string }) => authoringApi.updateSection(id, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useDeleteSection = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: authoringApi.deleteSection, onSuccess: () => invalidateCourse(qc, courseId) });
+};
+export const useDuplicateSection = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: authoringApi.duplicateSection, onSuccess: () => invalidateCourse(qc, courseId) });
+};
+export const useReorderSections = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => authoringApi.reorderSections(courseId, ids),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+
+export const useCreateLesson = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sectionId, ...dto }: { sectionId: string; title: string; estimatedMin?: number }) =>
+      authoringApi.createLesson(sectionId, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useUpdateLesson = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: string } & Parameters<typeof authoringApi.updateLesson>[1]) =>
+      authoringApi.updateLesson(id, dto),
+    onSuccess: (_d, v) => { invalidateCourse(qc, courseId); qc.invalidateQueries({ queryKey: keys.authoring.lesson(v.id) }); },
+  });
+};
+export const useDeleteLesson = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: authoringApi.deleteLesson, onSuccess: () => invalidateCourse(qc, courseId) });
+};
+export const useDuplicateLesson = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: authoringApi.duplicateLesson, onSuccess: () => invalidateCourse(qc, courseId) });
+};
+export const useReorderLessons = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sectionId, ids }: { sectionId: string; ids: string[] }) => authoringApi.reorderLessons(sectionId, ids),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+
+export const useAuthoredLesson = (lessonId: string) =>
+  useQuery({ queryKey: keys.authoring.lesson(lessonId), queryFn: () => authoringApi.getLesson(lessonId), enabled: !!lessonId });
+
+export const useSaveLessonContent = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lessonId, blocks }: { lessonId: string; blocks: Parameters<typeof authoringApi.saveContent>[1] }) =>
+      authoringApi.saveContent(lessonId, blocks),
+    onSuccess: (_d, v) => { invalidateCourse(qc, courseId); qc.invalidateQueries({ queryKey: keys.authoring.lesson(v.lessonId) }); },
+  });
+};
+
+export const useCreateQuiz = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: Parameters<typeof authoringApi.createQuiz>[1]) => authoringApi.createQuiz(courseId, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useUpdateQuiz = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: string } & Parameters<typeof authoringApi.updateQuiz>[1]) =>
+      authoringApi.updateQuiz(id, dto),
+    onSuccess: (_d, v) => { invalidateCourse(qc, courseId); qc.invalidateQueries({ queryKey: keys.authoring.quiz(v.id) }); },
+  });
+};
+export const useDeleteQuiz = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: authoringApi.deleteQuiz, onSuccess: () => invalidateCourse(qc, courseId) });
+};
+
+export const useCreateAssignment = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: Parameters<typeof authoringApi.createAssignment>[1]) => authoringApi.createAssignment(courseId, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useUpdateAssignment = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: string } & Parameters<typeof authoringApi.updateAssignment>[1]) =>
+      authoringApi.updateAssignment(id, dto),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useSetAssignmentStatus = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "DRAFT" | "PUBLISHED" | "CLOSED" }) =>
+      authoringApi.setAssignmentStatus(id, status),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+export const useDeleteAssignment = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: authoringApi.deleteAssignment, onSuccess: () => invalidateCourse(qc, courseId) });
+};
+
+export const useUpsertExam = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: Parameters<typeof authoringApi.upsertExam>[1]) => authoringApi.upsertExam(courseId, dto),
+    onSuccess: () => { invalidateCourse(qc, courseId); qc.invalidateQueries({ queryKey: keys.authoring.exam(courseId) }); },
+  });
+};
+export const useSetExamStatus = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (status: "DRAFT" | "SCHEDULED" | "OPEN" | "CLOSED") => authoringApi.setExamStatus(courseId, status),
+    onSuccess: () => { invalidateCourse(qc, courseId); qc.invalidateQueries({ queryKey: keys.authoring.exam(courseId) }); },
+  });
+};
+
+/* ------------------------------------------------------------- learning */
+
+export const useBrowseCourses = (q: BrowseQuery) =>
+  useQuery({ queryKey: keys.learning.browse(q), queryFn: () => learningApi.browse(q), staleTime: SHORT });
+export const useBrowseFilters = () =>
+  useQuery({ queryKey: keys.learning.filters, queryFn: learningApi.filters, staleTime: LONG });
+export const useMyLearningCourses = (status?: string) =>
+  useQuery({ queryKey: keys.learning.myCourses(status), queryFn: () => learningApi.myCourses(status), staleTime: SHORT });
+export const useStudentCourse = (courseId: string) =>
+  useQuery({ queryKey: keys.learning.course(courseId), queryFn: () => learningApi.courseDetail(courseId), enabled: !!courseId });
+export const useCourseProgress = (courseId: string) =>
+  useQuery({ queryKey: keys.learning.progress(courseId), queryFn: () => learningApi.progress(courseId), enabled: !!courseId });
+export const useLessonPlayer = (courseId: string, lessonId: string) =>
+  useQuery({
+    queryKey: keys.learning.player(courseId, lessonId),
+    queryFn: () => learningApi.player(courseId, lessonId),
+    enabled: !!courseId && !!lessonId,
+  });
+
+export const useEnrollInCourse = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: learningApi.enroll,
+    onSuccess: (_d, courseId) => {
+      qc.invalidateQueries({ queryKey: keys.learning.course(courseId) });
+      qc.invalidateQueries({ queryKey: ["learning", "browse"] });
+      qc.invalidateQueries({ queryKey: ["learning", "my-courses"] });
+      qc.invalidateQueries({ queryKey: keys.student.dashboard });
+    },
+  });
+};
+export const useUnenrollFromCourse = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: learningApi.unenroll,
+    onSuccess: (_d, courseId) => {
+      qc.invalidateQueries({ queryKey: keys.learning.course(courseId) });
+      qc.invalidateQueries({ queryKey: ["learning", "browse"] });
+      qc.invalidateQueries({ queryKey: ["learning", "my-courses"] });
+    },
+  });
+};
+
+export const useSaveLessonProgress = () =>
+  useMutation({
+    mutationFn: ({ lessonId, ...dto }: { lessonId: string; percent?: number; timeSpentSec?: number }) =>
+      learningApi.saveProgress(lessonId, dto),
+  });
+
+export const useCompleteLesson = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lessonId, timeSpentSec }: { lessonId: string; timeSpentSec?: number }) =>
+      learningApi.complete(lessonId, timeSpentSec ?? 0),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.learning.course(courseId) });
+      qc.invalidateQueries({ queryKey: keys.learning.progress(courseId) });
+      qc.invalidateQueries({ queryKey: ["learning", "player", courseId] });
+      qc.invalidateQueries({ queryKey: ["learning", "my-courses"] });
+      qc.invalidateQueries({ queryKey: keys.student.dashboard });
+      qc.invalidateQueries({ queryKey: keys.student.certificates });
+    },
   });
 };
