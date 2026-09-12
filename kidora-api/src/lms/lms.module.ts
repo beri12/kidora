@@ -11,6 +11,7 @@ import { StudentService } from './student/student.service';
 import { StudentController } from './student/student.controller';
 import { TeacherService } from './teacher/teacher.service';
 import { TeacherController } from './teacher/teacher.controller';
+import { TeacherLibraryService } from './teacher/teacher-library.service';
 import { SchoolService } from './school/school.service';
 import { SchoolController } from './school/school.controller';
 import { ParentService } from './parent/parent.service';
@@ -50,7 +51,7 @@ import { LearningController } from './learning/learning.controller';
   controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController],
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
-    StudentService, TeacherService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
+    StudentService, TeacherService, TeacherLibraryService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
     AuthoringService, AssessmentAuthoringService, PublishService, CompletionService, LearningService,
     { provide: KIDORA_REDIS, useValue: undefined }, // e.g. { provide: KIDORA_REDIS, useFactory: (r: RedisService) => r.getClient(), inject: [RedisService] }
     { provide: KIDORA_AI_PROVIDER, useClass: UnconfiguredAiProvider },

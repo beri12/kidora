@@ -392,6 +392,59 @@ const reg = async (p) => (await post('/auth/register', null, p)).body;
   check('a teacher cannot use the student learning API', 403, (await j('/learning/browse', { token: T })).status);
   check('no token -> 401', 401, (await j('/learning/browse')).status);
 
+  console.log('\n=== 27. The teacher sidebar pages that had no backend ===');
+  const tLessons = await j('/teacher/lessons', { token: T });
+  check('GET /teacher/lessons -> 200', 200, tLessons.status);
+  check('lists the 3 lessons', 3, tLessons.body.items.length);
+  ok('each says whether it has content', tLessons.body.items.every((l) => l.hasContent === true));
+  ok('and which course it belongs to', tLessons.body.items.every((l) => l.course?.id === courseId));
+
+  const tQuizzes = await j('/teacher/quizzes', { token: T });
+  check('GET /teacher/quizzes -> 200', 200, tQuizzes.status);
+  ok('the lesson quiz is listed', tQuizzes.body.items.some((z) => z.id === quiz.body.id));
+  const listedQuiz = tQuizzes.body.items.find((z) => z.id === quiz.body.id);
+  check('with its real attempt count', 1, listedQuiz.attemptCount);
+  check('and the real average', 100, listedQuiz.averagePercent);
+  ok('the final exam is excluded from the quiz list', !tQuizzes.body.items.some((z) => z.id === exam.body.quizId));
+
+  const tExams = await j('/teacher/exams', { token: T });
+  check('GET /teacher/exams -> 200', 200, tExams.status);
+  const listedExam = tExams.body.items.find((x) => x.id === exam.body.id);
+  ok('the exam is listed', Boolean(listedExam));
+  check('with its question count', 2, listedExam.questionCount);
+  check('and how many sat it', 1, listedExam.sat);
+  check('and the pass rate', 100, listedExam.passRate);
+
+  console.log('\n=== 28. Resource library ===');
+  const res = await post('/teacher/resources', T, {
+    name: 'Fractions worksheet.pdf', url: 'https://cdn.kidora.test/frac.pdf',
+    description: 'Printable practice sheet.', mimeType: 'application/pdf', sizeBytes: 24000,
+  });
+  check('POST resource -> 201', 201, res.status);
+  check('the kind is worked out from the file', 'document', res.body.kind);
+  check('it starts unattached', null, res.body.lessonId);
+
+  const attached = await patch(`/teacher/resources/${res.body.id}/attach`, T, { lessonId: l1.body.id });
+  check('attach to a lesson -> 200', 200, attached.status);
+  check('now attached', l1.body.id, attached.body.lessonId);
+  check('and it picked up the course', courseId, attached.body.courseId);
+
+  const playerWithRes = await j(`/learning/courses/${courseId}/lessons/${l1.body.id}`, { token: S });
+  check('the student sees the resource on the lesson', 1, playerWithRes.body.lesson.resources.length);
+
+  const resList = await j('/teacher/resources', { token: T });
+  ok('it is in the library list', resList.body.items.some((r) => r.id === res.body.id));
+
+  check('another teacher cannot attach it', 403, (await patch(`/teacher/resources/${res.body.id}/attach`, O, { lessonId: null })).status);
+  check('nor delete it', 403, (await del(`/teacher/resources/${res.body.id}`, O)).status);
+  check('a student cannot list teacher resources', 403, (await j('/teacher/resources', { token: S })).status);
+
+  console.log('\n=== 29. Cross-teacher isolation on the library views ===');
+  const otherLessons = await j('/teacher/lessons', { token: O });
+  check('another teacher sees none of these lessons', 0, otherLessons.body.items.filter((l) => l.course?.id === courseId).length);
+  const otherQuizzes = await j('/teacher/quizzes', { token: O });
+  check('nor any of these quizzes', 0, otherQuizzes.body.items.filter((z) => z.id === quiz.body.id).length);
+
   console.log('\n======================================');
   console.log(`  passed: ${pass}   failed: ${fail}`);
   console.log('======================================\n');
