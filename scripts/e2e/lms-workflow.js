@@ -455,6 +455,55 @@ const reg = async (p) => (await post('/auth/register', null, p)).body;
   const otherQuizzes = await j('/teacher/quizzes', { token: O });
   check('nor any of these quizzes', 0, otherQuizzes.body.items.filter((z) => z.id === quiz.body.id).length);
 
+  console.log('\n=== 30. AI teaching assistant ===');
+  const plan = await post('/ai/teaching/lesson-plan', T, { subject: 'Mathematics', grade: 'Grade 5', topic: 'Adding fractions' });
+  check('POST lesson-plan -> 201', 201, plan.status);
+  check('it is a lesson plan', 'lesson_plan', plan.body.type);
+  ok('with no model configured it says so rather than inventing one',
+    plan.body.degraded === true && plan.body.sections.length === 0,
+    `degraded=${plan.body.degraded} sections=${plan.body.sections?.length}`);
+
+  const qd = await post('/ai/teaching/quiz', T, { subject: 'Mathematics', grade: 'Grade 5', topic: 'Fractions', questionCount: 3 });
+  check('POST quiz draft -> 201', 201, qd.status);
+  check('no fabricated questions when degraded', [], qd.body.questions);
+
+  const analysis = await post('/ai/teaching/analyse-class', T, { courseId });
+  check('POST analyse-class -> 201', 201, analysis.status);
+  check('it is a class analysis', 'class_analysis', analysis.body.type);
+  ok('and no invented interventions', analysis.body.interventions.length === 0);
+
+  console.log('\n=== 31. AI teaching authorization ===');
+  check('a student cannot generate a lesson plan', 403, (await post('/ai/teaching/lesson-plan', S, { subject: 'x', grade: 'y', topic: 'z' })).status);
+  check('a student cannot draft quiz questions', 403, (await post('/ai/teaching/quiz', S, { subject: 'x', grade: 'y', topic: 'z' })).status);
+  check('a student cannot analyse a class', 403, (await post('/ai/teaching/analyse-class', S, { courseId })).status);
+  check('another teacher cannot analyse this course', 403, (await post('/ai/teaching/analyse-class', O, { courseId })).status);
+  check('an unknown course -> 404', 404, (await post('/ai/teaching/analyse-class', T, { courseId: 'does-not-exist' })).status);
+  check('naming neither a class nor a course -> 400', 400, (await post('/ai/teaching/analyse-class', T, {})).status);
+  check('no token -> 401', 401, (await post('/ai/teaching/lesson-plan', null, { subject: 'x', grade: 'y', topic: 'z' })).status);
+
+  console.log('\n=== 32. Generated content cannot reach a student on its own ===');
+  // There is deliberately no endpoint that writes AI output into a course.
+  const writeAttempts = await Promise.all([
+    post('/ai/teaching/publish', T, { courseId }),
+    post('/ai/teaching/quiz/save', T, { courseId }),
+    post('/ai/teaching/lesson-plan/save', T, { courseId }),
+    post(`/ai/teaching/apply/${courseId}`, T, {}),
+  ]);
+  check('no save or publish route exists on the AI surface', [404, 404, 404, 404],
+    writeAttempts.map((r) => r.status));
+
+  // And generating against a course changes nothing about it.
+  const before = await j(`/authoring/courses/${courseId}`, { token: T });
+  await post('/ai/teaching/lesson-plan', T, { subject: 'Mathematics', grade: 'Grade 5', topic: 'Adding fractions' });
+  await post('/ai/teaching/quiz', T, { subject: 'Mathematics', grade: 'Grade 5', topic: 'Fractions', questionCount: 3 });
+  const afterAi = await j(`/authoring/courses/${courseId}`, { token: T });
+  check('generating leaves the lesson count untouched',
+    before.body.sections.flatMap((x) => x.lessons).length,
+    afterAi.body.sections.flatMap((x) => x.lessons).length);
+  check('and the quiz count untouched', before.body.quizzes.length, afterAi.body.quizzes.length);
+  check('the course is still the 3 lessons the teacher wrote', 3,
+    afterAi.body.sections.flatMap((x) => x.lessons).length);
+
   console.log('\n======================================');
   console.log(`  passed: ${pass}   failed: ${fail}`);
   console.log('======================================\n');

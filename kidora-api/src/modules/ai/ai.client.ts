@@ -1,6 +1,9 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AiHealth, TutorRequestPayload, TutorResponsePayload } from './ai.types';
+import type {
+  AiHealth, ClassAnalysisPayload, ClassAnalysisResult, LessonPlanPayload, LessonPlanResult,
+  QuizDraftPayload, QuizDraftResult, TutorRequestPayload, TutorResponsePayload,
+} from './ai.types';
 
 /**
  * HTTP client for the Python AI service.
@@ -45,6 +48,20 @@ export class AiClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /** Teacher-facing. Generation can take longer than a tutor turn, so the
+   *  timeout is wider — but still bounded. */
+  lessonPlan(payload: LessonPlanPayload) {
+    return this.post<LessonPlanResult>('/teaching/lesson-plan', payload, 60_000);
+  }
+
+  quizDraft(payload: QuizDraftPayload) {
+    return this.post<QuizDraftResult>('/teaching/quiz', payload, 60_000);
+  }
+
+  analyseClass(payload: ClassAnalysisPayload) {
+    return this.post<ClassAnalysisResult>('/teaching/analyse-class', payload, 60_000);
   }
 
   tutorChat(payload: TutorRequestPayload) {

@@ -4,7 +4,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
 import { AiService } from './ai.service';
-import { TutorChatDto } from './dto/ai.dto';
+import { AnalyseClassDto, LessonPlanDto, QuizDraftDto, TutorChatDto } from './dto/ai.dto';
 
 /**
  * Public face of the AI system. Everything here is authenticated, and the
@@ -29,6 +29,30 @@ export class AiController {
     @Query('studentId') studentId?: string,
   ) {
     return this.ai.tutorChat(u, dto, studentId);
+  }
+
+  /* ------------------------------------------- teaching aids (teachers only) */
+
+  /**
+   * Every route below returns a DRAFT. There is no endpoint that writes
+   * generated content into a course: a teacher reviews it, edits it, and saves
+   * it through the ordinary authoring API, which validates it like anything
+   * else they wrote. Nothing generated here reaches a student on its own.
+   */
+  @Post('teaching/lesson-plan')
+  lessonPlan(@CurrentUser() u: AuthUser, @Body() dto: LessonPlanDto) {
+    return this.ai.lessonPlan(u, dto);
+  }
+
+  @Post('teaching/quiz')
+  quizDraft(@CurrentUser() u: AuthUser, @Body() dto: QuizDraftDto) {
+    return this.ai.quizDraft(u, dto);
+  }
+
+  /** The figures come from the database, not the request body. */
+  @Post('teaching/analyse-class')
+  analyseClass(@CurrentUser() u: AuthUser, @Body() dto: AnalyseClassDto) {
+    return this.ai.analyseClass(u, dto);
   }
 
   /** Lets the UI tell a child "the tutor is offline" before they type. */

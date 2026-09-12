@@ -6,7 +6,7 @@ secret. This service owns AI, ML and retrieval only.
 """
 from fastapi import FastAPI
 
-from app.api.routes import health, moderation, tutor
+from app.api.routes import health, moderation, teaching, tutor
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 
@@ -30,6 +30,7 @@ API_PREFIX = "/api/v1/ai"
 app.include_router(health.router, prefix=API_PREFIX)
 app.include_router(tutor.router, prefix=API_PREFIX)
 app.include_router(moderation.router, prefix=API_PREFIX)
+app.include_router(teaching.router, prefix=API_PREFIX)
 
 
 @app.on_event("startup")

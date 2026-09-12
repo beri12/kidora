@@ -6,6 +6,7 @@ import { schoolApi, type ListQuery } from "@/lib/api/school";
 import { parentApi } from "@/lib/api/parent";
 import { authoringApi, teacherLibraryApi } from "@/lib/api/authoring";
 import { learningApi, type BrowseQuery } from "@/lib/api/learning";
+import { teachingAiApi } from "@/lib/api/ai";
 
 // Query keys are namespaced by role so invalidation stays targeted.
 export const keys = {
@@ -459,3 +460,12 @@ export const useCompleteLesson = (courseId: string) => {
     },
   });
 };
+
+/* --------------------------------------- AI teaching assistant (teachers) */
+
+// These are mutations, not queries: each run is an explicit action a teacher
+// takes, and the result is a draft they review — never cached and re-shown as
+// if it were saved content.
+export const useGenerateLessonPlan = () => useMutation({ mutationFn: teachingAiApi.lessonPlan });
+export const useGenerateQuizDraft = () => useMutation({ mutationFn: teachingAiApi.quizDraft });
+export const useAnalyseClass = () => useMutation({ mutationFn: teachingAiApi.analyseClass });

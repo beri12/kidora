@@ -41,3 +41,85 @@ export interface AiHealth {
   llm_configured: boolean;
   version: string;
 }
+
+/* --------------------------------------------- teaching aids (teachers only) */
+
+export interface ClassContextPayload {
+  class_name?: string | null;
+  course_title?: string | null;
+  subject?: string | null;
+  grade?: string | null;
+  student_count: number;
+  average_score?: number | null;
+  completion_percent?: number | null;
+  topics: { topic: string; mastered: number; total: number; mastery_percent: number }[];
+  struggling: { name: string; progress_percent: number; average_score: number; health: string }[];
+  thriving: { name: string; progress_percent: number; average_score: number; health: string }[];
+}
+
+export interface LessonPlanPayload {
+  subject: string;
+  grade: string;
+  topic: string;
+  objectives: string[];
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  duration_min: number;
+  language: string;
+  notes?: string | null;
+}
+
+export interface LessonPlanResult {
+  type: 'lesson_plan';
+  title: string;
+  summary: string;
+  objectives: string[];
+  sections: { heading: string; body: string }[];
+  activities: string[];
+  check_questions: string[];
+  materials: string[];
+  estimated_min: number;
+  degraded: boolean;
+}
+
+export interface QuizDraftPayload {
+  subject: string;
+  grade: string;
+  topic: string;
+  question_count: number;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  question_types: string[];
+  language: string;
+}
+
+export interface DraftQuestionResult {
+  prompt: string;
+  type: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'MULTIPLE_SELECT' | 'SHORT_ANSWER';
+  options: string[];
+  correct?: number | null;
+  correct_options: number[];
+  answer_text?: string | null;
+  explanation?: string | null;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+}
+
+export interface QuizDraftResult {
+  type: 'quiz_draft';
+  title: string;
+  questions: DraftQuestionResult[];
+  degraded: boolean;
+}
+
+export interface ClassAnalysisPayload {
+  context: ClassContextPayload;
+  question?: string | null;
+}
+
+export interface ClassAnalysisResult {
+  type: 'class_analysis';
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  interventions: { focus: string; why: string; suggestion: string }[];
+  differentiation: string[];
+  degraded: boolean;
+}

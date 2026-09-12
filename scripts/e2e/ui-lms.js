@@ -49,6 +49,7 @@ const reg = async (p) => {
     ['/teacher/exams', 'Exams'], ['/teacher/students', 'Students'], ['/teacher/gradebook', 'Gradebook'],
     ['/teacher/analytics', 'Analytics'], ['/teacher/attendance', 'Attendance'], ['/teacher/messages', 'Messages'],
     ['/teacher/resources', 'Resources'], ['/teacher/calendar', 'Calendar'], ['/teacher/settings', 'Settings'],
+    ['/teacher/ai', 'AI Teaching Assistant'],
   ];
   for (const [href, label] of TEACHER_PAGES) {
     const res = await t.goto(`${WEB}${href}`, { waitUntil: 'domcontentloaded' });
@@ -158,6 +159,22 @@ const reg = async (p) => {
     await st.waitForTimeout(1800);
     check('the course now reads 100%', /100%/.test(await st.evaluate(() => document.body.innerText)));
   }
+
+  console.log('\n=== AI teaching assistant ===');
+  await t.goto(`${WEB}/teacher/ai`, { waitUntil: 'domcontentloaded' });
+  await t.waitForTimeout(1500);
+  const aiBody = await t.evaluate(() => document.body.innerText);
+  check('the three tools are offered', /Lesson plan/.test(aiBody) && /Quiz questions/.test(aiBody) && /Analyse a class/.test(aiBody));
+  check('the page warns that drafts need reviewing', /Read everything before you use it/i.test(aiBody));
+
+  await t.fill('input#f-subject', 'Mathematics');
+  await t.fill('input#f-grade', 'Grade 5');
+  await t.fill('input#f-topic', 'Adding fractions');
+  await t.click('button:has-text("Write a plan")');
+  await t.waitForTimeout(4000);
+  const planBody = await t.evaluate(() => document.body.innerText);
+  check('with no model configured it says so instead of showing a fake plan',
+    /No AI model is configured/i.test(planBody), planBody.slice(0, 200));
 
   console.log('\n=== Mobile width ===');
   await st.setViewportSize({ width: 390, height: 844 });
