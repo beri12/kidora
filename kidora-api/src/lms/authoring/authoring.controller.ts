@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards,
+  Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -9,10 +9,12 @@ import { CurrentUser, type AuthUser } from '../common/decorators/current-user.de
 import { AuthoringService } from './authoring.service';
 import { AssessmentAuthoringService } from './assessment-authoring.service';
 import { PublishService } from './publish.service';
+import { StudioService } from './studio.service';
 import {
   AssignmentDto, CompletionRulesDto, ContentBlockDto, CourseBasicsDto, ExamDto, LessonDto,
   QuizDto, ReorderDto, SaveContentDto, SectionDto, UpdateAssignmentDto, UpdateContentBlockDto,
-  UpdateCourseDto, UpdateLessonDto, UpdateQuizDto, UpdateSectionDto,
+  InstructorDto, OutcomeDto, UpdateCourseDto, UpdateLessonDto, UpdateOutcomeDto,
+  UpdateQuizDto, UpdateSectionDto,
 } from './dto';
 
 const AUTHORS = [...TEACHER_ROLES, ...SCHOOL_ADMIN_ROLES];
@@ -32,6 +34,7 @@ export class AuthoringController {
     private readonly authoring: AuthoringService,
     private readonly assessments: AssessmentAuthoringService,
     private readonly publishing: PublishService,
+    private readonly studio: StudioService,
   ) {}
 
   /* -------------------------------------------------------------- courses */
@@ -91,6 +94,83 @@ export class AuthoringController {
   @Post('courses/:courseId/submit-review')
   submitForReview(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string) {
     return this.publishing.submitForReview(u, courseId);
+  }
+
+  /* ---------------------------------------------------- learning outcomes */
+
+  @Get('courses/:courseId/outcomes')
+  @ApiOperation({ summary: "What students will learn. Pass sectionId for a module's outcomes." })
+  outcomes(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string, @Query('sectionId') sectionId?: string) {
+    return this.studio.listOutcomes(u, courseId, sectionId);
+  }
+
+  @Post('courses/:courseId/outcomes')
+  addOutcome(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string, @Body() dto: OutcomeDto) {
+    return this.studio.addOutcome(u, courseId, dto);
+  }
+
+  @Patch('courses/:courseId/outcomes/reorder')
+  reorderOutcomes(
+    @CurrentUser() u: AuthUser,
+    @Param('courseId') courseId: string,
+    @Body() dto: ReorderDto,
+    @Query('sectionId') sectionId?: string,
+  ) {
+    return this.studio.reorderOutcomes(u, courseId, dto.ids, sectionId);
+  }
+
+  @Patch('outcomes/:id')
+  updateOutcome(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateOutcomeDto) {
+    return this.studio.updateOutcome(u, id, dto);
+  }
+
+  @Delete('outcomes/:id')
+  deleteOutcome(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.studio.deleteOutcome(u, id);
+  }
+
+  /* ------------------------------------------------------------ instructors */
+
+  @Get('courses/:courseId/instructors')
+  instructors(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string) {
+    return this.studio.listInstructors(u, courseId);
+  }
+
+  @Post('courses/:courseId/instructors')
+  @ApiOperation({ summary: 'Credit another teacher on this course.' })
+  addInstructor(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string, @Body() dto: InstructorDto) {
+    return this.studio.addInstructor(u, courseId, dto);
+  }
+
+  @Delete('courses/:courseId/instructors/:id')
+  removeInstructor(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string, @Param('id') id: string) {
+    return this.studio.removeInstructor(u, courseId, id);
+  }
+
+  /* ------------------------------------------------------------ item status */
+
+  @Patch('content/:id/status/:status')
+  @ApiOperation({ summary: 'Publish, unpublish or archive one item, independent of the course.' })
+  setItemStatus(
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Param('status') status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
+  ) {
+    return this.studio.setItemStatus(u, id, status);
+  }
+
+  /* ---------------------------------------------------- readiness, versions */
+
+  @Get('courses/:courseId/readiness')
+  @ApiOperation({ summary: 'The counts and gaps the publish screen shows.' })
+  readiness(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string) {
+    return this.studio.readiness(u, courseId);
+  }
+
+  @Get('courses/:courseId/versions')
+  @ApiOperation({ summary: 'What was published, and when.' })
+  versions(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string) {
+    return this.studio.listVersions(u, courseId);
   }
 
   /* ------------------------------------------------------------- sections */
@@ -241,9 +321,47 @@ export class AuthoringController {
 
   /* ----------------------------------------------------------------- exam */
 
+  @Get('courses/:courseId/exams')
+  @ApiOperation({ summary: 'Every exam on the course: the final, plus any module exams.' })
+  listExams(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string) {
+    return this.studio.listExams(u, courseId);
+  }
+
   @Get('courses/:courseId/exam')
   getExam(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string) {
     return this.assessments.getExam(u, courseId);
+  }
+
+  @Get('courses/:courseId/sections/:sectionId/exam')
+  @ApiOperation({ summary: "One module's end-of-week exam." })
+  getModuleExam(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string, @Param('sectionId') sectionId: string) {
+    return this.assessments.getExam(u, courseId, sectionId);
+  }
+
+  @Put('courses/:courseId/sections/:sectionId/exam')
+  @ApiOperation({ summary: 'Create or replace a module exam.' })
+  upsertModuleExam(
+    @CurrentUser() u: AuthUser,
+    @Param('courseId') courseId: string,
+    @Param('sectionId') sectionId: string,
+    @Body() dto: ExamDto,
+  ) {
+    return this.assessments.upsertExam(u, courseId, dto, sectionId);
+  }
+
+  @Patch('courses/:courseId/sections/:sectionId/exam/status/:status')
+  setModuleExamStatus(
+    @CurrentUser() u: AuthUser,
+    @Param('courseId') courseId: string,
+    @Param('sectionId') sectionId: string,
+    @Param('status') status: 'DRAFT' | 'SCHEDULED' | 'OPEN' | 'CLOSED',
+  ) {
+    return this.assessments.setExamStatus(u, courseId, status, sectionId);
+  }
+
+  @Delete('courses/:courseId/sections/:sectionId/exam')
+  deleteModuleExam(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string, @Param('sectionId') sectionId: string) {
+    return this.assessments.deleteExam(u, courseId, sectionId);
   }
 
   @Put('courses/:courseId/exam')

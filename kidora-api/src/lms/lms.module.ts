@@ -32,6 +32,7 @@ import { AttendanceController } from './attendance/attendance.controller';
 import { AuthoringService } from './authoring/authoring.service';
 import { AssessmentAuthoringService } from './authoring/assessment-authoring.service';
 import { PublishService } from './authoring/publish.service';
+import { StudioService } from './authoring/studio.service';
 import { AuthoringController } from './authoring/authoring.controller';
 import { PeerReviewService } from './peer-review/peer-review.service';
 import { UploadsController } from './uploads/uploads.controller';
@@ -55,7 +56,7 @@ import { LearningController, BrowseFiltersController } from './learning/learning
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
     StudentService, TeacherService, TeacherLibraryService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
-    AuthoringService, AssessmentAuthoringService, PublishService, CompletionService, LearningService, PeerReviewService,
+    AuthoringService, AssessmentAuthoringService, PublishService, StudioService, CompletionService, LearningService, PeerReviewService,
     { provide: KIDORA_REDIS, useValue: undefined }, // e.g. { provide: KIDORA_REDIS, useFactory: (r: RedisService) => r.getClient(), inject: [RedisService] }
     { provide: KIDORA_AI_PROVIDER, useClass: UnconfiguredAiProvider },
   ],

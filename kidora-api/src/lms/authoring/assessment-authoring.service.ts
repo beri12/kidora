@@ -181,10 +181,15 @@ export class AssessmentAuthoringService {
    * row of kind FINAL_EXAM, which is how the existing attempt/grading pipeline
    * already reads them — so the exam reuses all of it rather than duplicating.
    */
-  async upsertExam(u: AuthUser, courseId: string, dto: ExamDto) {
+  async upsertExam(u: AuthUser, courseId: string, dto: ExamDto, sectionId?: string) {
     const course = await this.authoring.assertAuthor(u, courseId);
     const questions = (dto.questions ?? []).map((q, i) => this.normaliseQuestion(q, i));
-    const existing = await this.prisma.exam.findFirst({ where: { courseId }, select: { id: true, quizId: true } });
+    if (sectionId) {
+      const section = await this.prisma.section.findUnique({ where: { id: sectionId }, select: { courseId: true } });
+      if (!section) throw new NotFoundException('Module not found.');
+      if (section.courseId !== courseId) throw new BadRequestException('That module belongs to another course.');
+    }
+    const existing = await this.prisma.exam.findFirst({ where: { courseId, sectionId: sectionId ?? null }, select: { id: true, quizId: true } });
 
     return this.prisma.$transaction(async (tx) => {
       if (existing) {
@@ -210,7 +215,10 @@ export class AssessmentAuthoringService {
         });
         await tx.exam.update({
           where: { id: existing.id },
-          data: this.examData(dto),
+          // title is not in examData (that shape is shared with the create
+          // path, which passes it separately), so renaming an existing exam
+          // updated the quiz but left the exam's own title behind.
+          data: { ...this.examData(dto), title: dto.title },
         });
       } else {
         const quiz = await tx.quiz.create({
@@ -232,6 +240,7 @@ export class AssessmentAuthoringService {
             ...this.examData(dto),
             title: dto.title,
             courseId,
+            sectionId: sectionId ?? null,
             quizId: quiz.id,
             schoolId: course.schoolId,
             teacherId: u.id,
@@ -240,25 +249,25 @@ export class AssessmentAuthoringService {
         });
       }
       return tx.exam.findFirstOrThrow({
-        where: { courseId },
+        where: { courseId, sectionId: sectionId ?? null },
         include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
       });
     }, { timeout: 20000 });
   }
 
-  async getExam(u: AuthUser, courseId: string) {
+  async getExam(u: AuthUser, courseId: string, sectionId?: string) {
     await this.authoring.assertAuthor(u, courseId);
     return this.prisma.exam.findFirst({
-      where: { courseId },
+      where: { courseId, sectionId: sectionId ?? null },
       include: {
         quiz: { include: { questions: { orderBy: { order: 'asc' } }, _count: { select: { attempts: true } } } },
       },
     });
   }
 
-  async deleteExam(u: AuthUser, courseId: string) {
+  async deleteExam(u: AuthUser, courseId: string, sectionId?: string) {
     await this.authoring.assertAuthor(u, courseId);
-    const exam = await this.prisma.exam.findFirst({ where: { courseId }, select: { id: true, quizId: true } });
+    const exam = await this.prisma.exam.findFirst({ where: { courseId, sectionId: sectionId ?? null }, select: { id: true, quizId: true } });
     if (!exam) throw new NotFoundException('This course has no final exam.');
     await this.prisma.$transaction([
       this.prisma.exam.delete({ where: { id: exam.id } }),
@@ -267,9 +276,9 @@ export class AssessmentAuthoringService {
     return { ok: true };
   }
 
-  async setExamStatus(u: AuthUser, courseId: string, status: 'DRAFT' | 'SCHEDULED' | 'OPEN' | 'CLOSED') {
+  async setExamStatus(u: AuthUser, courseId: string, status: 'DRAFT' | 'SCHEDULED' | 'OPEN' | 'CLOSED', sectionId?: string) {
     await this.authoring.assertAuthor(u, courseId);
-    const exam = await this.prisma.exam.findFirst({ where: { courseId }, select: { id: true, quizId: true } });
+    const exam = await this.prisma.exam.findFirst({ where: { courseId, sectionId: sectionId ?? null }, select: { id: true, quizId: true } });
     if (!exam) throw new NotFoundException('This course has no final exam.');
     if (status !== 'DRAFT') {
       const count = await this.prisma.quizQuestion.count({ where: { quizId: exam.quizId } });

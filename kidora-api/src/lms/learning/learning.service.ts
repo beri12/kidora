@@ -358,7 +358,10 @@ export class LearningService {
       select: {
         id: true, courseId: true, sectionId: true, title: true, description: true, type: true,
         order: true, estimatedMin: true, objectives: true, videoUrl: true, status: true,
-        contents: { orderBy: { order: 'asc' } },
+        // Only published items. An item has its own lifecycle, so a
+        // half-written one can sit in a live course — it must not reach a
+        // child just because the course around it is published.
+        contents: { where: { status: 'PUBLISHED' }, orderBy: { order: 'asc' } },
         resources: { select: { id: true, name: true, url: true, kind: true, sizeBytes: true, description: true } },
         quiz: {
           where: { published: true },

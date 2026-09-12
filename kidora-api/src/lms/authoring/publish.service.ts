@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { AuthoringService } from './authoring.service';
+import { StudioService } from './studio.service';
 
 export interface ChecklistItem {
   key: string;
@@ -25,7 +26,7 @@ export interface PublishChecklist {
  */
 @Injectable()
 export class PublishService {
-  constructor(private prisma: PrismaService, private authoring: AuthoringService) {}
+  constructor(private prisma: PrismaService, private authoring: AuthoringService, private studio: StudioService) {}
 
   async checklist(u: AuthUser, courseId: string): Promise<PublishChecklist> {
     await this.authoring.assertAuthor(u, courseId);
@@ -34,7 +35,14 @@ export class PublishService {
       include: {
         sections: {
           orderBy: { order: 'asc' },
-          include: { lessons: { orderBy: { order: 'asc' }, include: { _count: { select: { contents: true } } } } },
+          include: {
+            lessons: {
+              orderBy: { order: 'asc' },
+              // Published items only: a lesson made entirely of drafts shows a
+              // student nothing, so it must count as empty here.
+              include: { _count: { select: { contents: { where: { status: 'PUBLISHED' } } } } },
+            },
+          },
         },
         quizzes: { include: { _count: { select: { questions: true } } } },
         assignments: true,
@@ -135,7 +143,7 @@ export class PublishService {
         checklist: check.items,
       });
     }
-    return this.prisma.$transaction(async (tx) => {
+    const course = await this.prisma.$transaction(async (tx) => {
       // A draft lesson would be invisible to students in a published course,
       // which reads as "my course published but is empty". Publish them with it.
       await tx.lesson.updateMany({ where: { courseId, status: 'DRAFT' }, data: { status: 'PUBLISHED' } });
@@ -145,6 +153,9 @@ export class PublishService {
         include: { _count: { select: { lessons: true, enrollments: true } } },
       });
     });
+    // Record what students were actually shown, after the publish committed.
+    const version = await this.studio.snapshot(courseId, u.id);
+    return { ...course, version };
   }
 
   async archive(u: AuthUser, courseId: string) {
@@ -157,11 +168,15 @@ export class PublishService {
     });
   }
 
+  /**
+   * Take a live course down. UNPUBLISHED rather than DRAFT: it has been
+   * published before, and students already enrolled keep their access.
+   */
   async unpublish(u: AuthUser, courseId: string) {
     await this.authoring.assertAuthor(u, courseId);
     return this.prisma.course.update({
       where: { id: courseId },
-      data: { status: 'DRAFT', published: false },
+      data: { status: 'UNPUBLISHED', published: false },
     });
   }
 
@@ -195,7 +210,7 @@ export class PublishService {
               select: {
                 id: true, title: true, description: true, type: true, estimatedMin: true,
                 isRequired: true, status: true, objectives: true,
-                _count: { select: { contents: true } },
+                _count: { select: { contents: { where: { status: 'PUBLISHED' } } } },
               },
             },
           },

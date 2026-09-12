@@ -245,3 +245,21 @@ export class ResourceDto {
   @ApiPropertyOptional() @IsOptional() @IsString() mimeType?: string;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) sizeBytes?: number;
 }
+
+/* ---------------------------------------------------------- studio extras */
+
+export class OutcomeDto {
+  @ApiProperty({ example: 'Compare two fractions' })
+  @IsString() @MinLength(2) @MaxLength(300) text!: string;
+  @ApiPropertyOptional({ description: "Attach to a module instead of the whole course." })
+  @IsOptional() @IsString() sectionId?: string;
+}
+export class UpdateOutcomeDto extends PartialType(OutcomeDto) {}
+
+export class InstructorDto {
+  @ApiProperty({ description: 'The teacher\'s Kidora email.' })
+  @IsString() @MaxLength(200) email!: string;
+  @ApiPropertyOptional({ enum: ['LEAD', 'CO_INSTRUCTOR', 'ASSISTANT'] })
+  @IsOptional() @IsIn(['LEAD', 'CO_INSTRUCTOR', 'ASSISTANT']) role?: 'LEAD' | 'CO_INSTRUCTOR' | 'ASSISTANT';
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) bio?: string;
+}

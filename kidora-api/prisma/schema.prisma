@@ -203,8 +203,11 @@ model User {
   // ============================================================
   // INDEXES
   // ============================================================
-  ownedResources Resource[]   @relation("TeacherResources")
-  peerReviews    PeerReview[] @relation("PeerReviewer")
+  ownedResources  Resource[]         @relation("TeacherResources")
+  peerReviews     PeerReview[]       @relation("PeerReviewer")
+  instructorOf    CourseInstructor[] @relation("InstructorOf")
+  courseReviews   CourseReview[]     @relation("CourseReviewer")
+  coursePublishes CourseVersion[]    @relation("CoursePublisher")
 
   @@index([schoolId, role])
   @@index([schoolId, gradeId])
@@ -462,6 +465,10 @@ model Course {
   issuesCertificate     Boolean @default(false)
 
   prerequisiteFor CoursePrerequisite[] @relation("CoursePrereqTarget")
+  instructors     CourseInstructor[]
+  outcomes        LearningOutcome[]
+  reviews         CourseReview[]
+  versions        CourseVersion[]
   prerequisites   CoursePrerequisite[] @relation("CoursePrereqOwner")
   school          School?              @relation(fields: [schoolId], references: [id])
   grade           Grade?               @relation(fields: [gradeId], references: [id])
@@ -488,10 +495,12 @@ model Section {
   course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   // --- LMS additions ---
-  description String   @default("")
+  description String            @default("")
   /// Coursera-style module: a week of study. Optional, because a course does
   /// not have to be organised by week.
   weekNumber  Int?
+  exams       Exam[]
+  outcomes    LearningOutcome[]
   lessons     Lesson[]
 }
 
@@ -557,8 +566,9 @@ model LessonContent {
 
   // --- item metadata (Coursera "course_items") ---
   /// How long this single item should take, not the whole lesson.
-  estimatedMin Int     @default(3)
-  isRequired   Boolean @default(true)
+  estimatedMin Int        @default(3)
+  isRequired   Boolean    @default(true)
+  status       ItemStatus @default(PUBLISHED)
 
   // --- video items ---
   durationSeconds Int?
@@ -740,6 +750,8 @@ model Exam {
   /// has to be creatable.
   schoolId          String?
   courseId          String
+  /// Set for a module (end-of-week) exam; null for the course final exam.
+  sectionId         String?
   classId           String?
   quizId            String        @unique
   teacherId         String
@@ -754,6 +766,7 @@ model Exam {
   updatedAt         DateTime      @default(now()) @updatedAt
   school            School?       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   course            Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section           Section?      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   class             SchoolClass?  @relation(fields: [classId], references: [id])
   quiz              Quiz          @relation(fields: [quizId], references: [id])
   teacher           User          @relation("ExamTeacher", fields: [teacherId], references: [id])
@@ -1362,8 +1375,11 @@ enum TxnType {
 enum CourseStatus {
   DRAFT
   PUBLISHED
-  REVIEW // new: awaiting school approval
-  ARCHIVED // new
+  REVIEW // awaiting school approval
+  ARCHIVED
+  /// Was live, taken down. Distinct from DRAFT (never published) and from
+  /// ARCHIVED (retired): enrolled students keep their access.
+  UNPUBLISHED
 }
 
 enum LessonType {
@@ -1764,4 +1780,89 @@ model PeerReview {
 
   @@unique([submissionId, reviewerId])
   @@index([reviewerId, status])
+}
+
+/// A single content item's lifecycle, independent of the course's.
+enum ItemStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum InstructorRole {
+  LEAD
+  CO_INSTRUCTOR
+  ASSISTANT
+}
+
+/// A course can be taught by more than one person. Course.teacherId stays the
+/// author and owner; this is who is credited and who may help teach.
+model CourseInstructor {
+  id        String         @id @default(cuid())
+  courseId  String
+  userId    String
+  role      InstructorRole @default(CO_INSTRUCTOR)
+  bio       String?
+  order     Int            @default(0)
+  createdAt DateTime       @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation("InstructorOf", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@index([userId])
+}
+
+/// "What you will learn", as rows rather than a string array, so they can be
+/// ordered and attached to a module as well as the whole course.
+model LearningOutcome {
+  id        String   @id @default(cuid())
+  courseId  String
+  /// Null = a course-level outcome; set = an outcome for that module.
+  sectionId String?
+  text      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, order])
+  @@index([sectionId, order])
+}
+
+/// A learner's rating, which is what the course card's stars come from.
+model CourseReview {
+  id        String   @id @default(cuid())
+  courseId  String
+  studentId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation("CourseReviewer", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@index([courseId, rating])
+}
+
+/// A snapshot of the whole course tree taken at each publish, so a teacher can
+/// see what changed between versions and what students were actually shown.
+model CourseVersion {
+  id            String   @id @default(cuid())
+  courseId      String
+  version       Int
+  publishedById String?
+  note          String?
+  /// The serialised tree as published.
+  snapshot      Json
+  createdAt     DateTime @default(now())
+
+  course      Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  publishedBy User?  @relation("CoursePublisher", fields: [publishedById], references: [id])
+
+  @@unique([courseId, version])
+  @@index([courseId, createdAt])
 }

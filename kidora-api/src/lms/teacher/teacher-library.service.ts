@@ -42,7 +42,12 @@ export class TeacherLibraryService {
           order: true, updatedAt: true,
           section: { select: { id: true, title: true } },
           course: { select: { id: true, title: true, subject: { select: { name: true, accent: true } } } },
-          _count: { select: { contents: true, progress: { where: { completed: true } } } },
+          _count: {
+            select: {
+              contents: { where: { status: 'PUBLISHED' } },
+              progress: { where: { completed: true } },
+            },
+          },
         },
       }),
       this.prisma.lesson.count({ where }),
@@ -53,7 +58,7 @@ export class TeacherLibraryService {
         isRequired: l.isRequired, order: l.order, updatedAt: l.updatedAt,
         section: l.section, course: { id: l.course.id, title: l.course.title },
         subject: l.course.subject?.name ?? 'General', subjectAccent: l.course.subject?.accent,
-        blockCount: l._count.contents,
+        blockCount: l._count.contents, // published items — what a student would see
         completedBy: l._count.progress,
         hasContent: l._count.contents > 0,
       })),
