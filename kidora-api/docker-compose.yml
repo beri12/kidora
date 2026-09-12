@@ -34,12 +34,28 @@ services:
       DATABASE_URL: postgresql://kidora:kidora@postgres:5432/kidora?schema=public
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # cache.service.ts reads REDIS_HOST/PORT, but redis.provider.ts and the
+      # Socket.IO adapter in main.ts read REDIS_URL. Without it they fall back
+      # to localhost -- i.e. the API container itself -- so the token
+      # blacklist, SMS codes and cross-instance sockets silently stop working.
+      REDIS_URL: redis://redis:6379
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
-      CORS_ORIGIN: http://localhost:3000
-      WEB_URL: http://localhost:3000
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-prod-access-secret}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-prod-refresh-secret}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+      # Uploaded files live on the named volume below and are served from
+      # /uploads. STORAGE_PUBLIC_BASE has to be the URL browsers can reach,
+      # not localhost, or every uploaded video points at the wrong host.
+      STORAGE_DIR: /app/uploads
+      STORAGE_PUBLIC_BASE: ${PUBLIC_API_URL:-http://localhost:4000}/uploads
+      # The API is the only thing allowed to call the AI service, and the
+      # shared token is what proves it. Both sides must carry the same value.
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?set AI_SERVICE_TOKEN (openssl rand -hex 32) in .env}
+      # No defaults on purpose: a known secret is no secret. Generate with
+      # openssl rand -hex 32 and put them in kidora-api/.env.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_x}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-test}
@@ -48,6 +64,9 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
     ports: ["4000:4000"]
+    # Without this, every file a teacher uploads is destroyed the next time
+    # the container is recreated -- while the rows pointing at them survive.
+    volumes: ["uploads:/app/uploads"]
 
 
   ai-service:
@@ -59,7 +78,7 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-local}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
-      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?set AI_SERVICE_TOKEN (openssl rand -hex 32) in .env}
       DATABASE_URL: postgresql://kidora:kidora@postgres:5432/kidora
       REDIS_URL: redis://redis:6379
     # Deliberately no host port: only the API reaches it, over the compose
@@ -74,3 +93,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  uploads:
