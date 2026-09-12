@@ -15,7 +15,7 @@ export class CertificatesService {
     const existing = await this.prisma.certificate.findFirst({ where: { userId: studentId, courseId: exam.courseId, revoked: false } });
     if (existing) return existing;
     const s = await this.prisma.user.findUniqueOrThrow({ where: { id: studentId }, select: { name: true, grade: { select: { name: true } } } });
-    const cert = await this.prisma.certificate.create({ data: { userId: studentId, courseId: exam.courseId, schoolId: exam.schoolId, courseName: exam.course.title, studentName: s.name, schoolName: exam.school.name, gradeName: s.grade?.name ?? exam.course.grade?.name, score, code: this.code() } });
+    const cert = await this.prisma.certificate.create({ data: { userId: studentId, courseId: exam.courseId, schoolId: exam.schoolId, courseName: exam.course.title, studentName: s.name, schoolName: exam.school?.name ?? '', /* platform-wide courses have no school */ gradeName: s.grade?.name ?? exam.course.grade?.name, score, code: this.code() } });
     await Promise.all([
       this.prisma.notification.create({ data: { userId: studentId, type: 'CERTIFICATE', title: 'Certificate earned!', body: exam.course.title, link: '/student/certificates' } }),
       this.activity.log({ userId: studentId, schoolId: exam.schoolId, type: 'CERTIFICATE_ISSUED', title: `Earned certificate: ${exam.course.title}`, entityType: 'certificate', entityId: cert.id }),

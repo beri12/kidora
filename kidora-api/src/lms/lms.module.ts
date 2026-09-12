@@ -28,6 +28,10 @@ import { AiTutorService } from './ai/ai-tutor.service';
 import { AiController } from './ai/ai.controller';
 import { KIDORA_AI_PROVIDER, UnconfiguredAiProvider } from './ai/ai-provider';
 import { AttendanceController } from './attendance/attendance.controller';
+import { AuthoringService } from './authoring/authoring.service';
+import { AssessmentAuthoringService } from './authoring/assessment-authoring.service';
+import { PublishService } from './authoring/publish.service';
+import { AuthoringController } from './authoring/authoring.controller';
 
 /**
  * Add `LmsModule` to the `imports` array of your existing AppModule.
@@ -40,10 +44,11 @@ import { AttendanceController } from './attendance/attendance.controller';
  *   3. KIDORA_REDIS   -> your ioredis client; KIDORA_AI_PROVIDER -> your AI service.
  */
 @Module({
-  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController],
+  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController],
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
     StudentService, TeacherService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
+    AuthoringService, AssessmentAuthoringService, PublishService,
     { provide: KIDORA_REDIS, useValue: undefined }, // e.g. { provide: KIDORA_REDIS, useFactory: (r: RedisService) => r.getClient(), inject: [RedisService] }
     { provide: KIDORA_AI_PROVIDER, useClass: UnconfiguredAiProvider },
   ],

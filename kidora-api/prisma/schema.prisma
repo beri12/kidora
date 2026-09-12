@@ -176,21 +176,21 @@ model User {
   // AUTH / SECURITY
   // ============================================================
 
-  loginHistory   LoginHistory[]
-  refreshTokens  RefreshToken[]
+  loginHistory  LoginHistory[]
+  refreshTokens RefreshToken[]
 
   // ============================================================
   // CALENDAR / SUPPORT
   // ============================================================
 
-  calendarEvents      CalendarEvent[] @relation("CalendarAuthor")
-  calendarAboutMe     CalendarEvent[] @relation("CalendarStudent")
-  supportTickets      SupportTicket[] @relation("SupportRequester")
-  supportAssigned     SupportTicket[] @relation("SupportAssignee")
-  supportMessages     SupportMessage[] @relation("SupportAuthor")
-  sessions       Session[]
-  auditLogs      AuditLog[]
-  activityEvents ActivityEvent[]
+  calendarEvents  CalendarEvent[]  @relation("CalendarAuthor")
+  calendarAboutMe CalendarEvent[]  @relation("CalendarStudent")
+  supportTickets  SupportTicket[]  @relation("SupportRequester")
+  supportAssigned SupportTicket[]  @relation("SupportAssignee")
+  supportMessages SupportMessage[] @relation("SupportAuthor")
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  activityEvents  ActivityEvent[]
 
   // ============================================================
   // PAYMENTS / SUBSCRIPTIONS
@@ -203,6 +203,7 @@ model User {
   // ============================================================
   // INDEXES
   // ============================================================
+  ownedResources Resource[] @relation("TeacherResources")
 
   @@index([schoolId, role])
   @@index([schoolId, gradeId])
@@ -255,6 +256,7 @@ model School {
   joinCode       String?         @unique
   calendarEvents CalendarEvent[]
   supportTickets SupportTicket[]
+  resources      Resource[]
 }
 
 /// Configurable rules for "On Track / Needs Support / At Risk" (spec §36).
@@ -433,22 +435,42 @@ model Course {
   sections         Section[]
 
   // --- LMS additions ---
-  schoolId     String? // null = platform-wide course
-  gradeId      String?
-  world        World? // world-map placement
-  worldOrder   Int                @default(0)
-  xpReward     Int                @default(100) // on course completion
-  publishedAt  DateTime?
-  reviewNote   String?
-  school       School?            @relation(fields: [schoolId], references: [id])
-  grade        Grade?             @relation(fields: [gradeId], references: [id])
-  enrollments  CourseEnrollment[]
-  classCourses ClassCourse[]
-  quizzes      Quiz[]
-  assignments  Assignment[]
-  exams        Exam[]
-  certificates Certificate[]
-  calendarEvents CalendarEvent[]
+  schoolId    String? // null = platform-wide course
+  gradeId     String?
+  world       World? // world-map placement
+  worldOrder  Int       @default(0)
+  xpReward    Int       @default(100) // on course completion
+  publishedAt DateTime?
+  reviewNote  String?
+
+  // --- course authoring ---
+  shortDescription String       @default("")
+  bannerUrl        String?
+  difficulty       Difficulty   @default(MEDIUM)
+  access           CourseAccess @default(FREE)
+  estimatedMinutes Int?
+  archivedAt       DateTime?
+
+  // Completion rules. What a student must finish before the course counts as
+  // done — read by the completion check, not by the UI.
+  requireAllLessons     Boolean @default(true)
+  requireAllQuizzes     Boolean @default(false)
+  requireAllAssignments Boolean @default(false)
+  requireFinalExam      Boolean @default(false)
+  passingScore          Int     @default(60)
+  issuesCertificate     Boolean @default(false)
+
+  prerequisiteFor CoursePrerequisite[] @relation("CoursePrereqTarget")
+  prerequisites   CoursePrerequisite[] @relation("CoursePrereqOwner")
+  school          School?              @relation(fields: [schoolId], references: [id])
+  grade           Grade?               @relation(fields: [gradeId], references: [id])
+  enrollments     CourseEnrollment[]
+  classCourses    ClassCourse[]
+  quizzes         Quiz[]
+  assignments     Assignment[]
+  exams           Exam[]
+  certificates    Certificate[]
+  calendarEvents  CalendarEvent[]
 
   @@index([schoolId, status])
   @@index([schoolId, gradeId, subjectId])
@@ -498,18 +520,21 @@ model Lesson {
   resources Resource[]
 
   // --- LMS additions ---
-  sectionId   String?
-  description String             @default("")
-  status      LessonStatus       @default(PUBLISHED) // existing lessons stay visible
-  xpReward    Int                @default(10)
-  coinReward  Int                @default(5)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @default(now()) @updatedAt
-  section     Section?           @relation(fields: [sectionId], references: [id])
-  contents    LessonContent[]
-  activities  LessonActivity[]
-  assignments Assignment[]
-  currentFor  CourseEnrollment[] @relation("EnrollmentCurrentLesson")
+  sectionId    String?
+  description  String             @default("")
+  status       LessonStatus       @default(PUBLISHED) // existing lessons stay visible
+  xpReward     Int                @default(10)
+  coinReward   Int                @default(5)
+  objectives   String[]           @default([])
+  estimatedMin Int                @default(5)
+  isRequired   Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @default(now()) @updatedAt
+  section      Section?           @relation(fields: [sectionId], references: [id])
+  contents     LessonContent[]
+  activities   LessonActivity[]
+  assignments  Assignment[]
+  currentFor   CourseEnrollment[] @relation("EnrollmentCurrentLesson")
 
   @@index([courseId, sectionId, order])
 }
@@ -546,16 +571,27 @@ model LessonActivity {
 }
 
 model Resource {
-  id        String       @id @default(cuid())
-  name      String
-  courseId  String
-  kind      ResourceKind @default(other)
-  url       String
-  sizeBytes Int          @default(0)
-  lessonId  String
-  createdAt DateTime     @default(now())
-  course    Course       @relation(fields: [courseId], references: [id])
-  lesson    Lesson       @relation(fields: [lessonId], references: [id])
+  id          String       @id @default(cuid())
+  name        String
+  courseId    String?
+  kind        ResourceKind @default(other)
+  url         String
+  sizeBytes   Int          @default(0)
+  /// Optional: a resource can sit in the teacher's library before it is
+  /// attached to any lesson, which is how the Resources page works.
+  lessonId    String?
+  teacherId   String?
+  schoolId    String?
+  description String       @default("")
+  mimeType    String?
+  createdAt   DateTime     @default(now())
+  course      Course?      @relation(fields: [courseId], references: [id])
+  lesson      Lesson?      @relation(fields: [lessonId], references: [id])
+  teacher     User?        @relation("TeacherResources", fields: [teacherId], references: [id])
+  school      School?      @relation(fields: [schoolId], references: [id])
+
+  @@index([teacherId, createdAt])
+  @@index([courseId])
 }
 
 // ---------------------------------------------------------------------------
@@ -570,20 +606,26 @@ model Quiz {
   questions QuizQuestion[]
 
   // --- LMS additions ---
-  kind         QuizKind      @default(LESSON)
-  description  String        @default("")
-  courseId     String?
-  timeLimitSec Int?
-  maxAttempts  Int           @default(3)
-  passingScore Int           @default(60) // percent
-  shuffle      Boolean       @default(false)
-  published    Boolean       @default(true)
-  xpReward     Int           @default(20)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @default(now()) @updatedAt
-  course       Course?       @relation(fields: [courseId], references: [id])
-  attempts     QuizAttempt[]
-  exam         Exam?
+  kind             QuizKind      @default(LESSON)
+  description      String        @default("")
+  courseId         String?
+  timeLimitSec     Int?
+  maxAttempts      Int           @default(3)
+  passingScore     Int           @default(60) // percent
+  shuffle          Boolean       @default(false)
+  shuffleAnswers   Boolean       @default(false)
+  showExplanations Boolean       @default(true)
+  showScore        Boolean       @default(true)
+  allowRetry       Boolean       @default(true)
+  isRequired       Boolean       @default(false)
+  sectionId        String?
+  published        Boolean       @default(true)
+  xpReward         Int           @default(20)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @default(now()) @updatedAt
+  course           Course?       @relation(fields: [courseId], references: [id])
+  attempts         QuizAttempt[]
+  exam             Exam?
 
   @@index([courseId, kind])
 }
@@ -602,6 +644,11 @@ model QuizQuestion {
   answerText     String? // for SHORT_ANSWER / TRUE_FALSE reference
   points         Int          @default(1)
   explanation    String?
+  hint           String?
+  /// MATCHING: [{ left, right }] pairs, shuffled for the student.
+  pairs          Json         @default("[]")
+  /// ORDERING: the correct sequence as option indexes.
+  correctOrder   Int[]        @default([])
   difficulty     Difficulty   @default(MEDIUM)
   order          Int          @default(0)
   imageUrl       String?
@@ -654,7 +701,9 @@ model Exam {
   id                String        @id @default(cuid())
   title             String
   description       String        @default("")
-  schoolId          String
+  /// Nullable: a platform-wide course has no school, and its final exam still
+  /// has to be creatable.
+  schoolId          String?
   courseId          String
   classId           String?
   quizId            String        @unique
@@ -668,7 +717,7 @@ model Exam {
   issuesCertificate Boolean       @default(true)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @default(now()) @updatedAt
-  school            School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school            School?       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   course            Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
   class             SchoolClass?  @relation(fields: [classId], references: [id])
   quiz              Quiz          @relation(fields: [quizId], references: [id])
@@ -680,29 +729,36 @@ model Exam {
 }
 
 model Assignment {
-  id           String                 @id @default(cuid())
-  title        String
-  description  String                 @default("")
-  instructions String                 @default("")
-  schoolId     String?
-  courseId     String?
-  lessonId     String?
-  classId      String?
-  teacherId    String
-  status       AssignmentStatus       @default(DRAFT)
-  dueAt        DateTime?
-  maxScore     Int                    @default(100)
-  attachments  Json                   @default("[]") // [{name,url,sizeBytes}]
-  allowLate    Boolean                @default(true)
-  xpReward     Int                    @default(30)
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @default(now()) @updatedAt
-  school       School?                @relation(fields: [schoolId], references: [id])
-  course       Course?                @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson       Lesson?                @relation(fields: [lessonId], references: [id])
-  class        SchoolClass?           @relation(fields: [classId], references: [id])
-  teacher      User                   @relation("AssignmentTeacher", fields: [teacherId], references: [id])
-  submissions  AssignmentSubmission[]
+  id               String                 @id @default(cuid())
+  title            String
+  description      String                 @default("")
+  instructions     String                 @default("")
+  schoolId         String?
+  courseId         String?
+  lessonId         String?
+  classId          String?
+  teacherId        String
+  status           AssignmentStatus       @default(DRAFT)
+  dueAt            DateTime?
+  maxScore         Int                    @default(100)
+  attachments      Json                   @default("[]") // [{name,url,sizeBytes}]
+  allowLate        Boolean                @default(true)
+  /// [{ criterion, points, description }] — shown to the student and used by
+  /// the grading form to total a score.
+  rubric           Json                   @default("[]")
+  submissionType   SubmissionType         @default(BOTH)
+  allowedFileTypes String[]               @default([])
+  allowResubmit    Boolean                @default(false)
+  isRequired       Boolean                @default(false)
+  xpReward         Int                    @default(30)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @default(now()) @updatedAt
+  school           School?                @relation(fields: [schoolId], references: [id])
+  course           Course?                @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson           Lesson?                @relation(fields: [lessonId], references: [id])
+  class            SchoolClass?           @relation(fields: [classId], references: [id])
+  teacher          User                   @relation("AssignmentTeacher", fields: [teacherId], references: [id])
+  submissions      AssignmentSubmission[]
 
   @@index([schoolId, status, dueAt])
   @@index([classId, dueAt])
@@ -716,6 +772,9 @@ model AssignmentSubmission {
   status       SubmissionStatus @default(SUBMITTED)
   content      String?
   attachments  Json             @default("[]")
+  attemptNo    Int              @default(1)
+  /// Per-criterion scores mirroring Assignment.rubric.
+  rubricScores Json             @default("[]")
   submittedAt  DateTime         @default(now())
   isLate       Boolean          @default(false)
   score        Int?
@@ -1319,6 +1378,13 @@ enum ContentType {
   IMAGE
   INTERACTIVE
   RESOURCE
+  HEADING
+  PARAGRAPH
+  DOCUMENT
+  CODE
+  CALLOUT
+  EXAMPLE
+  QUESTION
 }
 
 enum LessonActivityType {
@@ -1341,6 +1407,8 @@ enum QuestionType {
   TRUE_FALSE
   MULTIPLE_SELECT
   SHORT_ANSWER
+  MATCHING
+  ORDERING
 }
 
 enum Difficulty {
@@ -1489,15 +1557,15 @@ model CalendarEvent {
   createdBy   User   @relation("CalendarAuthor", fields: [createdById], references: [id], onDelete: Cascade)
 
   /// Audience. A null schoolId means a personal event visible only to its author.
-  schoolId String?
-  school   School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  classId  String?
-  class    SchoolClass? @relation(fields: [classId], references: [id], onDelete: Cascade)
-  courseId String?
-  course   Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  schoolId  String?
+  school    School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classId   String?
+  class     SchoolClass? @relation(fields: [classId], references: [id], onDelete: Cascade)
+  courseId  String?
+  course    Course?      @relation(fields: [courseId], references: [id], onDelete: Cascade)
   /// Set when the event is about one student (a parent-teacher meeting).
   studentId String?
-  student   User?  @relation("CalendarStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  student   User?        @relation("CalendarStudent", fields: [studentId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -1531,9 +1599,9 @@ model SupportTicket {
   priority  SupportPriority     @default(NORMAL)
 
   requesterId String
-  requester   User   @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  requester   User    @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: Cascade)
   assigneeId  String?
-  assignee    User?  @relation("SupportAssignee", fields: [assigneeId], references: [id])
+  assignee    User?   @relation("SupportAssignee", fields: [assigneeId], references: [id])
   schoolId    String?
   school      School? @relation(fields: [schoolId], references: [id])
 
@@ -1549,15 +1617,15 @@ model SupportTicket {
 }
 
 model SupportMessage {
-  id       String @id @default(cuid())
-  ticketId String
-  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  authorId String
-  author   User   @relation("SupportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  body     String
+  id        String        @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User          @relation("SupportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
   /// Internal notes are visible to support staff only, never to the requester.
-  internal Boolean  @default(false)
-  createdAt DateTime @default(now())
+  internal  Boolean       @default(false)
+  createdAt DateTime      @default(now())
 
   @@index([ticketId, createdAt])
 }
@@ -1583,4 +1651,32 @@ enum SupportPriority {
   NORMAL
   HIGH
   URGENT
+}
+
+/// How a student may reach a course. Enforced server-side in the course
+/// access check, never by the browser.
+enum CourseAccess {
+  FREE
+  PREMIUM
+  SCHOOL_ONLY
+  INVITE_ONLY
+}
+
+enum SubmissionType {
+  TEXT
+  FILE
+  BOTH
+}
+
+/// A course that must be completed before another becomes available.
+model CoursePrerequisite {
+  id             String   @id @default(cuid())
+  courseId       String
+  prerequisiteId String
+  createdAt      DateTime @default(now())
+  course         Course   @relation("CoursePrereqOwner", fields: [courseId], references: [id], onDelete: Cascade)
+  prerequisite   Course   @relation("CoursePrereqTarget", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, prerequisiteId])
+  @@index([prerequisiteId])
 }
