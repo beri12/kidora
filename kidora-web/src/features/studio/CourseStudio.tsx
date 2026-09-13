@@ -2,11 +2,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, Eye, Save } from "lucide-react";
+import { ArrowRight, Bell, Check, ChevronLeft, Eye, Menu, Save } from "lucide-react";
 import { TeacherShell } from "@/features/teacher/TeacherShell";
-import { TopHeader, ErrorState, Pill, Skeleton, cn } from "@/components/dashboard";
+import { Avatar, ErrorState, Pill, Skeleton, TopHeader, cn } from "@/components/dashboard";
 import { RequireRole } from "@/components/shared/RequireRole";
-import { useCourseTree, useOutcomes, useReadiness } from "@/lib/hooks/queries";
+import { useCourseTree, useOutcomes, useReadiness, useTeacherDashboard } from "@/lib/hooks/queries";
 import type { CourseTree } from "@/lib/api/authoring";
 import { BasicsStep } from "./BasicsStep";
 import { OutcomesStep } from "./OutcomesStep";
@@ -93,6 +93,7 @@ function Studio({ courseId }: { courseId: string }) {
   const tree = useCourseTree(courseId);
   const readiness = useReadiness(courseId);
   const outcomes = useOutcomes(courseId);
+  const dash = useTeacherDashboard();
   const [step, setStep] = useState<StepKey>("basics");
   const [previewed, setPreviewed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -153,41 +154,26 @@ function Studio({ courseId }: { courseId: string }) {
     window.setTimeout(() => setSavedNote(null), 4000);
   };
 
-  const statusTone =
-    course.status === "PUBLISHED" ? "success"
-    : course.status === "REVIEW" ? "warning"
-    : course.status === "ARCHIVED" ? "neutral"
-    : course.status === "UNPUBLISHED" ? "warning"
-    : "info";
-
   return (
     <TeacherShell
       header={({ onMenu }) => (
-        <TopHeader
+        <StudioHeader
           onMenu={onMenu}
-          title={course.title || "Untitled course"}
-          sub={`${course.sections.length} modules · ${course._count.lessons} lessons`}
-          right={
-            <span className="flex items-center gap-2">
-              <Pill tone={statusTone}>{course.status}</Pill>
-              {readiness.data && course.status !== "PUBLISHED" && (
-                <span className="hidden text-xs text-muted sm:inline">
-                  {readiness.data.lines.filter((l) => l.ok).length}/{readiness.data.lines.length} ready
-                </span>
-              )}
-              <Link href={`/teacher/courses/${courseId}/preview`} className="btn-ghost">
-                <Eye size={15} aria-hidden /> <span className="hidden sm:inline">Preview</span>
-              </Link>
-            </span>
-          }
+          step={step}
+          course={course}
+          extra={extra}
+          ready={readiness.data ? {
+            done: readiness.data.lines.filter((l) => l.ok).length,
+            total: readiness.data.lines.length,
+          } : null}
+          profile={dash.data?.profile}
+          notifications={dash.data?.unreadNotifications}
+          onGo={go}
         />
       )}
     >
       <FlushContext.Provider value={register}>
         <div className="space-y-4">
-          <StudioHeading step={step} />
-          <Stepper current={step} course={course} extra={extra} onGo={go} />
-
           {step === "basics" && <BasicsStep course={course} onContinue={saveAndContinue} />}
           {step === "outcomes" && <OutcomesStep course={course} />}
           {step === "modules" && <CurriculumStep course={course} mode="structure" />}
@@ -210,7 +196,7 @@ function Studio({ courseId }: { courseId: string }) {
               {savedNote && <p className="text-xs text-muted" role="status">{savedNote}</p>}
               {!last && (
                 <button type="button" className="btn-primary" onClick={saveAndContinue} disabled={saving}>
-                  {saving ? "Saving…" : "Save & Continue"} <ChevronRight size={16} aria-hidden />
+                  {saving ? "Saving…" : "Save & Continue"} <ArrowRight size={16} aria-hidden />
                 </button>
               )}
             </div>
@@ -221,19 +207,82 @@ function Studio({ courseId }: { courseId: string }) {
   );
 }
 
-function StudioHeading({ step }: { step: StepKey }) {
+type Profile = { name: string; avatarUrl?: string | null; avatarColor?: string };
+
+const STATUS_TONE = {
+  PUBLISHED: "success", REVIEW: "warning", ARCHIVED: "neutral", UNPUBLISHED: "warning", DRAFT: "info",
+} as const;
+
+/**
+ * Two rows, as the design has them: the account bar, then the page heading
+ * with the step track beside it. The track drops below the heading under
+ * 1280px, where seven steps and a heading will not sit on one line.
+ */
+function StudioHeader({
+  onMenu, step, course, extra, ready, profile, notifications, onGo,
+}: {
+  onMenu: () => void; step: StepKey; course: CourseTree; extra: Extra;
+  ready: { done: number; total: number } | null;
+  profile?: Profile; notifications?: number; onGo: (k: StepKey) => void;
+}) {
+  const tone = STATUS_TONE[course.status as keyof typeof STATUS_TONE] ?? "info";
   return (
-    <div>
-      <Link href="/teacher/courses" className="focus-ring inline-flex items-center gap-1.5 rounded text-sm text-muted hover:text-ink">
-        <ChevronLeft size={15} aria-hidden /> Back to My Courses
-      </Link>
-      <h1 className="mt-1 text-2xl font-bold tracking-tight">
-        {step === "publish" ? "Publish Course" : "Create New Course"}
-      </h1>
-      <p className="text-sm text-muted">
-        Build an engaging course with structured learning, interactive content, and assessments.
-      </p>
-    </div>
+    <header className="mb-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onMenu} className="btn-icon lg:hidden" aria-label="Open menu">
+          <Menu size={20} />
+        </button>
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <Pill tone={tone}>{course.status}</Pill>
+          {ready && course.status !== "PUBLISHED" && (
+            <span className="hidden text-xs text-muted sm:inline">{ready.done}/{ready.total} ready</span>
+          )}
+          <Link href={`/teacher/courses/${course.id}/preview`} className="btn-ghost">
+            <Eye size={15} aria-hidden /> <span className="hidden sm:inline">Preview</span>
+          </Link>
+          <Link
+            href="/teacher/notifications"
+            className="btn-icon relative bg-white shadow-card ring-1 ring-black/[0.04]"
+            aria-label={`${notifications ?? 0} unread notifications`}
+          >
+            <Bell size={18} />
+            {Boolean(notifications) && (
+              <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger-500 px-1 text-[10px] font-bold text-white">
+                {notifications}
+              </span>
+            )}
+          </Link>
+          {profile && (
+            <Link
+              href="/teacher/settings"
+              className="focus-ring flex items-center gap-2 rounded-2xl bg-white py-1.5 pl-1.5 pr-3 shadow-card ring-1 ring-black/[0.04]"
+            >
+              <Avatar name={profile.name} src={profile.avatarUrl} color={profile.avatarColor} size={32} />
+              <span className="hidden text-left sm:block">
+                <span className="block text-sm font-medium leading-tight text-ink">{profile.name}</span>
+                <span className="block text-[11px] leading-tight text-muted">Teacher</span>
+              </span>
+            </Link>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <Link href="/teacher/courses" className="focus-ring inline-flex items-center gap-1.5 rounded text-sm text-muted hover:text-ink">
+            <ChevronLeft size={15} aria-hidden /> Back to My Courses
+          </Link>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+            {step === "publish" ? "Publish Course" : "Create New Course"}
+          </h1>
+          <p className="mt-0.5 max-w-md text-sm text-muted">
+            Build an engaging course with structured learning, interactive content, and assessments.
+          </p>
+        </div>
+
+        <Stepper current={step} course={course} extra={extra} onGo={onGo} />
+      </div>
+    </header>
   );
 }
 
@@ -243,25 +292,25 @@ function Stepper({
 }: { current: StepKey; course: CourseTree; extra: Extra; onGo: (k: StepKey) => void }) {
   const currentIndex = STEPS.findIndex((s) => s.key === current);
   return (
-    <nav aria-label="Course studio steps">
-      <ol className="flex items-start gap-1 overflow-x-auto rounded-2xl bg-white p-3 shadow-card ring-1 ring-black/[0.04]">
+    <nav aria-label="Course studio steps" className="-mx-1 shrink-0 overflow-x-auto px-1 pb-1 xl:mx-0 xl:px-0">
+      <ol className="flex items-start">
         {STEPS.map((s, i) => {
           const done = s.done(course, extra);
           const active = s.key === current;
           return (
-            <li key={s.key} className="flex min-w-0 flex-1 items-start">
+            <li key={s.key} className="flex items-start">
               <button
                 type="button"
                 onClick={() => onGo(s.key)}
                 aria-current={active ? "step" : undefined}
-                className="focus-ring flex w-[84px] shrink-0 flex-col items-center gap-1.5 rounded-xl px-1 py-1 sm:w-auto sm:min-w-0 sm:flex-1"
+                className="focus-ring flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-xl px-1 py-1"
               >
                 <span
                   className={cn(
-                    "grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold transition-colors",
+                    "grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold transition-colors",
                     active ? "bg-brand-800 text-white ring-4 ring-brand-100"
                     : done ? "bg-success-500 text-white"
-                    : "bg-slate-100 text-slate-400",
+                    : "bg-white text-slate-400 ring-1 ring-slate-200",
                   )}
                   aria-hidden
                 >
@@ -278,7 +327,7 @@ function Stepper({
               </button>
               {i < STEPS.length - 1 && (
                 <span
-                  className={cn("mt-4 hidden h-0.5 flex-1 rounded-full sm:block", i < currentIndex ? "bg-success-400" : "bg-slate-100")}
+                  className={cn("mt-[18px] h-0.5 w-4 shrink-0 rounded-full sm:w-6", i < currentIndex ? "bg-success-400" : "bg-slate-200")}
                   aria-hidden
                 />
               )}

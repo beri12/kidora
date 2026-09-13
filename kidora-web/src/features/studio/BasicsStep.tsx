@@ -1,12 +1,12 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ImageIcon } from "lucide-react";
+import { ArrowRight, Clock, ImageIcon, Sprout } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/dashboard";
 import { useBrowseFilters, useOutcomes, useUpdateAuthoredCourse } from "@/lib/hooks/queries";
 import type { CourseTree } from "@/lib/api/authoring";
 import { basicInfoSchema, fieldError } from "@/features/course-builder/schema";
 import { Field, SaveIndicator, SelectField, TextArea, TextField, useAutosave } from "@/features/course-builder/parts";
-import { FileUpload } from "@/features/course-builder/FileUpload";
+import { ThumbnailPicker } from "./ThumbnailPicker";
 import { CourseOverviewPanel } from "./CourseOverviewPanel";
 import { useRegisterFlush } from "./CourseStudio";
 
@@ -80,49 +80,38 @@ export function BasicsStep({ course, onContinue }: { course: CourseTree; onConti
             </p>
           </div>
 
-          <Field label="Course Thumbnail">
-            <div className="grid gap-3 rounded-2xl border border-slate-200 p-3 sm:grid-cols-[200px_minmax(0,1fr)]">
-              {form.thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={form.thumbnailUrl} alt="" className="aspect-[16/9] w-full rounded-xl object-cover" />
-              ) : (
-                <div className="grid aspect-[16/9] w-full place-items-center rounded-xl bg-brand-50 text-brand-300">
-                  <ImageIcon size={28} aria-hidden />
-                </div>
-              )}
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Upload course image</p>
-                <p className="text-xs text-muted">Drag and drop or click to upload (recommended size: 1280 × 720)</p>
-                <div className="mt-2">
-                  <FileUpload
-                    label="Course thumbnail file" slot="image" value={form.thumbnailUrl || null}
-                    onUploaded={(f) => set("thumbnailUrl", f.url)}
-                    onClear={() => set("thumbnailUrl", "")}
-                  />
-                </div>
-              </div>
-            </div>
-          </Field>
+          <ThumbnailPicker
+            value={form.thumbnailUrl || null}
+            onUploaded={(url) => set("thumbnailUrl", url)}
+            onClear={() => set("thumbnailUrl", "")}
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Course Level" required value={form.difficulty}
-              onChange={(v) => set("difficulty", v as typeof form.difficulty)}
-              options={[
-                { value: "EASY", label: "Beginner" },
-                { value: "MEDIUM", label: "Intermediate" },
-                { value: "HARD", label: "Advanced" },
-              ]}
-            />
-            <Field label="Estimated Duration" required hint="Leave blank to add up the item times instead.">
-              <div className="flex items-center gap-2">
+            <Field label="Course Level" required id="f-course-level">
+              <div className="relative">
+                <Sprout size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-success-600" aria-hidden />
+                <select
+                  id="f-course-level" className="input appearance-none pl-9 pr-9"
+                  value={form.difficulty}
+                  onChange={(e) => set("difficulty", e.target.value as typeof form.difficulty)}
+                >
+                  <option value="EASY">Beginner</option>
+                  <option value="MEDIUM">Intermediate</option>
+                  <option value="HARD">Advanced</option>
+                </select>
+              </div>
+            </Field>
+
+            <Field label="Estimated Duration" required id="f-estimated-duration" hint="Leave blank to add up the item times instead.">
+              <div className="relative">
+                <Clock size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-600" aria-hidden />
                 <input
-                  type="number" min={0} step={0.5} className="input w-full"
+                  type="number" min={0} step={0.5} className="input pl-9 pr-16"
                   value={hours} id="f-estimated-duration"
                   aria-label="Estimated duration in hours"
                   onChange={(e) => set("estimatedMinutes", e.target.value ? Math.round(Number(e.target.value) * 60) : undefined)}
                 />
-                <span className="shrink-0 text-sm text-muted">hours</span>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">hours</span>
               </div>
             </Field>
           </div>
@@ -163,7 +152,7 @@ export function BasicsStep({ course, onContinue }: { course: CourseTree; onConti
 
           <div className="flex justify-end">
             <button type="button" className="btn-primary" onClick={onContinue} disabled={!result.success}>
-              Save &amp; Continue
+              Save &amp; Continue <ArrowRight size={16} aria-hidden />
             </button>
           </div>
         </CardBody>
