@@ -1,5 +1,27 @@
 # When Kidora returns 404
 
+## First: is it the API root?
+
+```
+GET http://localhost:4000/api  ->  404 "Cannot GET /api"
+```
+
+That one was never a fault. Every route lives *under* `/api`, so the bare root
+had nothing of its own — and opening the URL the API prints on startup is the
+first thing anyone does. It now answers with an index listing `/api/docs`,
+`/api/health` and the build's features.
+
+These are the URLs worth opening by hand:
+
+| URL | What it tells you |
+| --- | --- |
+| `http://localhost:4000/api` | The API is up, and which features this build has |
+| `http://localhost:4000/api/health` | The same, as a liveness probe |
+| `http://localhost:4000/api/docs` | Swagger: every route, with a Try it out button |
+
+A 404 on `/api/auth/login` or `/api/uploads` is a real problem. A 404 on `/api`
+in an older build is not.
+
 Run this first. It checks the things that actually cause it and prints the fix
 for whichever one is wrong:
 

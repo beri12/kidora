@@ -136,6 +136,16 @@ function newest(dir, skip = /node_modules|\.next|dist|\.git/) {
     }
   }
 
+  console.log('\n=== The API root ===');
+  const root = await get(API);
+  if (root.status === 200 && root.json?.name) {
+    ok(`${API} answers with an index (opening it in a browser is not an error)`);
+  } else if (root.status === 404) {
+    note(`${API} has no index in this build — harmless; use ${API}/health and ${API}/docs`);
+  } else if (root.status === 0) {
+    note('skipped — the API is not answering');
+  }
+
   console.log('\n=== Does POST /api/uploads exist in the running API? ===');
   const probe = await get(`${API}/uploads`, { method: 'POST' });
   if (probe.status === 401) ok('401 Unauthorized — the route EXISTS (rejecting an unauthenticated call is correct)');
