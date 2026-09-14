@@ -101,6 +101,11 @@ export class DownloadDto {
 }
 
 export class ContentBlockDto {
+  @ApiPropertyOptional({
+    description: 'Existing item id. Present means update in place; absent means create. '
+      + 'Items missing from the list are removed.',
+  })
+  @IsOptional() @IsString() id?: string;
   @ApiProperty({ enum: ContentType }) @IsEnum(ContentType) type!: ContentType;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100000) body?: string;

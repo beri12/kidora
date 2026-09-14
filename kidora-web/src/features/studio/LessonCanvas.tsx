@@ -1,10 +1,16 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Eye, EyeOff, Plus, Trash2, X } from "lucide-react";
+import {
+  AlertTriangle, CheckCircle2, Copy, Eye, EyeOff, Film, GripVertical, Loader2, Play, Plus,
+  RotateCcw, Trash2, X,
+} from "lucide-react";
 import { Card, CardBody, EmptyState, Pill, cn } from "@/components/dashboard";
 import {
-  useDeleteLesson, useDuplicateLesson, useSaveLessonContent, useSetItemStatus, useUpdateLesson,
+  useDeleteLesson, useDuplicateLesson, useRetryVideoProcessing, useSaveLessonContent,
+  useSetItemStatus, useUpdateLesson,
 } from "@/lib/hooks/queries";
+import { formatDuration, type VideoAsset } from "@/lib/api/uploads";
+import { VideoUploader } from "./VideoUploader";
 import type { AuthoredLesson, AuthoredSection, ContentBlock, ContentType, CourseTree } from "@/lib/api/authoring";
 import { ReorderButtons, SaveIndicator, moved, useAutosave } from "@/features/course-builder/parts";
 import { ITEM_KINDS } from "./CurriculumStep";
@@ -39,6 +45,10 @@ export function LessonCanvas({
   const [editingTitle, setEditingTitle] = useState(false);
   const [adding, setAdding] = useState(false);
   const [openItem, setOpenItem] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadsBusy, setUploadsBusy] = useState(false);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState<{ title: string; url: string } | null>(null);
 
   /**
    * Seeded only when a *different* lesson is selected.
@@ -67,6 +77,7 @@ export function LessonCanvas({
         downloadUrls: c.downloadUrls ?? [],
         quizId: c.quizId ?? null,
         assignmentId: c.assignmentId ?? null,
+        video: c.video ?? null,
       })),
     );
     setTitle(lesson.title);
@@ -75,22 +86,74 @@ export function LessonCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lesson.id]);
 
-  const { state, savedAt } = useAutosave(blocks, (v) =>
-    save.mutateAsync({
-      lessonId: lesson.id,
-      // `_key` is a local concern; the API would reject the extra property.
-      blocks: v.map(({ _key, ...block }) => block),
-    }),
+  const { state, savedAt } = useAutosave(
+    blocks,
+    (v) =>
+      save.mutateAsync({
+        lessonId: lesson.id,
+        // `_key` and `video` are local/read-only; the API rejects extras.
+        blocks: v.map(({ _key, video, progress, ...block }) => block),
+      }),
+    // An upload creates its item on the server. Saving this list mid-upload
+    // would send an array that does not contain it yet, and the save deletes
+    // items it is not told about — so hold off until the queue is idle.
+    { enabled: !uploadsBusy },
   );
 
   const setBlock = (i: number, patch: Partial<ContentBlock>) =>
     setBlocks((b) => b.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
-  const addItem = (type: ContentType) => {
+  /** An empty row for the teacher to fill in. */
+  const addEmptyItem = (type: ContentType) => {
     const _key = crypto.randomUUID();
     setBlocks((b) => [...b, { _key, type, title: "", body: "", url: "", estimatedMin: 3, isRequired: true, status: "PUBLISHED" }]);
     setOpenItem(_key);
     setAdding(false);
+  };
+
+  const addItem = (type: ContentType) => {
+    if (type === "VIDEO") {
+      // A video starts with a file, so picking Video opens the uploader rather
+      // than an empty row. Pasting a URL is still possible from in there.
+      setUploading(true);
+      setAdding(false);
+      return;
+    }
+    addEmptyItem(type);
+  };
+
+  /**
+   * Take on an item the server created during an upload.
+   *
+   * Without this the next autosave would post a list missing the new item and
+   * the server, which treats the list as the lesson's contents, would delete
+   * the video that had just finished uploading.
+   */
+  const absorbVideo = (video: VideoAsset, item?: { id: string; title: string; order: number }) => {
+    setBlocks((list) => {
+      const existing = list.findIndex((b) => b.id === video.contentItemId);
+      if (existing >= 0) {
+        return list.map((b, i) => (i === existing ? { ...b, video, durationSeconds: video.durationSeconds ?? b.durationSeconds } : b));
+      }
+      return [...list, {
+        _key: video.contentItemId,
+        id: video.contentItemId,
+        type: "VIDEO" as ContentType,
+        title: item?.title ?? "Video",
+        body: "",
+        url: video.url ?? "",
+        estimatedMin: Math.max(1, Math.round((video.durationSeconds ?? 60) / 60)),
+        isRequired: true,
+        status: "PUBLISHED" as const,
+        durationSeconds: video.durationSeconds ?? null,
+        video,
+      }];
+    });
+  };
+
+  const move = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= blocks.length) return;
+    setBlocks((bs) => moved(bs, from, to));
   };
 
   const totalMin = blocks.reduce((a, b) => a + (b.estimatedMin ?? 0), 0);
@@ -152,11 +215,37 @@ export function LessonCanvas({
               const open = openItem === b._key;
               const live = (b.status ?? "PUBLISHED") === "PUBLISHED";
               return (
-                <li key={b._key} className={cn("rounded-2xl border", open ? "border-brand-300" : "border-slate-200")}>
+                <li
+                  key={b._key}
+                  draggable
+                  onDragStart={(e) => { setDragKey(b._key); e.dataTransfer.effectAllowed = "move"; }}
+                  onDragEnd={() => setDragKey(null)}
+                  onDragOver={(e) => { if (dragKey && dragKey !== b._key) e.preventDefault(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (!dragKey) return;
+                    const from = blocks.findIndex((x) => x._key === dragKey);
+                    if (from >= 0) move(from, i);
+                    setDragKey(null);
+                  }}
+                  className={cn(
+                    "rounded-2xl border",
+                    open ? "border-brand-300" : "border-slate-200",
+                    dragKey === b._key && "opacity-50",
+                  )}
+                >
                   <div className="flex flex-wrap items-center gap-2 p-3">
-                    <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", live ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-400")} aria-hidden>
-                      <kind.icon size={15} />
+                    <span className="hidden cursor-grab text-slate-300 sm:block" aria-hidden title="Drag to reorder">
+                      <GripVertical size={14} />
                     </span>
+                    {b.type === "VIDEO" && b.video?.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={b.video.thumbnailUrl} alt="" className="h-8 w-14 shrink-0 rounded-lg object-cover" />
+                    ) : (
+                      <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", live ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-400")} aria-hidden>
+                        <kind.icon size={15} />
+                      </span>
+                    )}
                     <button
                       type="button"
                       className="focus-ring min-w-0 flex-1 rounded text-left"
@@ -164,12 +253,24 @@ export function LessonCanvas({
                       aria-expanded={open}
                     >
                       <span className="block truncate text-sm font-medium">
-                        {b.title || kind.label}
+                        {i + 1}. {b.title || kind.label}
                       </span>
                       <span className="block text-xs text-muted">
-                        {kind.label} · {b.estimatedMin ?? 3} min{b.isRequired === false ? " · optional" : ""}
+                        {b.type === "VIDEO" && b.video?.durationSeconds
+                          ? formatDuration(b.video.durationSeconds)
+                          : `${kind.label} · ${b.estimatedMin ?? 3} min`}
+                        {b.isRequired === false ? " · optional" : ""}
                       </span>
                     </button>
+                    {b.type === "VIDEO" && b.video && <VideoState video={b.video} courseId={course.id} />}
+                    {b.type === "VIDEO" && b.video?.url && b.video.processingStatus === "READY" && (
+                      <button
+                        type="button" className="btn-ghost text-xs"
+                        onClick={() => setPreviewing({ title: b.title || "Video", url: b.video!.url! })}
+                      >
+                        <Play size={13} aria-hidden /> Preview
+                      </button>
+                    )}
                     {!live && <Pill tone="neutral">Draft</Pill>}
                     <button
                       type="button"
@@ -210,9 +311,40 @@ export function LessonCanvas({
           </ol>
         )}
 
-        <button type="button" className="btn-ghost w-full" onClick={() => setAdding(true)}>
-          <Plus size={15} aria-hidden /> Add content
-        </button>
+        {uploading && (
+          <div className="space-y-2 rounded-2xl bg-slate-50 p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Add videos to this lesson</p>
+              <button type="button" className="btn-ghost text-xs" onClick={() => setUploading(false)} disabled={uploadsBusy}>
+                Done
+              </button>
+            </div>
+            <VideoUploader
+              courseId={course.id}
+              lessonId={lesson.id}
+              onUploaded={absorbVideo}
+              onBusyChange={setUploadsBusy}
+            />
+            <p className="text-xs text-muted">
+              Add as many videos as the lesson needs — each becomes its own item, in the order they finish.
+            </p>
+            <button
+              type="button" className="btn-ghost w-full text-xs"
+              onClick={() => { setUploading(false); addEmptyItem("VIDEO"); }}
+            >
+              Already hosted elsewhere? Add a video by URL instead
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-ghost flex-1" onClick={() => setAdding(true)}>
+            <Plus size={15} aria-hidden /> Add content
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => setUploading(true)}>
+            <Film size={15} aria-hidden /> Add video
+          </button>
+        </div>
 
         {setStatus.isError && (
           <p className="text-sm text-danger-600" role="alert">{(setStatus.error as Error).message}</p>
@@ -220,7 +352,54 @@ export function LessonCanvas({
       </CardBody>
 
       {adding && <AddContentModal onPick={addItem} onClose={() => setAdding(false)} />}
+      {previewing && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+          role="dialog" aria-modal="true" aria-label={`Preview of ${previewing.title}`}
+          onClick={() => setPreviewing(null)}
+        >
+          <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between text-white">
+              <p className="truncate text-sm font-medium">{previewing.title}</p>
+              <button type="button" className="btn-ghost text-white" onClick={() => setPreviewing(null)} aria-label="Close preview">
+                <X size={16} aria-hidden />
+              </button>
+            </div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video src={previewing.url} controls autoPlay className="w-full rounded-2xl bg-black" />
+          </div>
+        </div>
+      )}
     </Card>
+  );
+}
+
+/** Upload/processing state for one video, with a retry when it failed. */
+function VideoState({ video, courseId }: { video: NonNullable<ContentBlock["video"]>; courseId: string }) {
+  const retry = useRetryVideoProcessing(courseId);
+  if (video.processingStatus === "READY") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-success-700">
+        <CheckCircle2 size={13} aria-hidden /> Ready
+      </span>
+    );
+  }
+  if (video.processingStatus === "FAILED") {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-1 text-xs text-danger-700" title={video.error ?? undefined}>
+          <AlertTriangle size={13} aria-hidden /> Failed
+        </span>
+        <button type="button" className="btn-ghost text-xs" onClick={() => retry.mutate(video.id)} disabled={retry.isPending}>
+          <RotateCcw size={12} aria-hidden /> Retry
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-muted" aria-live="polite">
+      <Loader2 size={13} className="animate-spin" aria-hidden /> Processing
+    </span>
   );
 }
 

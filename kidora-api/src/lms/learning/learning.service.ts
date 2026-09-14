@@ -1,10 +1,12 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RewardsService } from '../gamification/rewards.service';
 import { CompletionService } from './completion.service';
 import { paginate, skip } from '../common/dto/pagination.dto';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { BrowseCoursesDto, LessonProgressDto } from './dto';
+import type { VideoProgressDto } from '../uploads/dto';
 
 /** Why a course is or is not reachable — the frontend renders this, it does not decide it. */
 export interface AccessDecision {
@@ -27,6 +29,7 @@ export class LearningService {
     private prisma: PrismaService,
     private rewards: RewardsService,
     private completion: CompletionService,
+    private config: ConfigService,
   ) {}
 
   /* ------------------------------------------------------------- browsing */
@@ -251,6 +254,23 @@ export class LearningService {
    */
   async courseDetail(u: AuthUser, courseId: string) {
     const decision = await this.accessDecision(u, courseId);
+
+    // A gated-but-published course still shows its landing page: that is how a
+    // student decides whether to enrol. An unpublished one shows nothing at
+    // all. The decision object alone was not enough — the payload beneath it
+    // still carried the draft's title, description and whole curriculum to
+    // anyone who knew the id.
+    if (!decision.allowed && decision.reason === 'NOT_PUBLISHED') {
+      const owner = await this.prisma.course.findUnique({
+        where: { id: courseId }, select: { teacherId: true, instructors: { select: { userId: true } } },
+      });
+      const mayPreview =
+        owner?.teacherId === u.id
+        || owner?.instructors.some((i) => i.userId === u.id)
+        || ['SCHOOL_ADMIN', 'SCHOOL_LEADER', 'DISTRICT_ADMIN', 'ADMIN', 'SUPER_ADMIN'].includes(u.role);
+      if (!mayPreview) throw new NotFoundException('Course not found.');
+    }
+
     const course = await this.prisma.course.findUniqueOrThrow({
       where: { id: courseId },
       select: {
@@ -361,7 +381,26 @@ export class LearningService {
         // Only published items. An item has its own lifecycle, so a
         // half-written one can sit in a live course — it must not reach a
         // child just because the course around it is published.
-        contents: { where: { status: 'PUBLISHED' }, orderBy: { order: 'asc' } },
+        contents: {
+          where: { status: 'PUBLISHED' },
+          orderBy: { order: 'asc' },
+          include: {
+            // The file and its processing state, so the player can show a
+            // video that is still being processed as not-yet-playable rather
+            // than as a broken <video> tag.
+            video: {
+              select: {
+                id: true, url: true, thumbnailUrl: true, durationSeconds: true, captionsUrl: true,
+                processingStatus: true, allowDownload: true, mimeType: true,
+              },
+            },
+            // Where this student got to in this item.
+            progress: {
+              where: { studentId: u.id },
+              select: { lastPositionSec: true, watchedSeconds: true, completed: true, completedAt: true },
+            },
+          },
+        },
         resources: { select: { id: true, name: true, url: true, kind: true, sizeBytes: true, description: true } },
         quiz: {
           where: { published: true },
@@ -404,6 +443,126 @@ export class LearningService {
   }
 
   /** Autosaved as the student reads. Never marks a lesson complete on its own. */
+  /**
+   * Where the player got to in one content item.
+   *
+   * Completion is decided here, not in the browser. `watchedDeltaSec` is
+   * accumulated but each report is capped at the wall-clock gap the client
+   * could plausibly have watched, so a script cannot post one request
+   * claiming an hour of viewing; and the threshold is measured against
+   * watchedSeconds, not the scrubber position, so dragging to the end
+   * completes nothing.
+   */
+  async saveContentProgress(u: AuthUser, contentItemId: string, dto: VideoProgressDto) {
+    const item = await this.prisma.lessonContent.findUnique({
+      where: { id: contentItemId },
+      select: {
+        id: true, status: true, durationSeconds: true,
+        lesson: { select: { id: true, courseId: true } },
+        video: { select: { durationSeconds: true } },
+      },
+    });
+    if (!item || item.status !== 'PUBLISHED') throw new NotFoundException('That content is not available.');
+    await this.assertEnrolled(u, item.lesson.courseId);
+
+    const duration = item.video?.durationSeconds ?? item.durationSeconds ?? dto.durationSeconds ?? null;
+    const existing = await this.prisma.contentProgress.findUnique({
+      where: { studentId_contentItemId: { studentId: u.id, contentItemId } },
+      select: { watchedSeconds: true, completed: true, updatedAt: true },
+    });
+
+    // Trust the smaller of what the client claims and the time that has
+    // actually elapsed since its last report (plus a little slack for the
+    // reporting interval itself).
+    const elapsed = existing ? Math.ceil((Date.now() - existing.updatedAt.getTime()) / 1000) + 5 : Number.MAX_SAFE_INTEGER;
+    const delta = Math.max(0, Math.min(dto.watchedDeltaSec ?? 0, elapsed));
+    const watched = Math.min((existing?.watchedSeconds ?? 0) + delta, duration ?? Number.MAX_SAFE_INTEGER);
+
+    const threshold = this.config.get<number>('storage.video.completionPercent') ?? 90;
+    const completed = existing?.completed
+      || (duration ? watched >= Math.floor((duration * threshold) / 100) : false);
+
+    const row = await this.prisma.contentProgress.upsert({
+      where: { studentId_contentItemId: { studentId: u.id, contentItemId } },
+      create: {
+        studentId: u.id, contentItemId,
+        lastPositionSec: Math.max(0, Math.min(dto.positionSec, duration ?? dto.positionSec)),
+        watchedSeconds: watched, durationSeconds: duration,
+        completed, completedAt: completed ? new Date() : null,
+      },
+      update: {
+        lastPositionSec: Math.max(0, Math.min(dto.positionSec, duration ?? dto.positionSec)),
+        watchedSeconds: watched,
+        ...(duration ? { durationSeconds: duration } : {}),
+        completed,
+        ...(completed && !existing?.completed ? { completedAt: new Date() } : {}),
+      },
+      select: { lastPositionSec: true, watchedSeconds: true, durationSeconds: true, completed: true, completedAt: true },
+    });
+
+    await this.prisma.courseEnrollment.updateMany({
+      where: { courseId: item.lesson.courseId, studentId: u.id },
+      data: { lastLessonId: item.lesson.id, lastActivityAt: new Date() },
+    });
+
+    // A lesson whose every required item is done is a completed lesson. This
+    // keeps the existing lesson-level rollup, and the course completion rules
+    // on top of it, as the single source of truth.
+    const lessonDone = await this.requiredItemsDone(u.id, item.lesson.id);
+    if (lessonDone) await this.completeLesson(u, item.lesson.id).catch(() => undefined);
+
+    return { ...row, lessonCompleted: lessonDone, completionPercent: threshold };
+  }
+
+  /** Whether every required, published item in a lesson is complete. */
+  private async requiredItemsDone(studentId: string, lessonId: string) {
+    const items = await this.prisma.lessonContent.findMany({
+      where: { lessonId, status: 'PUBLISHED', isRequired: true },
+      select: {
+        id: true, type: true, quizId: true,
+        progress: { where: { studentId }, select: { completed: true } },
+      },
+    });
+    if (items.length === 0) return false;
+
+    for (const item of items) {
+      if (item.type === 'QUIZ' && item.quizId) {
+        // Quizzes already have their own attempt and grading engine; ask it
+        // rather than inventing a second notion of a passed quiz.
+        const passed = await this.prisma.quizAttempt.findFirst({
+          where: { quizId: item.quizId, studentId, passed: true }, select: { id: true },
+        });
+        if (!passed) return false;
+        continue;
+      }
+      if (!item.progress[0]?.completed) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Mark a non-video item (a reading, a PDF) as done. Videos reach completion
+   * through watch time instead.
+   */
+  async markContentComplete(u: AuthUser, contentItemId: string) {
+    const item = await this.prisma.lessonContent.findUnique({
+      where: { id: contentItemId },
+      select: { id: true, status: true, lesson: { select: { id: true, courseId: true } } },
+    });
+    if (!item || item.status !== 'PUBLISHED') throw new NotFoundException('That content is not available.');
+    await this.assertEnrolled(u, item.lesson.courseId);
+
+    await this.prisma.contentProgress.upsert({
+      where: { studentId_contentItemId: { studentId: u.id, contentItemId } },
+      create: { studentId: u.id, contentItemId, completed: true, completedAt: new Date() },
+      update: { completed: true, completedAt: new Date() },
+    });
+
+    const lessonDone = await this.requiredItemsDone(u.id, item.lesson.id);
+    if (lessonDone) await this.completeLesson(u, item.lesson.id).catch(() => undefined);
+    return { ok: true, lessonCompleted: lessonDone };
+  }
+
   async saveProgress(u: AuthUser, lessonId: string, dto: LessonProgressDto) {
     const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, select: { courseId: true } });
     if (!lesson) throw new NotFoundException('Lesson not found.');

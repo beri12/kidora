@@ -142,4 +142,19 @@ export const learningApi = {
       completion: CompletionState;
       certificate: { id: string; code: string | null; issuedAt: string } | null;
     }>(`/learning/lessons/${lessonId}/complete?timeSpentSec=${timeSpentSec}`, {}),
+
+  /** Where the player got to in one item. The server decides completion. */
+  saveContentProgress: (
+    contentItemId: string,
+    dto: { positionSec: number; watchedDeltaSec?: number; durationSeconds?: number },
+  ) =>
+    api.post<{
+      lastPositionSec: number; watchedSeconds: number; durationSeconds: number | null;
+      completed: boolean; completedAt: string | null;
+      lessonCompleted: boolean; completionPercent: number;
+    }>(`/learning/content/${contentItemId}/progress`, dto),
+
+  /** Readings and documents: there is no watch time to measure. */
+  markContentComplete: (contentItemId: string) =>
+    api.post<{ ok: true; lessonCompleted: boolean }>(`/learning/content/${contentItemId}/complete`, {}),
 };

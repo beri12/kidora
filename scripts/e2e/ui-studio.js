@@ -187,12 +187,20 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     check('the reading saved', /Saved|Saving/.test(await text()));
   }
 
-  console.log('\n=== Video editor with timestamp questions ===');
+  console.log('\n=== Video: upload panel, then the editor ===');
   const addAgain = await page.$('button:has-text("Add content")');
   if (addAgain) {
     await addAgain.click();
     await page.waitForTimeout(600);
+    // Picking Video opens the uploader, because a video starts with a file.
     await page.click('[aria-labelledby="add-content-title"] button:has-text("Video")');
+    await page.waitForTimeout(1200);
+    const panel = await text();
+    check('choosing Video offers a real upload panel', /Upload Video/.test(panel) && /MP4, MOV, WEBM/.test(panel), panel.slice(0, 200));
+    check('and it takes several files at once', await page.$eval('input[aria-label="Choose videos to upload"]', (i) => i.multiple));
+
+    // A video already hosted elsewhere still gets an item with the editor.
+    await page.click('button:has-text("Add a video by URL instead")');
     await page.waitForTimeout(1200);
     check('the video editor shows a transcript panel', /Transcript/.test(await text()));
     const addQ = await page.$('button:has-text("Add a question")');

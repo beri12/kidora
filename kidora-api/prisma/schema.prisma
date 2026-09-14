@@ -208,6 +208,8 @@ model User {
   instructorOf    CourseInstructor[] @relation("InstructorOf")
   courseReviews   CourseReview[]     @relation("CourseReviewer")
   coursePublishes CourseVersion[]    @relation("CoursePublisher")
+  uploadSessions  UploadSession[]    @relation("Uploader")
+  contentProgress ContentProgress[]  @relation("ContentProgressStudent")
 
   @@index([schoolId, role])
   @@index([schoolId, gradeId])
@@ -469,6 +471,7 @@ model Course {
   outcomes        LearningOutcome[]
   reviews         CourseReview[]
   versions        CourseVersion[]
+  uploadSessions  UploadSession[]
   prerequisites   CoursePrerequisite[] @relation("CoursePrereqOwner")
   school          School?              @relation(fields: [schoolId], references: [id])
   grade           Grade?               @relation(fields: [gradeId], references: [id])
@@ -541,6 +544,9 @@ model Lesson {
   objectives   String[]           @default([])
   estimatedMin Int                @default(5)
   isRequired   Boolean            @default(true)
+  /// A free-preview lesson: openable before enrolling. The access check reads
+  /// this, so it is a server-side rule, not a badge on the card.
+  isPreview    Boolean            @default(false)
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @default(now()) @updatedAt
   section      Section?           @relation(fields: [sectionId], references: [id])
@@ -589,10 +595,16 @@ model LessonContent {
   /// single source of truth.
   quizId       String?
   assignmentId String?
+  /// Where an EXTERNAL_RESOURCE item points. Kept separate from `url` so a
+  /// link to someone else's site is never mistaken for a file we host.
+  externalUrl  String?
   createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @default(now()) @updatedAt
   lesson       Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   quiz         Quiz?       @relation("QuizItem", fields: [quizId], references: [id], onDelete: Cascade)
   assignment   Assignment? @relation("AssignmentItem", fields: [assignmentId], references: [id], onDelete: Cascade)
+  video        VideoAsset?
+  progress     ContentProgress[]
 
   @@index([lessonId, order])
   @@index([quizId])
@@ -1449,6 +1461,7 @@ enum ContentType {
   QUIZ
   ASSIGNMENT
   PEER_REVIEW
+  EXTERNAL_RESOURCE
 }
 
 enum LessonActivityType {
@@ -1865,4 +1878,134 @@ model CourseVersion {
 
   @@unique([courseId, version])
   @@index([courseId, createdAt])
+}
+
+
+// ---------------------------------------------------------------------------
+// VIDEO + UPLOADS
+// ---------------------------------------------------------------------------
+
+/// How far a byte transfer has got.
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
+/// What has happened to a video after the bytes landed.
+enum VideoProcessingStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+/// The video file behind a LessonContent item of type VIDEO.
+///
+/// A separate row rather than more columns on LessonContent because a video
+/// has a lifecycle of its own — uploading, processing, ready or failed — while
+/// the item it belongs to is just a position in the lesson's running order.
+/// One video per item; a lesson holds as many VIDEO items as the teacher adds,
+/// which is what makes several videos in one lesson work.
+model VideoAsset {
+  id            String @id @default(cuid())
+  contentItemId String @unique
+
+  /// Where the object lives in the bucket. Never taken from user input.
+  storageKey String
+  /// Playback URL. Null until the upload completes.
+  url        String?
+  /// Generated during processing, or uploaded by the teacher.
+  thumbnailUrl String?
+  /// Whether the teacher uploaded the thumbnail themselves, so processing does
+  /// not overwrite a deliberate choice with a generated frame.
+  thumbnailCustom Boolean @default(false)
+
+  durationSeconds Int?
+  fileSizeBytes   BigInt @default(0)
+  mimeType        String
+
+  uploadStatus     UploadStatus          @default(PENDING)
+  processingStatus VideoProcessingStatus @default(PENDING)
+  /// Why processing failed, shown to the teacher so a failure is actionable.
+  error            String?
+
+  captionsUrl   String?
+  transcriptUrl String?
+  /// Whether a student may download the file rather than only stream it.
+  allowDownload Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  contentItem LessonContent @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@index([processingStatus])
+}
+
+/// One attempt to put a file into storage.
+///
+/// Created before any bytes move, so the server has already checked who is
+/// uploading, that they own the course, and that the type and size are allowed
+/// — the browser is told where to send the file only after that.
+model UploadSession {
+  id     String @id @default(cuid())
+  userId String
+
+  /// The course the file is destined for. Ownership is checked against it.
+  courseId String?
+  lessonId String?
+
+  fileName      String
+  fileSizeBytes BigInt
+  mimeType      String
+  /// Server-generated object key. Sanitised, never echoed from the client.
+  storageKey    String @unique
+  /// name + size + course, so re-picking the same file returns the session
+  /// already in flight instead of uploading it twice.
+  fingerprint   String?
+
+  status        UploadStatus @default(PENDING)
+  bytesReceived BigInt       @default(0)
+  /// Single-use secret for the direct-PUT route used by the local driver.
+  token         String       @unique
+  expiresAt     DateTime
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  user   User    @relation("Uploader", fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fingerprint])
+  @@index([userId, status])
+  @@index([courseId])
+  @@index([expiresAt])
+}
+
+/// A student's progress through one content item.
+///
+/// Lesson-level Progress stays the rollup the dashboards read; this is the
+/// per-item detail that makes a tick against each video and "resume at 04:32"
+/// possible. watchedSeconds is deliberately not the same as lastPositionSec:
+/// dragging the scrubber to the end moves the position but watches nothing,
+/// and completion is judged on the former.
+model ContentProgress {
+  id            String @id @default(cuid())
+  studentId     String
+  contentItemId String
+
+  lastPositionSec Int  @default(0)
+  watchedSeconds  Int  @default(0)
+  durationSeconds Int?
+  completed       Boolean   @default(false)
+  completedAt     DateTime?
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  student     User          @relation("ContentProgressStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  contentItem LessonContent @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, contentItemId])
+  @@index([contentItemId])
 }

@@ -6,6 +6,7 @@ import { Roles, STUDENT_ROLES } from '../common/decorators/roles.decorator';
 import { CurrentUser, type AuthUser } from '../common/decorators/current-user.decorator';
 import { LearningService } from './learning.service';
 import { BrowseCoursesDto, LessonProgressDto } from './dto';
+import { VideoProgressDto } from '../uploads/dto';
 import { SCHOOL_ADMIN_ROLES, TEACHER_ROLES } from '../common/decorators/roles.decorator';
 
 /**
@@ -70,6 +71,22 @@ export class LearningController {
   @ApiOperation({ summary: 'Autosave while reading. Percent never moves backwards.' })
   saveProgress(@CurrentUser() u: AuthUser, @Param('lessonId') lessonId: string, @Body() dto: LessonProgressDto) {
     return this.svc.saveProgress(u, lessonId, dto);
+  }
+
+  @Post('content/:contentItemId/progress')
+  @ApiOperation({ summary: 'Where the player got to in one item. The server decides completion, not the browser.' })
+  saveContentProgress(
+    @CurrentUser() u: AuthUser,
+    @Param('contentItemId') contentItemId: string,
+    @Body() dto: VideoProgressDto,
+  ) {
+    return this.svc.saveContentProgress(u, contentItemId, dto);
+  }
+
+  @Post('content/:contentItemId/complete')
+  @ApiOperation({ summary: 'Mark a reading or document done. Videos complete through watch time instead.' })
+  markContentComplete(@CurrentUser() u: AuthUser, @Param('contentItemId') contentItemId: string) {
+    return this.svc.markContentComplete(u, contentItemId);
   }
 
   @Post('lessons/:lessonId/complete')

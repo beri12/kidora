@@ -115,7 +115,22 @@ export class AuthoringService {
             lessons: {
               orderBy: { order: 'asc' },
               include: {
-                contents: { orderBy: { order: 'asc' } },
+                contents: {
+                  orderBy: { order: 'asc' },
+                  // The video's own state, so the builder can show a clip as
+                  // still processing rather than as a playable item.
+                  include: {
+                    video: {
+                      select: {
+                        // fileSizeBytes is deliberately absent: it is a BigInt,
+                        // and JSON.stringify throws on those.
+                        id: true, url: true, thumbnailUrl: true, durationSeconds: true,
+                        mimeType: true, uploadStatus: true, processingStatus: true, error: true,
+                        captionsUrl: true, allowDownload: true,
+                      },
+                    },
+                  },
+                },
                 quiz: { select: { id: true, title: true, published: true, _count: { select: { questions: true } } } },
                 assignments: { select: { id: true, title: true, status: true, dueAt: true } },
                 _count: { select: { resources: true } },
@@ -319,6 +334,22 @@ export class AuthoringService {
     return this.prisma.lesson.findMany({ where: { sectionId }, orderBy: { order: 'asc' } });
   }
 
+  /**
+   * Persist a drag-and-drop reorder of the items inside one lesson. The ids
+   * must be exactly the lesson's own items, so a request cannot drag an item
+   * out of a course the teacher does not own by listing its id here.
+   */
+  async reorderContent(u: AuthUser, lessonId: string, dto: ReorderDto) {
+    const lesson = await this.lessonOr404(lessonId);
+    await this.assertAuthor(u, lesson.courseId);
+    const owned = await this.prisma.lessonContent.findMany({ where: { lessonId }, select: { id: true } });
+    this.assertSameSet(owned.map((c) => c.id), dto.ids, 'content item');
+    await this.prisma.$transaction(
+      dto.ids.map((id, order) => this.prisma.lessonContent.update({ where: { id }, data: { order } })),
+    );
+    return this.prisma.lessonContent.findMany({ where: { lessonId }, orderBy: { order: 'asc' } });
+  }
+
   async duplicateLesson(u: AuthUser, lessonId: string) {
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
@@ -390,19 +421,46 @@ export class AuthoringService {
   }
 
   /** Replace every block on a lesson — what the block editor's save button posts. */
+  /**
+   * Replace a lesson's running order with what the editor is holding.
+   *
+   * Diffed rather than deleted and recreated. The old implementation cleared
+   * every row and inserted fresh ones, which was survivable while an item was
+   * only text — but an item now owns an uploaded VideoAsset and a student's
+   * ContentProgress, both of which cascade from its id. A teacher's autosave
+   * would have destroyed the video they just uploaded, and every student's
+   * position in it. Ids therefore survive an edit, and only items the teacher
+   * actually removed are deleted.
+   */
   async saveContent(u: AuthUser, lessonId: string, dto: SaveContentDto) {
     const lesson = await this.lessonOr404(lessonId);
     await this.assertAuthor(u, lesson.courseId);
+
     return this.prisma.$transaction(async (tx) => {
-      await tx.lessonContent.deleteMany({ where: { lessonId } });
-      if (dto.blocks.length) {
-        // Resolved outside the loop so one bad quizId fails the whole save
-        // rather than leaving the lesson half-written.
-        const rows = await Promise.all(
-          dto.blocks.map(async (b, order) => ({ lessonId, order, ...(await this.createItemData(b, lesson.courseId)) })),
-        );
-        await tx.lessonContent.createMany({ data: rows });
+      const existing = await tx.lessonContent.findMany({ where: { lessonId }, select: { id: true } });
+      const existingIds = new Set(existing.map((e) => e.id));
+      const keptIds = new Set(dto.blocks.map((b) => b.id).filter((id): id is string => Boolean(id) && existingIds.has(id!)));
+
+      const removed = existing.filter((e) => !keptIds.has(e.id)).map((e) => e.id);
+      if (removed.length) await tx.lessonContent.deleteMany({ where: { id: { in: removed } } });
+
+      // Resolved before writing so one bad quizId fails the whole save rather
+      // than leaving the lesson half-written.
+      const prepared = await Promise.all(dto.blocks.map(async (b, order) => ({
+        order,
+        id: b.id && keptIds.has(b.id) ? b.id : null,
+        create: await this.createItemData(b, lesson.courseId),
+        patch: await this.patchItemData(b, lesson.courseId),
+      })));
+
+      for (const row of prepared) {
+        if (row.id) {
+          await tx.lessonContent.update({ where: { id: row.id }, data: { ...row.patch, order: row.order } });
+        } else {
+          await tx.lessonContent.create({ data: { lessonId, order: row.order, ...row.create } });
+        }
       }
+
       return tx.lessonContent.findMany({ where: { lessonId }, orderBy: { order: 'asc' } });
     }, { timeout: 20000 });
   }

@@ -56,6 +56,26 @@ export interface ContentBlock {
 
   /** Its own lifecycle, independent of the course's. */
   status?: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+
+  /** Read-only: the uploaded file behind a VIDEO item, and its state. */
+  video?: {
+    id: string;
+    url: string | null;
+    thumbnailUrl: string | null;
+    durationSeconds: number | null;
+    mimeType: string;
+    uploadStatus: "PENDING" | "UPLOADING" | "COMPLETED" | "FAILED" | "ABORTED";
+    processingStatus: "PENDING" | "PROCESSING" | "READY" | "FAILED";
+    error: string | null;
+    captionsUrl: string | null;
+    allowDownload: boolean;
+  } | null;
+
+  /** Read-only: where this student got to. Only present on the player. */
+  progress?: { lastPositionSec: number; watchedSeconds: number; completed: boolean }[];
+
+  /** Where an EXTERNAL_RESOURCE item points. */
+  externalUrl?: string | null;
 }
 
 export interface AuthoredLesson {
@@ -240,6 +260,8 @@ export const authoringApi = {
   // lesson content
   saveContent: (lessonId: string, blocks: ContentBlock[]) =>
     api.put<ContentBlock[]>(`/authoring/lessons/${lessonId}/content`, { blocks }),
+  reorderContent: (lessonId: string, ids: string[]) =>
+    api.patch<ContentBlock[]>(`/authoring/lessons/${lessonId}/content/reorder`, { ids }),
 
   // quizzes
   listQuizzes: (courseId: string) => api.get<AuthoredQuiz[]>(`/authoring/courses/${courseId}/quizzes`),

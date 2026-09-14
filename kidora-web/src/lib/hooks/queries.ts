@@ -4,6 +4,7 @@ import { studentApi } from "@/lib/api/student";
 import { teacherApi, type AnalyticsFilters } from "@/lib/api/teacher";
 import { schoolApi, type ListQuery } from "@/lib/api/school";
 import { parentApi } from "@/lib/api/parent";
+import { videoApi } from "@/lib/api/uploads";
 import { authoringApi, studioApi, teacherLibraryApi } from "@/lib/api/authoring";
 import { learningApi, type BrowseQuery } from "@/lib/api/learning";
 import { teachingAiApi } from "@/lib/api/ai";
@@ -326,6 +327,52 @@ export const useReorderLessons = (courseId: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ sectionId, ids }: { sectionId: string; ids: string[] }) => authoringApi.reorderLessons(sectionId, ids),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+
+export const useReorderContent = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lessonId, ids }: { lessonId: string; ids: string[] }) => authoringApi.reorderContent(lessonId, ids),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+
+/* ------------------------------------------------------------------ video */
+
+export const useVideoStatus = (videoId: string | null, opts: { enabled?: boolean } = {}) =>
+  useQuery({
+    queryKey: ["video", videoId],
+    queryFn: () => videoApi.status(videoId!),
+    enabled: Boolean(videoId) && opts.enabled !== false,
+    // Poll only while it is still moving; a READY video needs no traffic.
+    refetchInterval: (q) => {
+      const s = q.state.data?.processingStatus;
+      return s === "PENDING" || s === "PROCESSING" ? 2000 : false;
+    },
+  });
+
+export const useUpdateVideo = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ videoId, ...body }: { videoId: string } & Record<string, unknown>) => videoApi.update(videoId, body),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+
+export const useRetryVideoProcessing = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (videoId: string) => videoApi.retry(videoId),
+    onSuccess: () => invalidateCourse(qc, courseId),
+  });
+};
+
+export const useDeleteVideo = (courseId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (videoId: string) => videoApi.remove(videoId),
     onSuccess: () => invalidateCourse(qc, courseId),
   });
 };

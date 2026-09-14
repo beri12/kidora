@@ -1,14 +1,18 @@
 import {
-  BadRequestException, Controller, Post, UploadedFile, UseGuards, UseInterceptors,
+  BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Req,
+  UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles, SCHOOL_ADMIN_ROLES, TEACHER_ROLES } from '../common/decorators/roles.decorator';
 import { CurrentUser, type AuthUser } from '../common/decorators/current-user.decorator';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadsService } from './uploads.service';
+import { CompleteUploadDto, PresignUploadDto, UpdateVideoDto } from './dto';
 
 /** What a teacher may upload, and how large. */
 const ACCEPT: Record<string, { mimes: RegExp; maxBytes: number; label: string }> = {
@@ -50,7 +54,7 @@ function classify(mimetype: string) {
 @Roles(...TEACHER_ROLES, ...SCHOOL_ADMIN_ROLES)
 @Controller('uploads')
 export class UploadsController {
-  constructor(private storage: StorageService, private prisma: PrismaService) {}
+  constructor(private storage: StorageService, private prisma: PrismaService, private uploads: UploadsService) {}
 
   @Post()
   @ApiOperation({ summary: 'Upload one file. Returns the URL to store on the item.' })
@@ -107,5 +111,60 @@ export class UploadsController {
         : match.kind === 'captions' ? 'RESOURCE'
         : 'DOCUMENT',
     };
+  }
+
+  /* ------------------------------------------------------------ video ---- */
+
+  @Post('presign')
+  @ApiOperation({
+    summary: 'Ask for somewhere to put a video. Checks the teacher owns the course, and the type and size, before handing out a URL.',
+  })
+  presign(@CurrentUser() u: AuthUser, @Body() dto: PresignUploadDto) {
+    return this.uploads.presign(u, dto);
+  }
+
+  @Put('direct/:token')
+  @ApiOperation({
+    summary: 'Receive the bytes when storage cannot presign (local disk). Streamed to storage, never buffered.',
+  })
+  async direct(@CurrentUser() u: AuthUser, @Param('token') token: string, @Req() req: Request) {
+    const declared = Number(req.headers['content-length'] ?? 0) || undefined;
+    return this.uploads.receiveDirect(u, token, req, declared);
+  }
+
+  @Post('complete')
+  @ApiOperation({ summary: 'The bytes are in storage: create the content item and its video, and start processing.' })
+  complete(@CurrentUser() u: AuthUser, @Body() dto: CompleteUploadDto) {
+    return this.uploads.complete(u, dto);
+  }
+
+  @Post('sessions/:sessionId/abort')
+  @ApiOperation({ summary: 'Give up on an upload and delete whatever reached storage.' })
+  abort(@CurrentUser() u: AuthUser, @Param('sessionId') sessionId: string) {
+    return this.uploads.abort(u, sessionId);
+  }
+
+  @Get('videos/:videoId/status')
+  @ApiOperation({ summary: 'Upload and processing state, polled by the teacher UI.' })
+  status(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string) {
+    return this.uploads.status(u, videoId);
+  }
+
+  @Patch('videos/:videoId')
+  @ApiOperation({ summary: 'Title, description, duration, thumbnail, captions, download and preview settings.' })
+  updateVideo(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string, @Body() dto: UpdateVideoDto) {
+    return this.uploads.update(u, videoId, dto);
+  }
+
+  @Post('videos/:videoId/retry')
+  @ApiOperation({ summary: 'Run processing again after a failure.' })
+  retry(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string) {
+    return this.uploads.retryProcessing(u, videoId);
+  }
+
+  @Delete('videos/:videoId')
+  @ApiOperation({ summary: 'Delete the video, its object in storage, and the item that held it.' })
+  removeVideo(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string) {
+    return this.uploads.remove(u, videoId);
   }
 }

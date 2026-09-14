@@ -208,6 +208,12 @@ export class AuthoringController {
     return this.authoring.createLesson(u, sectionId, dto);
   }
 
+  @Patch('lessons/:lessonId/content/reorder')
+  @ApiOperation({ summary: 'Persist a drag-and-drop reorder of a lesson\'s content items.' })
+  reorderContent(@CurrentUser() u: AuthUser, @Param('lessonId') lessonId: string, @Body() dto: ReorderDto) {
+    return this.authoring.reorderContent(u, lessonId, dto);
+  }
+
   @Patch('sections/:sectionId/lessons/reorder')
   reorderLessons(@CurrentUser() u: AuthUser, @Param('sectionId') sectionId: string, @Body() dto: ReorderDto) {
     return this.authoring.reorderLessons(u, sectionId, dto);

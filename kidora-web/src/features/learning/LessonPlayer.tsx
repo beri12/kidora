@@ -10,6 +10,7 @@ import {
 } from "@/components/dashboard";
 import { RequireRole } from "@/components/shared/RequireRole";
 import { useCompleteLesson, useLessonPlayer, useSaveLessonProgress } from "@/lib/hooks/queries";
+import { VideoPlayer } from "./VideoPlayer";
 import { ContentBlockView } from "@/features/course-builder/StepsCurriculum";
 import type { CurriculumEntry } from "@/lib/api/learning";
 import { dueLabel } from "@/lib/format";
@@ -146,7 +147,32 @@ function Player({ courseId, lessonId }: { courseId: string; lessonId: string }) 
                   </p>
                 )}
 
-                {lesson.contents.map((b) => <ContentBlockView key={b.id} block={b} />)}
+                {lesson.contents.map((b) => (
+                  b.type === "VIDEO" && b.video?.url && b.video.processingStatus === "READY" ? (
+                    <section key={b.id} className="space-y-1.5">
+                      <h2 className="text-sm font-semibold">{b.title}</h2>
+                      <VideoPlayer
+                        contentItemId={b.id!}
+                        src={b.video.url}
+                        poster={b.video.thumbnailUrl}
+                        captionsUrl={b.video.captionsUrl}
+                        title={b.title || "Video"}
+                        durationSeconds={b.video.durationSeconds}
+                        resumeAt={b.progress?.[0]?.lastPositionSec ?? 0}
+                        completed={b.progress?.[0]?.completed ?? false}
+                        allowDownload={b.video.allowDownload}
+                        onCompleted={() => q.refetch()}
+                      />
+                      {b.body && <p className="whitespace-pre-wrap text-sm text-muted">{b.body}</p>}
+                    </section>
+                  ) : b.type === "VIDEO" && b.video && b.video.processingStatus !== "READY" ? (
+                    <p key={b.id} className="rounded-2xl bg-slate-50 p-4 text-sm text-muted">
+                      {b.title || "This video"} is still being prepared. Check back in a moment.
+                    </p>
+                  ) : (
+                    <ContentBlockView key={b.id} block={b} />
+                  )
+                ))}
               </div>
             </CardBody>
           </Card>
