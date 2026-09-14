@@ -35,6 +35,7 @@ node scripts/e2e/course-flow.js
 node scripts/e2e/lms-workflow.js
 node scripts/e2e/coursera-structure.js
 node scripts/e2e/studio.js
+node scripts/e2e/video.js
 node scripts/e2e/cal-support.js
 node scripts/e2e/settings.js
 node scripts/e2e/ai.js        # needs the AI service running, see below
@@ -51,6 +52,7 @@ npm run dev
 # then, in another terminal, from the repo root
 node scripts/e2e/ui-lms.js
 node scripts/e2e/ui-studio.js
+node scripts/e2e/ui-video.js
 ```
 
 Each script prints `PASS`/`FAIL` per assertion and exits non-zero if anything

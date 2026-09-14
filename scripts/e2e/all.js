@@ -11,7 +11,7 @@ const API = process.env.API_URL || 'http://localhost:4000/api';
 const WEB = process.env.WEB_URL || 'http://localhost:3000';
 
 const API_SUITES = ['roles', 'course-flow', 'lms-workflow', 'coursera-structure', 'studio', 'video', 'cal-support', 'settings', 'ai'];
-const UI_SUITES = ['ui-lms', 'ui-studio'];
+const UI_SUITES = ['ui-lms', 'ui-studio', 'ui-video'];
 
 const up = async (url) => {
   try {
