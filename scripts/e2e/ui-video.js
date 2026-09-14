@@ -45,6 +45,16 @@ const MP4 = Buffer.alloc(120000, 9);
   await page.waitForURL(/\/build/, { timeout: 20000 });
   await page.waitForTimeout(2500);
 
+  console.log('\n=== An empty course leads somewhere ===');
+  // Reported as "I don't see the video to upload": with no module or lesson
+  // there was nowhere for content to go, and the Content step said so without
+  // offering any way out of it.
+  await page.click('nav[aria-label="Course studio steps"] button:has-text("Content")');
+  await page.waitForTimeout(2000);
+  const emptyContent = await text();
+  check('the Content step explains what is missing', /Nowhere to put content yet/.test(emptyContent), emptyContent.slice(0, 200));
+  check('and offers to create a module and a lesson', Boolean(await page.$('button:has-text("Create a module and a lesson")')));
+
   // Module + lesson
   await page.click('nav[aria-label="Course studio steps"] button:has-text("Modules")');
   await page.waitForTimeout(1500);
@@ -59,6 +69,7 @@ const MP4 = Buffer.alloc(120000, 9);
   await page.fill('input[aria-label="New lesson in Python Basics"]', 'Getting Started');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(2500);
+  check('an empty lesson offers Upload videos', /Upload videos/.test(await text()));
 
   console.log('\n=== Uploading three videos through the browser ===');
   await page.click('button:has-text("Add video")');

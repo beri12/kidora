@@ -14,6 +14,59 @@ import { ReorderButtons, moved } from "@/features/course-builder/parts";
 import { LessonCanvas } from "./LessonCanvas";
 import { ModuleSettings, LessonSettings } from "./SettingsPanel";
 
+/**
+ * What a teacher meets when the course is still empty.
+ *
+ * Adding content needs a module *and* a lesson to put it in, and until both
+ * exist there is nowhere for a video to go — which read as "there is no way to
+ * upload a video here". So this makes both in one click and hands back the
+ * lesson, rather than explaining what to build on the left.
+ */
+function StartHere({
+  course, mode, onReady,
+}: { course: CourseTree; mode: "structure" | "content"; onReady: (sectionId: string, lessonId: string) => void }) {
+  const createSection = useCreateSection(course.id);
+  const createLesson = useCreateLesson(course.id);
+  // Stays true once clicked: the mutations settle before the course tree has
+  // refetched, and without this the empty state flashes back for a second as
+  // though the click had done nothing. The component unmounts when the lesson
+  // arrives, so it never needs clearing.
+  const [starting, setStarting] = useState(false);
+  const busy = starting || createSection.isPending || createLesson.isPending;
+  const failed = createSection.isError || createLesson.isError;
+
+  const start = async () => {
+    setStarting(true);
+    try {
+      const section = course.sections[0] ?? await createSection.mutateAsync({ title: "Module 1" });
+      const lesson = section.lessons?.[0] ?? await createLesson.mutateAsync({ sectionId: section.id, title: "Lesson 1" });
+      onReady(section.id, lesson.id);
+    } catch {
+      setStarting(false); // the error is rendered below
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <EmptyState
+        icon={<Layers size={22} />}
+        title={mode === "content" ? "Nowhere to put content yet" : "Start with a module"}
+        body={
+          mode === "content"
+            ? "Videos, readings and quizzes live inside a lesson. Make the first module and lesson and you can start adding them."
+            : "A module is a week of study. Add one on the left, then fill it with lessons."
+        }
+        action={{ label: busy && !failed ? "Creating…" : "Create a module and a lesson", onClick: () => { if (!busy || failed) void start(); } }}
+      />
+      {(createSection.isError || createLesson.isError) && (
+        <p className="text-sm text-danger-600" role="alert">
+          {((createSection.error ?? createLesson.error) as Error).message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** The kinds of material a lesson can hold, as the add-content modal shows them. */
 export const ITEM_KINDS: {
   type: ContentType; label: string; icon: typeof Type; blurb: string; group: "media" | "text" | "assessment";
@@ -100,11 +153,7 @@ export function CurriculumStep({ course, mode }: { course: CourseTree; mode: "st
         ) : (
           <Card>
             <CardBody>
-              <EmptyState
-                icon={<Layers size={22} />}
-                title="Start with a module"
-                body="A module is a week of study. Add one on the left, then fill it with lessons."
-              />
+              <StartHere course={course} mode={mode} onReady={(sectionId, lessonId) => setSelection({ kind: "lesson", sectionId, lessonId })} />
             </CardBody>
           </Card>
         )}

@@ -4,7 +4,7 @@ import {
   AlertTriangle, CheckCircle2, Copy, Eye, EyeOff, Film, GripVertical, Loader2, Play, Plus,
   RotateCcw, Trash2, X,
 } from "lucide-react";
-import { Card, CardBody, EmptyState, Pill, cn } from "@/components/dashboard";
+import { Card, CardBody, Pill, cn } from "@/components/dashboard";
 import {
   useDeleteLesson, useDuplicateLesson, useRetryVideoProcessing, useSaveLessonContent,
   useSetItemStatus, useUpdateLesson,
@@ -203,11 +203,23 @@ export function LessonCanvas({
         </div>
 
         {blocks.length === 0 ? (
-          <EmptyState
-            title="Nothing in this lesson yet"
-            body="Add a video, a reading, a quiz — whatever a student needs to learn this idea."
-            action={{ label: "Add learning material", onClick: () => setAdding(true) }}
-          />
+          <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center">
+            <div className="mx-auto mb-3 grid size-12 place-items-center rounded-2xl bg-brand-50 text-brand-600">
+              <Film size={22} aria-hidden />
+            </div>
+            <p className="text-sm font-semibold text-ink">Nothing in this lesson yet</p>
+            <p className="mx-auto mt-1 max-w-xs text-xs text-muted">
+              Upload one video or several, then add a reading, a PDF or a quiz alongside them.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <button type="button" className="btn-primary" onClick={() => setUploading(true)}>
+                <Film size={15} aria-hidden /> Upload videos
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setAdding(true)}>
+                <Plus size={15} aria-hidden /> Add other content
+              </button>
+            </div>
+          </div>
         ) : (
           <ol className="space-y-2">
             {blocks.map((b, i) => {
