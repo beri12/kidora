@@ -1,5 +1,8 @@
 # End-to-end API tests
 
+> Getting a 404 instead of a passing test? Run `node scripts/doctor.js` — see
+> [../TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
+
 Plain Node scripts (no framework, no install) that drive the running API over
 HTTP the way the browser does. Each one registers its own throwaway accounts,
 so they are safe to re-run and do not depend on seed data.
