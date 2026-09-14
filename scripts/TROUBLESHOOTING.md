@@ -59,6 +59,33 @@ POST /api/uploads   ->  404 "Cannot POST ..."     the route is NOT in the runnin
 A 404 here is never a permissions or CORS problem. It means the process
 answering on port 4000 was built before that route existed.
 
+## Three causes the checks distinguish
+
+**1. An older build is serving.** `/api/health` has no `features` key, or is
+missing the one you need. Kill every process on 4000, rebuild, restart.
+
+**2. The API is a Docker container.** Rebuilding source on the host does
+nothing to a running image — the doctor names the container if one is
+publishing 4000.
+
+```powershell
+cd kidora-api
+docker compose up -d --build
+```
+
+**3. Two servers on one port.** `/api/health` claims `uploads.file` but
+`POST /api/uploads` is 404 — impossible from one process, so two are involved,
+or a proxy is splitting the requests. `netstat -ano | findstr :4000` shows more
+than one PID.
+
+There is also a fourth, which the doctor now reports rather than mistaking for
+a dead server: the API answers on `127.0.0.1` but not on `localhost`, because
+`localhost` resolved to IPv6 `::1`. Point the frontend at the IPv4 literal:
+
+```
+NEXT_PUBLIC_API_URL=http://127.0.0.1:4000/api
+```
+
 ## The usual cause
 
 An old API process still holds port 4000, so the newly started one exited with

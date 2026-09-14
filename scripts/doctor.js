@@ -28,16 +28,32 @@ const ok = (m) => console.log(`  ok    ${m}`);
 const bad = (m, fix) => { console.log(`  BAD   ${m}`); problems.push({ m, fix }); };
 const note = (m) => console.log(`        ${m}`);
 
-const get = async (url, init) => {
+const once = async (url, init) => {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000), ...init });
     const body = await res.text();
     let json = null;
     try { json = JSON.parse(body); } catch { /* not json */ }
-    return { status: res.status, body, json };
+    return { status: res.status, body, json, url };
   } catch (e) {
-    return { status: 0, body: String(e.message ?? e), json: null };
+    return { status: 0, body: String(e.message ?? e), json: null, url };
   }
+};
+
+/**
+ * Ask over 'localhost' and, if nothing answers, over 127.0.0.1.
+ *
+ * On Windows and newer Linux, 'localhost' usually resolves to ::1 first. A
+ * server bound only to IPv4 then looks completely dead over 'localhost' while
+ * answering perfectly over 127.0.0.1 — which this script reported as "nothing
+ * answered", the one wrong answer it could give.
+ */
+const get = async (url, init) => {
+  const first = await once(url, init);
+  if (first.status !== 0 || !/\/\/localhost/.test(url)) return first;
+  const viaIpv4 = await once(url.replace('//localhost', '//127.0.0.1'), init);
+  if (viaIpv4.status !== 0) viaIpv4.ipv6Only = true;
+  return viaIpv4;
 };
 
 /** Newest mtime under a directory, skipping the noisy folders. */
@@ -114,6 +130,11 @@ function newest(dir, skip = /node_modules|\.next|dist|\.git/) {
     bad(`${API}/health returned ${health.status}`, 'Check the API terminal for the real error.');
   } else {
     ok(`the API answers; started ${health.json?.startedAt ?? 'unknown'}`);
+    if (health.ipv6Only) {
+      bad('the API answers on 127.0.0.1 but NOT on localhost — localhost is resolving to IPv6 (::1)',
+        'Either start the API with HOST=0.0.0.0, or point the frontend at the IPv4 literal: '
+        + 'NEXT_PUBLIC_API_URL=http://127.0.0.1:4000/api in kidora-web/.env.local');
+    }
     const features = health.json?.features;
     if (!Array.isArray(features)) {
       bad('the running API reports no feature list, so it predates this branch entirely',
@@ -148,12 +169,39 @@ function newest(dir, skip = /node_modules|\.next|dist|\.git/) {
 
   console.log('\n=== Does POST /api/uploads exist in the running API? ===');
   const probe = await get(`${API}/uploads`, { method: 'POST' });
+  const healthFeatures = health.json?.features;
   if (probe.status === 401) ok('401 Unauthorized — the route EXISTS (rejecting an unauthenticated call is correct)');
   else if (probe.status === 404) {
-    bad(`404 "${probe.json?.error?.message ?? probe.body.slice(0, 60)}" — the route is NOT in the running API`,
-      'This is the stale-build case above. Kill the process on 4000, rebuild, restart.');
+    if (Array.isArray(healthFeatures) && healthFeatures.includes('uploads.file')) {
+      // These two answers cannot come from the same process: one claims the
+      // feature, the other has no route for it.
+      bad('/api/health claims uploads.file but POST /api/uploads is 404 — these are TWO DIFFERENT SERVERS',
+        'Something else is on port 4000 as well, or a proxy is splitting the requests. '
+        + (process.platform === 'win32'
+          ? 'Run: netstat -ano | findstr :4000 — if more than one PID appears, kill them all and start one API.'
+          : 'Run: ss -ltnp | grep 4000 — kill every listener and start one API.'));
+    } else {
+      bad(`404 "${probe.json?.error?.message ?? probe.body.slice(0, 60)}" — the route is NOT in the running API`,
+        'The API is an older build. Kill every process on 4000, then rebuild and restart. '
+        + 'If you run it with Docker, the image is what is stale: docker compose up -d --build');
+    }
   } else if (probe.status === 0) note('skipped — the API is not answering');
   else note(`returned ${probe.status}; not 404, so the route exists`);
+
+  console.log('\n=== Is the API running in Docker? ===');
+  let docker = '';
+  try {
+    docker = execFileSync('docker', ['ps', '--format', '{{.Image}} {{.Ports}} {{.CreatedAt}}'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString();
+  } catch { /* docker not installed or not running, which is fine */ }
+  const onFourThousand = docker.split('\n').filter((l) => l.includes('4000'));
+  if (onFourThousand.length === 0) {
+    ok('no container is publishing port 4000, so the API is the process you started by hand');
+  } else {
+    bad(`a container is serving port 4000:\n        ${onFourThousand.join('\n        ')}`,
+      'Rebuilding source on the host does nothing to a running image. Run: cd kidora-api && docker compose up -d --build');
+  }
 
   console.log('\n=== Frontend base URL ===');
   const envLocal = path.join(WEB_DIR, '.env.local');
@@ -187,6 +235,21 @@ function newest(dir, skip = /node_modules|\.next|dist|\.git/) {
     });
   }
   console.log('======================================\n');
+
+  console.log('===== paste this if you need help =====');
+  console.log(JSON.stringify({
+    platform: process.platform,
+    commit: (() => { try { return execFileSync('git', ['log', '-1', '--format=%h'], { cwd: ROOT }).toString().trim(); } catch { return '?'; } })(),
+    distBuiltAt: fs.existsSync(mainJs) ? new Date(fs.statSync(mainJs).mtimeMs).toISOString() : null,
+    apiStatus: health.status,
+    apiStartedAt: health.json?.startedAt ?? null,
+    apiFeatures: health.json?.features ?? null,
+    uploadsProbe: probe.status,
+    uploadsBody: probe.body.slice(0, 120),
+    dockerOn4000: onFourThousand,
+    problems: problems.map((p) => p.m),
+  }, null, 2));
+  console.log('=======================================\n');
 
   if (FIX) {
     console.log('--fix: regenerating the Prisma client and rebuilding the API…\n');
