@@ -12,6 +12,36 @@ export interface UploadedFile {
 }
 
 /**
+ * Turn a failed upload response into something a teacher can act on.
+ *
+ * The API's own 404 body says "Cannot POST /api/uploads", and echoing that
+ * into the drop zone told nobody anything — it looks like the upload is
+ * broken when the real meaning is that the API answering does not have the
+ * route, which in practice means it is running an older build. So the status
+ * is translated here, and the URL that failed is named, because that is the
+ * one fact needed to tell a stale API from a misconfigured base URL.
+ */
+export function uploadErrorMessage(status: number, responseText: string, url: string): string {
+  let body: { error?: { message?: string | string[] }; message?: string } | null = null;
+  try { body = JSON.parse(responseText); } catch { /* storage errors are XML, or empty */ }
+  const raw = body?.error?.message ?? body?.message;
+  const server = Array.isArray(raw) ? raw[0] : raw;
+
+  if (status === 404) {
+    const origin = (() => { try { return new URL(url).origin; } catch { return url; } })();
+    return `The API at ${origin} has no upload endpoint (404 on POST ${url}). `
+      + 'It is almost certainly running an older build: stop it, run "npm run build" in kidora-api, and start it again. '
+      + 'Run "node scripts/doctor.js" to confirm.';
+  }
+  if (status === 401) return 'Your session has expired. Sign in again and retry the upload.';
+  if (status === 403) return server || "You don't have permission to upload to this course.";
+  if (status === 413) return server || 'That file is larger than the server allows.';
+  if (status === 0) return `Could not reach the API at ${url}. Check that it is running.`;
+  if (status >= 500) return server || `The server failed while storing the file (${status}).`;
+  return server || `Upload failed (${status}).`;
+}
+
+/**
  * Upload one file with progress.
  *
  * XMLHttpRequest rather than fetch: fetch still cannot report upload progress
@@ -26,8 +56,9 @@ export function uploadFile(
     const form = new FormData();
     form.append("file", file);
 
+    const url = `${API_BASE_URL}/uploads`;
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${API_BASE_URL}/uploads`);
+    xhr.open("POST", url);
 
     const token = getAuthToken();
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -37,20 +68,21 @@ export function uploadFile(
     });
 
     xhr.addEventListener("load", () => {
-      let body: unknown = null;
-      try { body = JSON.parse(xhr.responseText); } catch { /* handled below */ }
-      if (xhr.status >= 200 && xhr.status < 300 && body) {
-        resolve(body as UploadedFile);
-        return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as UploadedFile);
+          return;
+        } catch {
+          reject(new Error('The server accepted the file but sent back something unreadable.'));
+          return;
+        }
       }
-      // The API nests its message; fall back to something a teacher can act on.
-      const nested = (body as { error?: { message?: string | string[] }; message?: string } | null);
-      const raw = nested?.error?.message ?? nested?.message;
-      const message = Array.isArray(raw) ? raw[0] : raw;
-      reject(new Error(message || `Upload failed (${xhr.status}).`));
+      // eslint-disable-next-line no-console
+      console.error(`Upload failed: POST ${url} -> ${xhr.status}`, xhr.responseText.slice(0, 300));
+      reject(new Error(uploadErrorMessage(xhr.status, xhr.responseText, url)));
     });
 
-    xhr.addEventListener("error", () => reject(new Error("Upload failed. Check your connection and try again.")));
+    xhr.addEventListener("error", () => reject(new Error(uploadErrorMessage(0, "", url))));
     xhr.addEventListener("abort", () => reject(new DOMException("Upload cancelled", "AbortError")));
 
     opts.signal?.addEventListener("abort", () => xhr.abort());
@@ -222,15 +254,11 @@ export function putBytes(
 
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
-      let message = `Video upload failed (${xhr.status}).`;
-      try {
-        const body = JSON.parse(xhr.responseText) as { error?: { message?: string | string[] }; message?: string };
-        const raw = body?.error?.message ?? body?.message;
-        if (raw) message = Array.isArray(raw) ? raw[0] : raw;
-      } catch { /* storage errors come back as XML; the status is enough */ }
-      reject(new Error(message));
+      // eslint-disable-next-line no-console
+      console.error(`Video upload failed: PUT ${ticket.uploadUrl} -> ${xhr.status}`, xhr.responseText.slice(0, 300));
+      reject(new Error(uploadErrorMessage(xhr.status, xhr.responseText, ticket.uploadUrl)));
     });
-    xhr.addEventListener("error", () => reject(new Error("Video upload failed. Please try again.")));
+    xhr.addEventListener("error", () => reject(new Error(uploadErrorMessage(0, "", ticket.uploadUrl))));
     xhr.addEventListener("timeout", () => reject(new Error("The upload timed out. Please try again.")));
     xhr.addEventListener("abort", () => reject(new DOMException("Upload cancelled", "AbortError")));
     opts.signal?.addEventListener("abort", () => xhr.abort());

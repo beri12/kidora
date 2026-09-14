@@ -106,6 +106,31 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     check('the thumbnail uploaded', /python\.png/.test(await text()));
   }
 
+  // A stale API answers this route with its own 404, and echoing that body
+  // into the drop zone told a teacher nothing. Force it and read the message.
+  await page.route('**/api/uploads', (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    route.fulfill({
+      status: 404, contentType: 'application/json',
+      body: JSON.stringify({ statusCode: 404, path: '/api/uploads', error: { message: 'Cannot POST /api/uploads', error: 'Not Found', statusCode: 404 } }),
+    });
+  });
+  const thumbAgain = await page.$('input[type="file"][aria-label="Course thumbnail file"]');
+  if (thumbAgain) {
+    await thumbAgain.setInputFiles({ name: 'again.png', mimeType: 'image/png', buffer: PNG });
+    await page.waitForTimeout(3000);
+    const failure = await text();
+    check('a 404 from the API explains itself instead of echoing "Cannot POST"',
+      /has no upload endpoint/.test(failure) && /older build/.test(failure) && !/^Cannot POST \/api\/uploads$/m.test(failure),
+      (failure.split('\n').find((l) => /upload endpoint|Cannot POST/.test(l)) ?? '').slice(0, 200));
+  }
+  await page.unroute('**/api/uploads');
+  // That 404 was this test's own fixture, so drop it from the collectors the
+  // console check reads at the end — otherwise the suite fails on the error it
+  // deliberately caused.
+  errors.length = 0;
+  failed.length = 0;
+
   // Save Draft must really save: reload and the values have to come back.
   await page.click('button:has-text("Save Draft")');
   await page.waitForTimeout(2500);
