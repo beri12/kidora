@@ -1,6 +1,6 @@
 // lib/api/http.ts
 import axios, { AxiosError } from "axios";
-import { env } from "@/lib//env";
+import { env } from "@/lib/env";
 
 export const http = axios.create({
   baseURL: env.apiBaseUrl,

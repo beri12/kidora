@@ -7,12 +7,17 @@ const STEPS = [
   { key: 'advanceInfo', label: 'Advance Information', href: '/dashboard/teacher/create-course/advance-info' },
 ] as const;
 
+type StepKey = (typeof STEPS)[number]['key'];
+
 export function WizardStepper({
   current,
   stepStatus,
 }: {
-  current: 'basicInfo' | 'curriculum' | 'advanceInfo';
-  stepStatus: Record<string, boolean>;
+  current: StepKey;
+  // Keyed by the three known steps rather than Record<string, boolean>: the
+  // store's StepStatus is an interface with fixed keys, and an interface has
+  // no index signature, so it is not assignable to Record<string, boolean>.
+  stepStatus: Record<StepKey, boolean>;
 }) {
   return (
     <div className="flex items-center gap-2 mb-8">

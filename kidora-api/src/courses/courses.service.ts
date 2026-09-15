@@ -170,9 +170,16 @@ export class CoursesService {
 
 
   async listPublished() {
+  // The catalog card renders the subject badge and the lesson count, so
+  // both relations are included here. Without them every card fell back to
+  // a generic "Course" badge and "0 lessons".
   return this.prisma.course.findMany({
     where: { published: true },
     orderBy: { createdAt: 'desc' },
+    include: {
+      subject: { select: { id: true, slug: true, name: true, accent: true } },
+      _count: { select: { lessons: true } },
+    },
   });
 }
 

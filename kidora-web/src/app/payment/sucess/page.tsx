@@ -1,13 +1,13 @@
 // app/payment/success/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import confetti from "canvas-confetti";
 import { getCheckoutSessionStatus } from "@/lib/payment";
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessInner() {
   const params = useSearchParams();
   const router = useRouter();
   const sessionId = params.get("session_id");
@@ -81,5 +81,16 @@ export default function PaymentSuccessPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// useSearchParams() opts a route into client-side rendering, so Next requires
+// it to sit under a Suspense boundary or the static export of this page
+// fails. Same wrapper pattern as the register and onboarding routes.
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <PaymentSuccessInner />
+    </Suspense>
   );
 }
