@@ -1,9 +1,22 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Pin the root so the emitted tree is dist/main.js, not dist/src/main.js.
+    // Without this the compiler infers the common root of every included
+    // file; the prisma/*.ts scripts below used to be part of that set, which
+    // pushed the root up to the project directory and moved the entry point
+    // to dist/src/main.js — so `npm run start:prod` (node dist/main) died
+    // with MODULE_NOT_FOUND even though `npm run build` reported success.
+    "rootDir": "./src"
+  },
   "exclude": [
     "node_modules",
     "test",
     "dist",
+    "scripts",
+    // Seed/backfill scripts are executed with ts-node (see the "db:seed"
+    // and "prisma.seed" entries in package.json), never from dist/.
+    "prisma",
     "**/*spec.ts"
   ]
 }

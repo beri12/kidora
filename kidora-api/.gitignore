@@ -2,4 +2,13 @@ node_modules
 dist
 .env
 *.log
-uploads
+
+# Runtime upload storage (STORAGE_DIR), at the package root only.
+#
+# Anchored with a leading slash on purpose. The previous bare `uploads`
+# pattern matched a directory of that name at ANY depth, so it also
+# swallowed src/uploads/ — the uploads module itself. That is why
+# app.module.ts imported './uploads/uploads.module' while no such file
+# existed in the repository: `git add` silently skipped it, and every
+# fresh clone failed to compile with TS2307.
+/uploads/
