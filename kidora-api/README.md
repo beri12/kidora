@@ -95,6 +95,34 @@ npm run start:dev        # http://localhost:4000/api  · docs /api/docs
 Seeded logins (password `password123`): `admin@ / teacher@ / parent@ / child@kidora.com`
 MailHog UI: http://localhost:8025
 
+## Testing the whole sign-up chain
+
+`scripts/e2e-auth-flow.sh` walks every step against a running API and asserts on each
+one — phone sign-in, the OTP limits, the role step, verification, pending, approval,
+the invitation shortcut, refusal, the upload rules and the role guards:
+
+```bash
+npm run start:dev            # in another terminal
+npm run test:e2e:flow        # or ./scripts/e2e-auth-flow.sh
+```
+
+It needs the dev SMS fallback (no `TWILIO_SID`), because it reads each code out of the
+`devCode` field. It also paces itself: `/auth/phone/start` allows 6 requests a minute
+per IP and the run needs about ten, so it waits between them — expect a few minutes.
+It exits non-zero if anything fails.
+
+Every run uses its own block of numbers (`+2519<run><n>`), so repeated runs never
+collide and nothing has to be cleaned up in between. To remove them all later:
+
+```sql
+DELETE FROM "OrgAccessRequest" WHERE "userId"  IN (SELECT id FROM "User" WHERE phone LIKE '+2519%');
+DELETE FROM "AuditLog"         WHERE "actorId" IN (SELECT id FROM "User" WHERE phone LIKE '+2519%');
+DELETE FROM "User"             WHERE phone LIKE '+2519%';
+```
+
+The web app has a companion that clicks the same chain in a real browser —
+`kidora-web/scripts/walkthrough.mjs`.
+
 ## Run (full stack)
 ```bash
 docker compose up --build

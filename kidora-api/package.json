@@ -1,7 +1,7 @@
 {
   "name": "kidora-api",
   "version": "1.0.0",
-  "description": "Kidora Education Platform API — AI-powered learning ecosystem for children, parents, teachers, schools, and districts.",
+  "description": "Kidora Education Platform API \u2014 AI-powered learning ecosystem for children, parents, teachers, schools, and districts.",
   "private": true,
   "scripts": {
     "build": "nest build",
@@ -16,6 +16,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e:flow": "./scripts/e2e-auth-flow.sh",
     "lint": "eslint \"src/**/*.ts\""
   },
   "prisma": {

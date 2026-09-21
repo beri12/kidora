@@ -65,6 +65,28 @@ list is fully keyboard-driven.
 people write `0911 22 33 44` for a number that is `+251911223344` internationally, and
 typing that trunk prefix is the most common way to have an OTP delivered nowhere.
 
+## Testing the sign-up chain in a browser
+
+`scripts/walkthrough.mjs` clicks the whole chain the way a person would — phone, code,
+role, verification, pending, approval, dashboard — asserting on each step and writing
+screenshots as it goes:
+
+```bash
+npm run dev                  # this app
+# ...and the API, in another terminal, with Twilio unconfigured
+npm run walkthrough
+```
+
+It needs an account that is already `SUPER_ADMIN` to play the reviewer; point
+`ADMIN_PHONE` at one and promote it once:
+
+```sql
+UPDATE "User" SET role = 'SUPER_ADMIN', "roleConfirmed" = true WHERE phone = '+2519...';
+```
+
+The API side has its own end-to-end script covering the same chain plus the rate limits
+and upload rules — `kidora-api/scripts/e2e-auth-flow.sh`.
+
 ## Backend integration
 `lib/axios.ts` creates one client pointed at `NEXT_PUBLIC_API_URL`, attaches the JWT from
 `stores/auth.store.ts` on every request, and on a 401 performs a single refresh + replay.

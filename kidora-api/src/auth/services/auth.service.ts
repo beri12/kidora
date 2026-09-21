@@ -141,11 +141,21 @@ export class AuthService {
     return { ok: true };
   }
 
+  /** Roles allowed to see their organisation's join code, i.e. to invite staff. */
+  private static readonly CODE_HOLDERS: Role[] = [
+    Role.SCHOOL_ADMIN, Role.SCHOOL_LEADER, Role.DISTRICT_ADMIN, Role.ADMIN, Role.SUPER_ADMIN,
+  ];
+
   async me(userId: string) {
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
         subscription: true,
+        // The organisation this account belongs to. Its join code is the
+        // thing an approved leader hands to colleagues, so it travels with
+        // the profile — but only to the roles entitled to hand it out.
+        school: { select: { id: true, name: true, slug: true, joinCode: true } },
+        district: { select: { id: true, name: true, joinCode: true } },
         // The newest access request, so the client knows whether to show a
         // dashboard, the "pending approval" screen or the decision.
         orgRequests: {
@@ -158,9 +168,15 @@ export class AuthService {
         },
       },
     });
+    const mayHoldCode = u ? AuthService.CODE_HOLDERS.includes(u.role) : false;
+    const strip = <T extends { joinCode?: string | null } | null | undefined>(org: T) =>
+      org ? { ...org, joinCode: mayHoldCode ? org.joinCode : undefined } : null;
+
     return this.sanitize({
       ...u,
       subscriptionPlan: u?.subscription?.plan,
+      school: strip(u?.school),
+      district: strip(u?.district),
       orgRequest: u?.orgRequests?.[0] ?? null,
       orgRequests: undefined,
     });

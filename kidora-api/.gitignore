@@ -9,3 +9,4 @@ dist
 # UploadsModule that app.module.ts imports — so the API would not compile
 # for anyone who cloned the repo.
 /uploads
+dump.rdb
