@@ -1,11 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
 import { initials } from '@/lib/utils';
 import { ROLE_HOME, SIGNUP_ROLES } from '@/constants';
-import { SignupModal } from '@/components/shared/SignupModal';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { useI18n } from '@/lib/i18n';
 
@@ -28,11 +26,9 @@ const AUDIENCES = [
 const DEFAULT_ROLE_META = { name: 'Kidora', emoji: '🐵' };
 
 export function Navbar() {
-  const router = useRouter();
   const { user, logout } = useAuthStore();
   const { t } = useI18n();
   const [productsOpen, setProductsOpen] = useState(false);
-  const [signupOpen, setSignupOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);   // mobile drawer
   const [mobProducts, setMobProducts] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false); // desktop avatar dropdown
@@ -40,7 +36,6 @@ export function Navbar() {
   const profileRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => { setMenuOpen(false); setMobProducts(false); };
-  const openSignup = () => { closeMenu(); setSignupOpen(true); };
 
   const roleMeta = user ? SIGNUP_ROLES.find((r) => r.key === user.role) ?? DEFAULT_ROLE_META : null;
 
@@ -155,7 +150,7 @@ export function Navbar() {
           ) : (
             <>
               <Link href="/login" className="px-3 py-2 rounded-xl font-body-x text-sm text-brand-700">{t('nav.login')}</Link>
-              <button onClick={() => setSignupOpen(true)} className="px-4 py-2 rounded-xl font-display font-extrabold text-sm text-white bg-gradient-to-br from-brand-600 to-brand-800">{t('nav.signup')}</button>
+              <Link href="/join" className="px-4 py-2 rounded-xl font-display font-extrabold text-sm text-white bg-gradient-to-br from-brand-600 to-brand-800">{t('nav.signup')}</Link>
             </>
           )}
         </nav>
@@ -239,7 +234,7 @@ export function Navbar() {
               ) : (
                 <div className="flex flex-col gap-2 pt-1">
                   <Link href="/login" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl font-display font-extrabold text-brand-700 bg-brand-100">{t('nav.login')}</Link>
-                  <button onClick={openSignup} className="w-full px-4 py-3 rounded-xl font-display font-extrabold text-white bg-gradient-to-br from-brand-600 to-brand-800">{t('nav.signup')}</button>
+                  <Link href="/join" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl font-display font-extrabold text-white bg-gradient-to-br from-brand-600 to-brand-800">{t('nav.signup')}</Link>
                 </div>
               )}
             </div>
@@ -247,7 +242,6 @@ export function Navbar() {
         </>
       )}
 
-      <SignupModal open={signupOpen} onClose={() => setSignupOpen(false)} onPick={(role) => { setSignupOpen(false); router.push(`/register?role=${role}`); }} />
     </header>
   );
 }

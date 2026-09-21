@@ -35,10 +35,23 @@ datasource db {
 
 model User {
   id           String  @id @default(cuid())
-  email        String  @unique
+  // Email is optional: a Kidora account can be created from a phone number
+  // alone (phone + OTP), from a social provider, or from email + password.
+  email        String? @unique
   passwordHash String?
   name         String
   role         Role    @default(PARENT)
+
+  // Phone-first authentication. `phone` is stored in E.164 (+251911223344)
+  // so it is a stable unique key regardless of how the user typed it.
+  phone         String? @unique
+  phoneVerified Boolean @default(false)
+
+  // False until the user has told us who they are (parent / teacher / school
+  // leader / district leader / student). Phone and social sign-ups land with
+  // the default PARENT role but `roleConfirmed = false`, so the web app knows
+  // to show the "How will you use Kidora?" step instead of a dashboard.
+  roleConfirmed Boolean @default(false)
 
   avatarColor String  @default("#8B5CF6")
   avatarUrl   String?
@@ -46,7 +59,9 @@ model User {
   points Int @default(0)
   streak Int @default(0)
 
-  googleId String? @unique
+  googleId   String? @unique
+  facebookId String? @unique
+  tiktokId   String? @unique
 
   mfaEnabled  Boolean  @default(false)
   mfaSecret   String?

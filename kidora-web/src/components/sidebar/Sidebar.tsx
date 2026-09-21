@@ -4,6 +4,14 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/types';
 
+const SCHOOL_NAV = [
+  { href: '/dashboard/school', label: 'Overview', icon: '📊' },
+  { href: '/school/teachers', label: 'Teachers', icon: '🍎' },
+  { href: '/school/students', label: 'Students', icon: '👥' },
+  { href: '/school/classes', label: 'Classes', icon: '🏫' },
+  { href: '/school/analytics', label: 'Analytics', icon: '📈' },
+];
+
 const NAV: Record<Role, { href: string; label: string; icon: string }[]> = {
   ADMIN: [
     { href: '/dashboard/admin', label: 'Overview', icon: '📊' },
@@ -27,6 +35,14 @@ const NAV: Record<Role, { href: string; label: string; icon: string }[]> = {
     { href: '/courses', label: 'Courses', icon: '📚' },
     { href: '/games', label: 'Games', icon: '🎮' },
     { href: '/dashboard/child/rewards', label: 'Rewards', icon: '🏆' },
+  ],
+  SCHOOL_ADMIN: SCHOOL_NAV,
+  // A school leader sees the same school-level menu as a school admin.
+  SCHOOL_LEADER: SCHOOL_NAV,
+  DISTRICT_ADMIN: [
+    { href: '/dashboard/district', label: 'Overview', icon: '📊' },
+    { href: '/school/analytics', label: 'Analytics', icon: '📈' },
+    { href: '/school/billing', label: 'Billing', icon: '💳' },
   ],
 };
 

@@ -10,9 +10,11 @@ import { Role } from '@prisma/client';
 export class TokenService {
   constructor(private jwt: JwtService, private config: ConfigService, private prisma: PrismaService) {}
 
-  async issue(user: { id: string; email: string; role: Role }) {
+  // `email` is nullable: an account created from a phone number has none, and
+  // the JWT simply carries `email: null` for it.
+  async issue(user: { id: string; email?: string | null; role: Role }) {
     const jti = randomUUID();
-    const payload = { sub: user.id, email: user.email, role: user.role, jti };
+    const payload = { sub: user.id, email: user.email ?? null, role: user.role, jti };
     const accessToken = await this.jwt.signAsync(payload, { secret: this.config.get('auth.accessSecret'), expiresIn: this.config.get<number>('auth.accessTtl') });
     const refreshToken = await this.jwt.signAsync(payload, { secret: this.config.get('auth.refreshSecret'), expiresIn: this.config.get<number>('auth.refreshTtl') });
     const tokenHash = await bcrypt.hash(refreshToken, 10);

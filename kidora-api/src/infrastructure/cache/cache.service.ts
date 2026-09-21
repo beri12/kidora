@@ -34,6 +34,22 @@ export class CacheService implements OnModuleDestroy {
 
   async del(key: string): Promise<void> { await this.client.del(key); }
 
+  /** Seconds left on a key, or 0 when it has no TTL / does not exist. */
+  async ttl(key: string): Promise<number> {
+    const t = await this.client.ttl(key);
+    return t > 0 ? t : 0;
+  }
+
+  /**
+   * Atomic counter with an expiry set on first write — the building block for
+   * "at most N OTP requests per hour" style limits. Returns the new count.
+   */
+  async incrWithTtl(key: string, ttl: number): Promise<number> {
+    const count = await this.client.incr(key);
+    if (count === 1) await this.client.expire(key, ttl);
+    return count;
+  }
+
   async blacklist(jti: string, ttl: number) { await this.client.set('bl:' + jti, '1', 'EX', ttl); }
 
   // Fail open rather than hanging the whole request if Redis is down.

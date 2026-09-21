@@ -41,7 +41,7 @@ export class PaypalService {
       create: { userId, plan, status: 'active', provider: PaymentProvider.paypal, renewsAt: new Date(Date.now() + 30 * 864e5) },
     });
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (user) this.email.sendSubscriptionSuccess(user.email, user.name, PLAN_CATALOG[plan as 'family' | 'school']?.name ?? plan);
+    if (user?.email) this.email.sendSubscriptionSuccess(user.email, user.name, PLAN_CATALOG[plan as 'family' | 'school']?.name ?? plan);
     return { status: capture.result.status };
   }
 }

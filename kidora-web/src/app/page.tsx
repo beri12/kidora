@@ -51,7 +51,7 @@
 //           <h1 data-hero className="font-display font-extrabold text-brand-900 leading-[1.02]" style={{ fontSize: 'clamp(40px,6vw,68px)' }}>Where learning feels like play!</h1>
 //           <p data-hero className="font-bold text-brand-600 text-xl mt-4 max-w-lg">Animated lessons, interactive games and quizzes across Math, Reading, Science &amp; Coding. Loved by 45 million families.</p>
 //           <div data-hero className="flex gap-4 mt-8 flex-wrap">
-//             <Link href="/register?role=CHILD"><Button size="lg">Start Learning →</Button></Link>
+//             <Link href="/join?role=CHILD"><Button size="lg">Start Learning →</Button></Link>
 //             <Link href="/kid/learn"><Button size="lg" variant="outline">🗺️ Explore Worlds</Button></Link>
 //           </div>
 //         </div>
@@ -130,7 +130,7 @@
 //           <h2 className="font-display font-extrabold text-4xl">Let&rsquo;s get growing</h2>
 //           <p className="font-bold opacity-90 mt-2 mb-6">Free for teachers, forever. Family plans start free too.</p>
 //           <div className="flex gap-3 justify-center flex-wrap">
-//             <Link href="/register?role=CHILD"><Button size="lg" variant="grass">Get started</Button></Link>
+//             <Link href="/join?role=CHILD"><Button size="lg" variant="grass">Get started</Button></Link>
 //             <Link href="/plus"><Button size="lg" variant="outline" className="!text-white !border-white/60 !bg-white/10">See Kidora Plus</Button></Link>
 //           </div>
 //         </div>
@@ -333,14 +333,14 @@ export default function Home() {
         <p data-hero className="font-display font-extrabold text-xl text-brand-900 mt-11 mb-4">Get started as a...</p>
         <div data-hero className="flex gap-5 justify-center flex-wrap">
           {ROLES.map((r) => (
-            <Link key={r.role} href={'/register?role=' + r.role} data-role-badge className="flex flex-col items-center gap-2.5 w-[104px] hover:-translate-y-1.5 transition-transform">
+            <Link key={r.role} href={'/join?role=' + r.role} data-role-badge className="flex flex-col items-center gap-2.5 w-[104px] hover:-translate-y-1.5 transition-transform">
               <div className="w-[88px] h-[88px] rounded-full bg-brand-100 border-[3px] border-brand-100 grid place-items-center text-4xl shadow-card">{r.emoji}</div>
               <span className="font-black text-sm text-brand-900">{r.label}</span>
             </Link>
           ))}
         </div>
         <div data-hero className="mt-9 flex flex-col items-center gap-3.5">
-          <Link href="/register" className="bg-brand-600 hover:-translate-y-0.5 transition-transform text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn">Sign up</Link>
+          <Link href="/join" className="bg-brand-600 hover:-translate-y-0.5 transition-transform text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn">Sign up</Link>
           <div className="font-extrabold text-brand-400 text-[15px]"><span className="text-brand-500">{'\u2605\u2605\u2605\u2605\u2605'}</span> 1 million+ 5-star reviews</div>
         </div>
       </section>
@@ -485,7 +485,7 @@ export default function Home() {
         <div data-grow>
           <div className="text-6xl animate-bob inline-block">{'\uD83C\uDF31'}</div>
           <h2 data-split-words className="font-display font-extrabold text-brand-900 mt-2 mb-7" style={{ fontSize: 'clamp(36px,5vw,56px)' }}>Let{"'"}s get growing</h2>
-          <Link href="/register" className="bg-brand-600 text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn inline-block hover:-translate-y-0.5 transition-transform">Get started</Link>
+          <Link href="/join" className="bg-brand-600 text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn inline-block hover:-translate-y-0.5 transition-transform">Get started</Link>
         </div>
       </section>
 

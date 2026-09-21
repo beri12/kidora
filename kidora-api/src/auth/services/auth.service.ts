@@ -5,7 +5,8 @@ import { EmailService } from '../../infrastructure/email/email.service';
 import { CacheService } from '../../infrastructure/cache/cache.service';
 import { TokenService } from './token.service';
 import { MfaService } from './mfa.service';
-import { RegisterDto, LoginDto } from '../dto/auth.dto';
+import { RegisterDto, LoginDto, SELF_SIGNUP_ROLES } from '../dto/auth.dto';
+import { SelectRoleDto } from '../dto/phone-auth.dto';
 import { Role } from '@prisma/client';
 
 const MAX_FAILED = 5;
@@ -26,12 +27,44 @@ export class AuthService {
   async register(dto: RegisterDto) {
     if (await this.prisma.user.findUnique({ where: { email: dto.email } })) throw new ConflictException('Email already registered');
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const role = dto.role === Role.TEACHER ? Role.TEACHER : Role.PARENT; // never self-register as ADMIN
-    const user = await this.prisma.user.create({ data: { name: dto.name, email: dto.email, passwordHash, role } });
+    // Honour whichever role the form picked, but only from the self-signup
+    // allow-list — ADMIN / SUPER_ADMIN / CHILD can never be self-assigned.
+    const role = (SELF_SIGNUP_ROLES as readonly Role[]).includes(dto.role as Role) ? (dto.role as Role) : Role.PARENT;
+    const user = await this.prisma.user.create({
+      data: { name: dto.name, email: dto.email, passwordHash, role, roleConfirmed: true },
+    });
     await this.prisma.subscription.create({ data: { userId: user.id, plan: 'free' } });
-    this.email.sendWelcome(user.email, user.name);
+    if (user.email) this.email.sendWelcome(user.email, user.name);
     const t = await this.tokens.issue(user);
     return { user: this.sanitize(user), ...t };
+  }
+
+  /**
+   * "How will you use Kidora?" — answered after a phone or social sign-up,
+   * where the account starts on the default PARENT role with roleConfirmed
+   * false. Only self-signup roles are accepted (the DTO enforces that), and
+   * the answer is recorded once so a later call can't silently escalate a
+   * confirmed account into another role.
+   */
+  async selectRole(userId: string, dto: SelectRoleDto) {
+    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!existing) throw new UnauthorizedException('Account not found');
+    if (existing.roleConfirmed) throw new ForbiddenException('Role has already been set for this account');
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        role: dto.role as Role,
+        roleConfirmed: true,
+        ...(dto.name?.trim() ? { name: dto.name.trim() } : {}),
+      },
+      include: { subscription: true },
+    });
+
+    // The role lives inside the JWT, so hand back a fresh pair rather than
+    // leaving the client with a token that still says PARENT.
+    const t = await this.tokens.issue(user);
+    return { user: this.sanitize({ ...user, subscriptionPlan: user.subscription?.plan }), ...t };
   }
 
   async login(dto: LoginDto, ip = '', ua = '') {

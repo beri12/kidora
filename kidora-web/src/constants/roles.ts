@@ -145,3 +145,51 @@ export const ONBOARDING: Record<string, OnboardStep[]> = {
   ],
   ADMIN: [DONE],
 };
+
+// ---- "How will you use Kidora?" ----
+//
+// Shown once, right after a phone or social sign-in, for accounts the API
+// flags with `needsRole`. Keys are the backend Role enum values that
+// self-signup accepts — CHILD and ADMIN are deliberately absent: children
+// join through a parent or a school, admins are created by an admin.
+export interface UseCase {
+  key: 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_LEADER' | 'STUDENT';
+  /** The Role value sent to POST /auth/role, or null when it is not self-serve. */
+  role: 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN' | null;
+  label: string;
+  emoji: string;
+  blurb: string;
+  /** Tailwind gradient stops for the card's icon tile. */
+  bg: string;
+  shadow: string;
+}
+
+export const USE_CASES: UseCase[] = [
+  {
+    key: 'PARENT', role: 'PARENT', label: "I'm a Parent", emoji: '👨‍👩‍👧',
+    blurb: "Follow your child's progress and manage the family plan.",
+    bg: 'from-grass-400 to-grass-700', shadow: 'rgba(21,128,61,.45)',
+  },
+  {
+    key: 'TEACHER', role: 'TEACHER', label: "I'm a Teacher", emoji: '👩‍🏫',
+    blurb: 'Run your classes, assignments and grades.',
+    bg: 'from-brand-400 to-brand-700', shadow: 'rgba(109,40,217,.45)',
+  },
+  {
+    key: 'SCHOOL_LEADER', role: 'SCHOOL_LEADER', label: "I'm a School Leader", emoji: '🏫',
+    blurb: 'Oversee teachers, classes and school-wide results.',
+    bg: 'from-sun-400 to-sun-700', shadow: 'rgba(180,83,9,.45)',
+  },
+  {
+    key: 'DISTRICT_LEADER', role: 'DISTRICT_ADMIN', label: "I'm a District Leader", emoji: '🏢',
+    blurb: 'Bring Kidora to every school in your district.',
+    bg: 'from-coral-400 to-coral-600', shadow: 'rgba(225,29,72,.45)',
+  },
+  {
+    // Students never create their own account: a parent adds a child, or a
+    // school imports its roster and hands out a student code.
+    key: 'STUDENT', role: null, label: "I'm a Student", emoji: '🧒',
+    blurb: 'Ask a parent or your school for your Kidora code.',
+    bg: 'from-brand-300 to-brand-500', shadow: 'rgba(139,92,246,.4)',
+  },
+];

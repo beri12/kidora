@@ -1,9 +1,28 @@
-export type Role = 'CHILD' | 'PARENT' | 'TEACHER' | 'ADMIN' | 'SCHOOL_ADMIN' | 'DISTRICT_ADMIN';
+export type Role =
+  | 'CHILD'
+  | 'PARENT'
+  | 'TEACHER'
+  | 'ADMIN'
+  | 'SCHOOL_ADMIN'
+  | 'SCHOOL_LEADER'
+  | 'DISTRICT_ADMIN';
+
+/** The roles a visitor may pick for themselves in the "How will you use Kidora?" step. */
+export type SignupRoleKey = Extract<
+  Role,
+  'PARENT' | 'TEACHER' | 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'
+>;
 
 export interface User {
   id: string;
   name: string;
-  email: string;
+  /** Null on accounts created from a phone number alone. */
+  email: string | null;
+  /** E.164, present once a number has been verified. */
+  phone?: string | null;
+  phoneVerified?: boolean;
+  /** False until the account has answered "How will you use Kidora?". */
+  roleConfirmed?: boolean;
   role: Role;
   points: number;
   streak: number;
@@ -15,6 +34,27 @@ export interface AuthResponse {
   user: User;
   accessToken: string;
   refreshToken: string;
+}
+
+/** POST /auth/phone/start */
+export interface PhoneStartResponse {
+  sent: boolean;
+  /** Masked for display, e.g. "+2519****344". */
+  phone: string;
+  /** Seconds the code stays valid. */
+  expiresIn: number;
+  /** Seconds before "Resend code" is allowed again. */
+  resendIn: number;
+  /** Only present in development, when Twilio is not configured. */
+  devCode?: string;
+}
+
+/** POST /auth/phone/verify */
+export interface PhoneVerifyResponse extends AuthResponse {
+  /** True when this verification created the account. */
+  isNewUser: boolean;
+  /** True while the account still has to pick a role. */
+  needsRole: boolean;
 }
 
 export interface Subject {

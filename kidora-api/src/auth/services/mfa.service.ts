@@ -10,10 +10,19 @@ export class MfaService {
   constructor(private prisma: PrismaService, private config: ConfigService) {}
 
   // Generate a TOTP secret + QR code for the authenticator app.
-  async setup(userId: string, email: string) {
+  //
+  // The label is what the authenticator app shows next to the code. An email
+  // address is the friendliest option, but a phone-only account has none, so
+  // fall back to the verified phone number and finally to the account id.
+  async setup(userId: string, email?: string | null) {
     const secret = authenticator.generateSecret();
     const issuer = this.config.get<string>('auth.mfaIssuer')!;
-    const otpauth = authenticator.keyuri(email, issuer, secret);
+    let label = email;
+    if (!label) {
+      const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, phone: true } });
+      label = u?.email ?? u?.phone ?? userId;
+    }
+    const otpauth = authenticator.keyuri(label, issuer, secret);
     await this.prisma.user.update({ where: { id: userId }, data: { mfaSecret: secret } });
     const qr = await QRCode.toDataURL(otpauth);
     return { secret, qr };

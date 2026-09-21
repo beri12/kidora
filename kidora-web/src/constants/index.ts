@@ -8,6 +8,7 @@ export const ROLE_HOME: Record<Role, string> = {
   PARENT: '/dashboard/parent',
   CHILD: '/dashboard/child',
   SCHOOL_ADMIN: '/dashboard/school',
+  SCHOOL_LEADER: '/dashboard/school',
   DISTRICT_ADMIN: '/dashboard/district',
 };
 
@@ -18,6 +19,7 @@ export const PERMISSIONS: Record<Role, string[]> = {
   PARENT: ['child:view', 'subscription:manage', 'report:view'],
   CHILD: ['lesson:learn', 'game:play', 'quiz:take', 'badge:earn'],
   SCHOOL_ADMIN: ['school:manage', 'teacher:view', 'student:view', 'report:view'],
+  SCHOOL_LEADER: ['school:manage', 'teacher:view', 'student:view', 'report:view'],
   DISTRICT_ADMIN: ['district:manage', 'school:view', 'report:view'],
 };
 

@@ -4,70 +4,63 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-import { AuthShell } from '@/components/auth/AuthShell';
-import { OtpInput } from '@/components/auth/OtpInput';
 import { PhoneField, usePhoneNumber } from '@/components/auth/PhoneField';
-import { RolePicker } from '@/components/auth/RolePicker';
+import { OtpInput } from '@/components/auth/OtpInput';
+import { AuthShell } from '@/components/auth/AuthShell';
 import { SocialButtons } from '@/components/auth/SocialButtons';
+import { RolePicker } from '@/components/auth/RolePicker';
 import { Button } from '@/components/ui/button';
-import { FieldError, Input, Label } from '@/components/ui/input';
-import { ROLE_HOME } from '@/constants';
 import { isValidE164 } from '@/constants/countries';
-import { loginSchema } from '@/features/auth/schema';
-import { apiErrorMessage } from '@/lib/api-error';
+import { ROLE_HOME } from '@/constants';
 import { useAuthStore } from '@/stores/auth.store';
+import { apiErrorMessage } from '@/lib/api-error';
 import type { Role } from '@/types';
 
-type Step = 'phone' | 'code' | 'password' | 'role';
+type Step = 'phone' | 'code' | 'role';
 
 /**
- * Sign in. Phone + code is the default path; email and password are still
- * there for accounts that were created that way, one tap behind "Use email
- * instead".
+ * The single entry point for Kidora: one phone number, one code, in or out.
+ *
+ * Nobody picks "PARENT / TEACHER / SCHOOL" before they have an account any
+ * more — the role question comes after sign-in, and only for accounts that
+ * have not answered it yet (`needsRole`).
  */
-function LoginInner() {
+function JoinInner() {
   const router = useRouter();
   const params = useSearchParams();
 
-  const { login, startPhone, verifyPhone } = useAuthStore();
+  const { startPhone, verifyPhone } = useAuthStore();
   const phone = usePhoneNumber();
 
   const [step, setStep] = useState<Step>('phone');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [invalid, setInvalid] = useState(false);
-
-  // Phone path
-  const [code, setCode] = useState('');
   const [masked, setMasked] = useState('');
   const [devCode, setDevCode] = useState('');
   const [resendIn, setResendIn] = useState(0);
 
-  // Email path
-  const [form, setForm] = useState({ email: '', password: '' });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // `next` (and the legacy `redirect`) survive the whole flow.
-  const next = params.get('next') ?? params.get('redirect');
+  // Where to land once the account is ready. `?next=` survives the whole flow
+  // so a deep link that bounced to /join returns the visitor to it.
+  const next = params.get('next');
 
   const goHome = useCallback(
     (role: Role) => router.replace(next || ROLE_HOME[role] || '/'),
     [next, router],
   );
 
+  // Resend countdown.
   useEffect(() => {
     if (resendIn <= 0) return;
     const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [resendIn]);
 
-  function flashInvalid(ms = 600) {
-    setInvalid(true);
-    setTimeout(() => setInvalid(false), ms);
-  }
+  const valid = isValidE164(phone.e164);
 
   async function sendCode(resend = false) {
-    if (!isValidE164(phone.e164) || busy) return;
+    if (!valid || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -79,12 +72,14 @@ function LoginInner() {
       setStep('code');
     } catch (e) {
       setError(apiErrorMessage(e, resend ? "We couldn't resend the code." : "We couldn't send the code."));
-      flashInvalid(500);
+      setInvalid(true);
+      setTimeout(() => setInvalid(false), 500);
     } finally {
       setBusy(false);
     }
   }
 
+  // Guards against the OTP box firing `onComplete` twice (autofill + typing).
   const verifying = useRef(false);
 
   async function submitCode(value: string) {
@@ -98,44 +93,25 @@ function LoginInner() {
       else goHome(res.user.role);
     } catch (e) {
       setError(apiErrorMessage(e, 'That code is not right.'));
+      setInvalid(true);
       setCode('');
-      flashInvalid();
+      setTimeout(() => setInvalid(false), 600);
     } finally {
       verifying.current = false;
       setBusy(false);
     }
   }
 
-  async function submitPassword(e: React.FormEvent) {
-    e.preventDefault();
-    const parsed = loginSchema.safeParse(form);
-    if (!parsed.success) {
-      setErrors(Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message])));
-      return;
-    }
-    setErrors({});
-    setBusy(true);
-    try {
-      const user = await login(form.email, form.password);
-      goHome(user.role);
-    } catch (err) {
-      setErrors({ password: apiErrorMessage(err, 'Invalid email or password') });
-      flashInvalid();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <AuthShell
-      title={step === 'role' ? 'Almost there!' : 'Welcome back 👋'}
-      subtitle={step === 'role' ? 'One question and you are in.' : 'Your next adventure is waiting.'}
+      title={step === 'role' ? 'Almost there!' : 'Welcome to Kidora 🌍'}
+      subtitle={step === 'role' ? 'One question and you are in.' : 'Learn. Play. Grow.'}
     >
       {step === 'phone' && (
         <div key="phone" className="animate-slide-in-right">
-          <h1 className="font-display text-3xl font-extrabold text-brand-900">Sign in</h1>
+          <h1 className="font-display text-3xl font-extrabold text-brand-900">Join Kidora</h1>
           <p className="mt-1 font-body font-bold text-brand-500">
-            We&apos;ll text you a code — no password needed.
+            Enter your phone number — we&apos;ll text you a code. No password to remember.
           </p>
 
           <div className="mt-6">
@@ -151,24 +127,21 @@ function LoginInner() {
             {error && <p className="mt-2 animate-slide-down font-body-x text-[13px] text-coral-600">{error}</p>}
           </div>
 
-          <Button size="lg" className="mt-4 w-full" disabled={!isValidE164(phone.e164) || busy} onClick={() => sendCode()}>
-            {busy ? 'Sending code…' : 'Send me a code →'}
+          <Button
+            size="lg"
+            className="mt-4 w-full"
+            disabled={!valid || busy}
+            onClick={() => sendCode()}
+          >
+            {busy ? 'Sending code…' : 'Continue →'}
           </Button>
 
           <SocialButtons disabled={busy} next={next} />
 
-          <button
-            type="button"
-            onClick={() => { setStep('password'); setError(''); }}
-            className="mt-4 w-full font-body font-extrabold text-brand-500 transition hover:text-brand-700"
-          >
-            Use email and password instead
-          </button>
-
-          <p className="mt-5 text-center font-body font-bold text-brand-500">
-            New to Kidora?{' '}
-            <Link href={next ? `/join?next=${encodeURIComponent(next)}` : '/join'} className="text-brand-800 underline">
-              Create an account
+          <p className="mt-6 text-center font-body font-bold text-brand-500">
+            Already have an account?{' '}
+            <Link href={next ? `/login?next=${encodeURIComponent(next)}` : '/login'} className="text-brand-800 underline">
+              Sign in
             </Link>
           </p>
         </div>
@@ -186,7 +159,7 @@ function LoginInner() {
 
           <h1 className="font-display text-3xl font-extrabold text-brand-900">Enter your code</h1>
           <p className="mt-1 font-body font-bold text-brand-500">
-            Sent to <span className="text-brand-800">{masked || phone.e164}</span>
+            We sent a 6-digit code to <span className="text-brand-800">{masked || phone.e164}</span>
           </p>
 
           <div className="mt-7">
@@ -200,7 +173,9 @@ function LoginInner() {
             />
           </div>
 
-          {error && <p className="mt-3 animate-slide-down text-center font-body-x text-[13px] text-coral-600">{error}</p>}
+          {error && (
+            <p className="mt-3 animate-slide-down text-center font-body-x text-[13px] text-coral-600">{error}</p>
+          )}
 
           {devCode && (
             <p className="mt-3 rounded-xl bg-sun-300/40 px-3 py-2 text-center font-body-x text-[12px] text-sun-700">
@@ -208,7 +183,12 @@ function LoginInner() {
             </p>
           )}
 
-          <Button size="lg" className="mt-5 w-full" disabled={code.length < 6 || busy} onClick={() => submitCode(code)}>
+          <Button
+            size="lg"
+            className="mt-5 w-full"
+            disabled={code.length < 6 || busy}
+            onClick={() => submitCode(code)}
+          >
             {busy ? 'Checking…' : 'Verify & continue →'}
           </Button>
 
@@ -224,49 +204,6 @@ function LoginInner() {
         </div>
       )}
 
-      {step === 'password' && (
-        <form key="password" onSubmit={submitPassword} className={'animate-slide-in-right ' + (invalid ? 'animate-shake' : '')}>
-          <button
-            type="button"
-            onClick={() => { setStep('phone'); setErrors({}); }}
-            className="mb-4 inline-flex items-center gap-1 font-body font-extrabold text-brand-500 transition hover:-translate-x-0.5 hover:text-brand-700"
-          >
-            ← Back to phone sign-in
-          </button>
-
-          <h1 className="font-display text-3xl font-extrabold text-brand-900">Sign in with email</h1>
-          <p className="mt-1 font-body font-bold text-brand-500">For accounts created with a password.</p>
-
-          <div className="mt-6">
-            <Label>Email</Label>
-            <Input
-              type="email"
-              autoComplete="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="you@family.com"
-            />
-            <FieldError>{errors.email}</FieldError>
-          </div>
-
-          <div className="mt-3">
-            <Label>Password</Label>
-            <Input
-              type="password"
-              autoComplete="current-password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder="••••••••"
-            />
-            <FieldError>{errors.password}</FieldError>
-          </div>
-
-          <Button type="submit" size="lg" className="mt-6 w-full" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in →'}
-          </Button>
-        </form>
-      )}
-
       {step === 'role' && (
         <div key="role" className="animate-slide-in-right">
           <RolePicker onDone={goHome} initialRole={params.get('role')} />
@@ -276,10 +213,10 @@ function LoginInner() {
   );
 }
 
-export default function LoginPage() {
+export default function JoinPage() {
   return (
     <Suspense fallback={null}>
-      <LoginInner />
+      <JoinInner />
     </Suspense>
   );
 }

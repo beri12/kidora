@@ -23,8 +23,51 @@ module.exports = {
         marquee: { from: { transform: 'translateX(0)' }, to: { transform: 'translateX(-50%)' } },
         bob: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-12px)' } },
         fadeup: { from: { opacity: '0', transform: 'translateY(24px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+
+        // --- auth flow motion -------------------------------------------
+        // Cards, rows and steps entering.
+        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+        'slide-up': { from: { opacity: '0', transform: 'translateY(12px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+        'slide-down': { from: { opacity: '0', transform: 'translateY(-10px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+        // Steps sliding sideways as the wizard advances / goes back.
+        'slide-in-right': { from: { opacity: '0', transform: 'translateX(32px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
+        'slide-in-left': { from: { opacity: '0', transform: 'translateX(-32px)' }, to: { opacity: '1', transform: 'translateX(0)' } },
+        // A filled OTP box, a selected country, a picked role.
+        pop: { '0%': { transform: 'scale(.85)' }, '60%': { transform: 'scale(1.06)' }, '100%': { transform: 'scale(1)' } },
+        // Wrong code.
+        shake: {
+          '0%,100%': { transform: 'translateX(0)' },
+          '20%': { transform: 'translateX(-8px)' },
+          '40%': { transform: 'translateX(8px)' },
+          '60%': { transform: 'translateX(-5px)' },
+          '80%': { transform: 'translateX(5px)' },
+        },
+        // Decorative background blobs.
+        float: { '0%,100%': { transform: 'translateY(0) rotate(0deg)' }, '50%': { transform: 'translateY(-18px) rotate(6deg)' } },
+        // Loading skeleton / button sheen.
+        shimmer: { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(200%)' } },
+        // Pulsing halo around the active input.
+        halo: { '0%,100%': { boxShadow: '0 0 0 0 rgba(139,92,246,.45)' }, '50%': { boxShadow: '0 0 0 12px rgba(139,92,246,0)' } },
+        // Success check drawing itself.
+        'draw-check': { from: { strokeDashoffset: '48' }, to: { strokeDashoffset: '0' } },
+        // Slow drift on the gradient panel.
+        'gradient-pan': { '0%,100%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' } },
       },
-      animation: { bob: 'bob 2.4s ease-in-out infinite' },
+      animation: {
+        bob: 'bob 2.4s ease-in-out infinite',
+        'fade-in': 'fade-in .35s ease-out both',
+        'slide-up': 'slide-up .45s cubic-bezier(.22,1,.36,1) both',
+        'slide-down': 'slide-down .3s cubic-bezier(.22,1,.36,1) both',
+        'slide-in-right': 'slide-in-right .4s cubic-bezier(.22,1,.36,1) both',
+        'slide-in-left': 'slide-in-left .4s cubic-bezier(.22,1,.36,1) both',
+        pop: 'pop .25s cubic-bezier(.34,1.56,.64,1) both',
+        shake: 'shake .45s ease-in-out',
+        float: 'float 7s ease-in-out infinite',
+        shimmer: 'shimmer 1.6s ease-in-out infinite',
+        halo: 'halo 1.8s ease-out infinite',
+        'draw-check': 'draw-check .5s ease-out .1s both',
+        'gradient-pan': 'gradient-pan 12s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

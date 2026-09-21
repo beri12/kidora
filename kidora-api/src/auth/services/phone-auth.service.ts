@@ -1,0 +1,188 @@
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import { Role } from '@prisma/client';
+import { PrismaService } from '../../database/prisma.service';
+import { CacheService } from '../../infrastructure/cache/cache.service';
+import { SmsService } from '../../infrastructure/sms/sms.service';
+import { TokenService } from './token.service';
+import { E164, PhoneStartDto, PhoneVerifyDto } from '../dto/phone-auth.dto';
+
+const OTP_TTL = 300; // the code is valid for 5 minutes
+const RESEND_COOLDOWN = 45; // seconds before "Resend code" works again
+const MAX_ATTEMPTS = 5; // wrong codes allowed per issued OTP
+const MAX_SENDS_PER_HOUR = 5; // per phone number
+const MAX_SENDS_PER_IP_HOUR = 20; // per source IP
+
+/** Nest has no built-in 429 exception, so this is the one-liner equivalent. */
+const tooManyRequests = (message: string) =>
+  new HttpException(message, HttpStatus.TOO_MANY_REQUESTS);
+
+interface OtpRecord {
+  hash: string;
+  attempts: number;
+  issuedAt: number;
+}
+
+@Injectable()
+export class PhoneAuthService {
+  private logger = new Logger('PhoneAuth');
+
+  constructor(
+    private prisma: PrismaService,
+    private cache: CacheService,
+    private sms: SmsService,
+    private tokens: TokenService,
+  ) {}
+
+  // --- helpers ------------------------------------------------------------
+
+  /** Strips spaces, dashes and brackets, keeps the leading "+". */
+  static normalize(raw: string): string {
+    const digits = (raw || '').replace(/[^\d+]/g, '');
+    const e164 = digits.startsWith('+') ? '+' + digits.slice(1).replace(/\D/g, '') : '+' + digits.replace(/\D/g, '');
+    if (!E164.test(e164)) throw new BadRequestException('Enter a valid phone number');
+    return e164;
+  }
+
+  /** +251911223344 → +2519****344, safe to show in the UI and in logs. */
+  static mask(phone: string): string {
+    if (phone.length < 7) return phone;
+    return phone.slice(0, 5) + '*'.repeat(Math.max(phone.length - 8, 2)) + phone.slice(-3);
+  }
+
+  private otpKey(phone: string) { return `otp:phone:${phone}`; }
+  private cooldownKey(phone: string) { return `otp:cooldown:${phone}`; }
+  private sendCountKey(phone: string) { return `otp:sends:${phone}`; }
+  private ipCountKey(ip: string) { return `otp:ip:${ip}`; }
+
+  private sanitize(u: any) {
+    const { passwordHash, mfaSecret, backupCodes, ...rest } = u;
+    return rest;
+  }
+
+  // --- step 1: send the code ---------------------------------------------
+
+  /**
+   * Sends a one-time code by SMS. The response never reveals whether the
+   * number already has an account — that would turn this endpoint into a
+   * "is this person on Kidora?" oracle. The client shows the same OTP screen
+   * either way and only learns which flow it is in after a correct code.
+   */
+  async start(dto: PhoneStartDto, ip = '') {
+    const phone = PhoneAuthService.normalize(dto.phone);
+
+    const cooling = await this.cache.ttl(this.cooldownKey(phone));
+    if (cooling > 0) {
+      throw tooManyRequests(`Please wait ${cooling}s before requesting another code`);
+    }
+
+    const sends = await this.cache.incrWithTtl(this.sendCountKey(phone), 3600);
+    if (sends > MAX_SENDS_PER_HOUR) {
+      throw tooManyRequests('Too many codes requested for this number. Try again later.');
+    }
+    if (ip) {
+      const perIp = await this.cache.incrWithTtl(this.ipCountKey(ip), 3600);
+      if (perIp > MAX_SENDS_PER_IP_HOUR) {
+        throw tooManyRequests('Too many codes requested. Try again later.');
+      }
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const record: OtpRecord = { hash: await bcrypt.hash(code, 10), attempts: 0, issuedAt: Date.now() };
+    await this.cache.set(this.otpKey(phone), record, OTP_TTL);
+    await this.cache.set(this.cooldownKey(phone), 1, RESEND_COOLDOWN);
+
+    try {
+      await this.sms.sendOtp(phone, code);
+    } catch {
+      await this.cache.del(this.otpKey(phone));
+      await this.cache.del(this.cooldownKey(phone));
+      throw new ServiceUnavailableException("We couldn't send the code. Check the number and try again.");
+    }
+
+    // Without Twilio credentials the SMS is only logged, so hand the code back
+    // to the caller — that keeps the flow usable in local development. Never
+    // in production, whatever the SMS configuration is.
+    const devCode = !this.sms.enabled && process.env.NODE_ENV !== 'production' ? code : undefined;
+    if (devCode) this.logger.warn(`Twilio is not configured — OTP for ${PhoneAuthService.mask(phone)} is ${code}`);
+
+    return {
+      sent: true,
+      phone: PhoneAuthService.mask(phone),
+      expiresIn: OTP_TTL,
+      resendIn: RESEND_COOLDOWN,
+      ...(devCode ? { devCode } : {}),
+    };
+  }
+
+  // --- step 2: verify and sign in ----------------------------------------
+
+  /**
+   * Verifies the code and signs the user in, creating the account on first
+   * use. Returns `isNewUser` / `needsRole` so the web app knows whether to
+   * show "How will you use Kidora?" or go straight to the dashboard.
+   */
+  async verify(dto: PhoneVerifyDto, ip = '', ua = '') {
+    const phone = PhoneAuthService.normalize(dto.phone);
+    const key = this.otpKey(phone);
+
+    const record = await this.cache.get<OtpRecord>(key);
+    if (!record) throw new BadRequestException('That code has expired. Request a new one.');
+
+    if (record.attempts >= MAX_ATTEMPTS) {
+      await this.cache.del(key);
+      throw tooManyRequests('Too many wrong codes. Request a new one.');
+    }
+
+    if (!(await bcrypt.compare(dto.code, record.hash))) {
+      const left = OTP_TTL - Math.floor((Date.now() - record.issuedAt) / 1000);
+      // Keep the original expiry: a wrong guess must not extend the window.
+      await this.cache.set(key, { ...record, attempts: record.attempts + 1 }, Math.max(left, 1));
+      throw new BadRequestException('That code is not right. Try again.');
+    }
+
+    await this.cache.del(key);
+    await this.cache.del(this.sendCountKey(phone));
+
+    let user = await this.prisma.user.findUnique({ where: { phone }, include: { subscription: true } });
+    const isNewUser = !user;
+
+    if (!user) {
+      const created = await this.prisma.user.create({
+        data: {
+          phone,
+          phoneVerified: true,
+          name: dto.name?.trim() || 'Kidora member',
+          role: (dto.role as Role) ?? Role.PARENT,
+          roleConfirmed: Boolean(dto.role),
+        },
+      });
+      await this.prisma.subscription.create({ data: { userId: created.id, plan: 'free' } });
+      user = await this.prisma.user.findUnique({ where: { id: created.id }, include: { subscription: true } });
+    } else if (!user.phoneVerified || (dto.name && user.name === 'Kidora member')) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { phoneVerified: true, ...(dto.name ? { name: dto.name.trim() } : {}) },
+        include: { subscription: true },
+      });
+    }
+
+    await this.prisma.loginHistory.create({ data: { userId: user!.id, success: true, ip, userAgent: ua } });
+    await this.prisma.user.update({ where: { id: user!.id }, data: { failedLogins: 0, lockedUntil: null } });
+
+    const t = await this.tokens.issue(user!);
+    return {
+      user: this.sanitize({ ...user!, subscriptionPlan: user!.subscription?.plan }),
+      ...t,
+      isNewUser,
+      needsRole: !user!.roleConfirmed,
+    };
+  }
+}

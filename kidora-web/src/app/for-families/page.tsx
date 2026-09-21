@@ -20,7 +20,7 @@ export default function FamiliesLanding() {
         <h1 className="font-display font-extrabold text-5xl leading-[1.05] animate-[fadeup_.6s_both]">Where classrooms become communities</h1>
         <p className="font-bold text-brand-600 text-lg mt-4 max-w-2xl mx-auto animate-[fadeup_.6s_.1s_both]">Loved by more than 45 million students and parents. Follow your child&rsquo;s journey every step of the way.</p>
         <div className="flex gap-3 mt-6 justify-center flex-wrap animate-[fadeup_.6s_.15s_both]">
-          <Link href="/register?role=PARENT"><Button size="lg">Get started free 🎉</Button></Link>
+          <Link href="/join?role=PARENT"><Button size="lg">Get started free 🎉</Button></Link>
           <Link href="/plus"><Button size="lg" variant="outline">Explore Kidora Plus</Button></Link>
         </div>
         <div className="text-[130px] mt-6 animate-bob">🐵</div>
@@ -44,7 +44,7 @@ export default function FamiliesLanding() {
         <div className="rounded-[32px] bg-gradient-to-br from-brand-600 to-grass-600 text-white p-10 text-center">
           <h2 className="font-display font-extrabold text-3xl">Let&rsquo;s get growing 🌱</h2>
           <p className="font-bold opacity-90 mt-2 mb-6">Join your child&rsquo;s learning adventure today.</p>
-          <Link href="/register?role=PARENT"><Button size="lg" variant="grass">Create free account</Button></Link>
+          <Link href="/join?role=PARENT"><Button size="lg" variant="grass">Create free account</Button></Link>
         </div>
       </section>
       <Footer />
