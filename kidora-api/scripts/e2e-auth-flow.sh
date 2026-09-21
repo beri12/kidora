@@ -31,7 +31,7 @@ BOLD=$'\e[1m'; GREEN=$'\e[32m'; RED=$'\e[31m'; DIM=$'\e[2m'; OFF=$'\e[0m'
 step()  { printf "\n${BOLD}%s${OFF}\n" "$*"; }
 ok()    { PASS=$((PASS+1)); printf "  ${GREEN}✓${OFF} %s\n" "$*"; }
 bad()   { FAIL=$((FAIL+1)); printf "  ${RED}✗${OFF} %s\n" "$*"; }
-note()  { printf "    ${DIM}%s${OFF}\n" "$*"; }
+note()  { printf "    ${DIM}%s${OFF}\n" "$*" >&2; }
 
 # is <description> <actual> <expected>
 is() {
@@ -98,7 +98,10 @@ signin() {
   local phone="$1" start otp out
   start=$(start_otp "$phone") || { echo '{"error":"could not get a code"}'; return; }
   otp=$(get "$start" '["devCode"]')
-  if [ "$otp" = "<missing>" ]; then echo '{"error":"no devCode — is Twilio configured?"}'; return; fi
+  if ! printf '%s' "$otp" | grep -Eq '^[0-9]{6}$'; then
+    echo "{\"error\":\"no usable code for $phone\",\"got\":\"$(printf '%s' "$otp" | head -c 60)\"}"
+    return
+  fi
   out=$(C -X POST "$API/auth/phone/verify" -H 'Content-Type: application/json' \
     -d "{\"phone\":\"$phone\",\"code\":\"$otp\"}")
   # Without this, a failed sign-in shows up later as a row of confusing 401s
