@@ -74,8 +74,12 @@ screenshots as it goes:
 ```bash
 npm run dev                  # this app
 # ...and the API, in another terminal, with Twilio unconfigured
+npx playwright install chromium   # once — it drives a real browser
 npm run walkthrough
 ```
+
+`WEB`, `API`, `SHOTS` and `CHROME` override the defaults if your ports differ or
+Playwright cannot find a browser.
 
 It needs an account that is already `SUPER_ADMIN` to play the reviewer; point
 `ADMIN_PHONE` at one and promote it once:
