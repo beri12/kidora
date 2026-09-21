@@ -2,4 +2,10 @@ node_modules
 dist
 .env
 *.log
-uploads
+
+# The runtime upload directory at the project root ONLY. This pattern must
+# stay anchored with a leading slash: an unanchored `uploads` also matches
+# src/uploads/, which is source code, and git silently ignored the
+# UploadsModule that app.module.ts imports — so the API would not compile
+# for anyone who cloned the repo.
+/uploads

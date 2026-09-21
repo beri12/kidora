@@ -15,11 +15,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CoursesModule } from './courses/courses.module';
 import { LessonsModule } from './lessons/lessons.module';
-// NOTE: there is no UploadsModule. File uploads are served by CoursesModule
-// (POST /api/courses/upload/video and /upload/thumbnail), and the files
-// themselves are exposed as static assets from /uploads in main.ts. The
-// import that used to sit here pointed at a file that was never committed,
-// which stopped the whole API from compiling.
+import { UploadsModule } from './uploads/uploads.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { GamesModule } from './games/games.module';
@@ -70,6 +66,7 @@ import { RedisModule } from './redis/redis.module';
     UsersModule,
     CoursesModule,
     LessonsModule,
+    UploadsModule,
     TeachersModule,
     PaymentsModule,
     GamesModule,
