@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation';
 
 import { AuthShell } from '@/components/auth/AuthShell';
 import { RolePicker } from '@/components/auth/RolePicker';
+import { OrgVerifyForm } from '@/components/auth/OrgVerifyForm';
+import { PendingApproval } from '@/components/auth/PendingApproval';
 import { NEXT_KEY } from '@/components/auth/SocialButtons';
 import { Button } from '@/components/ui/button';
 import { ROLE_HOME } from '@/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import type { Role } from '@/types';
 
-type State = 'working' | 'role' | 'error';
+type State = 'working' | 'role' | 'verify' | 'pending' | 'error';
 
 /**
  * Landing page for every social login.
@@ -27,6 +29,7 @@ export default function OAuthCallbackPage() {
   const setTokens = useAuthStore((s) => s.setTokens);
 
   const [state, setState] = useState<State>('working');
+  const [verifyRole, setVerifyRole] = useState<'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'>('SCHOOL_LEADER');
   const ran = useRef(false);
 
   useEffect(() => {
@@ -68,8 +71,16 @@ export default function OAuthCallbackPage() {
 
   return (
     <AuthShell
-      title={state === 'role' ? 'Almost there!' : 'Signing you in…'}
-      subtitle={state === 'role' ? 'One question and you are in.' : 'This only takes a second.'}
+      title={state === 'working' ? 'Signing you in…' : 'Almost there!'}
+      subtitle={
+        state === 'pending'
+          ? "We're verifying your organisation."
+          : state === 'verify'
+            ? 'One check and your dashboard is ready.'
+            : state === 'role'
+              ? 'One question and you are in.'
+              : 'This only takes a second.'
+      }
     >
       {state === 'working' && (
         <div className="py-10 text-center">
@@ -79,7 +90,25 @@ export default function OAuthCallbackPage() {
         </div>
       )}
 
-      {state === 'role' && <RolePicker onDone={finish} />}
+      {state === 'role' && (
+        <RolePicker
+          onDone={finish}
+          onNeedsVerification={(r) => { setVerifyRole(r); setState('verify'); }}
+        />
+      )}
+
+      {state === 'verify' && (
+        <OrgVerifyForm
+          role={verifyRole}
+          onBack={() => setState('role')}
+          onSubmitted={(res) => {
+            if (res.roleGranted) finish(res.request.requestedRole as Role);
+            else setState('pending');
+          }}
+        />
+      )}
+
+      {state === 'pending' && <PendingApproval />}
 
       {state === 'error' && (
         <div className="py-8 text-center animate-slide-up">

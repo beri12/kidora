@@ -23,6 +23,8 @@ export interface User {
   phoneVerified?: boolean;
   /** False until the account has answered "How will you use Kidora?". */
   roleConfirmed?: boolean;
+  /** The newest school / district access request, when there is one. */
+  orgRequest?: OrgRequest | null;
   role: Role;
   points: number;
   streak: number;
@@ -47,6 +49,29 @@ export interface PhoneStartResponse {
   resendIn: number;
   /** Only present in development, when Twilio is not configured. */
   devCode?: string;
+}
+
+export type OrgRequestStatus = 'PENDING' | 'CHANGES_REQUESTED' | 'APPROVED' | 'REJECTED';
+
+/** A claim to a school or district role, waiting on a human to check it. */
+export interface OrgRequest {
+  id: string;
+  requestedRole: 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN';
+  status: OrgRequestStatus;
+  organizationName: string;
+  /** Why it was refused, or what is still missing. */
+  decisionNote?: string | null;
+  /** True when an organisation code let it through with no review. */
+  autoApproved?: boolean;
+  createdAt: string;
+  reviewedAt?: string | null;
+}
+
+/** POST /org/requests */
+export interface SubmitOrgRequestResponse {
+  status: 'PENDING' | 'APPROVED';
+  request: OrgRequest;
+  roleGranted: boolean;
 }
 
 /** POST /auth/phone/verify */

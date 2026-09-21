@@ -12,6 +12,11 @@ interface Props {
   /** Called with the saved role once the account is ready to be routed. */
   onDone: (role: Role) => void;
   /**
+   * Called when the chosen role has to be verified first. The account's role
+   * is unchanged at this point — the caller shows the verification form.
+   */
+  onNeedsVerification: (role: 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN') => void;
+  /**
    * Pre-selects a card. Set from `?role=` so a visitor arriving from
    * "For teachers" does not have to say "teacher" twice.
    */
@@ -46,7 +51,7 @@ function matchUseCase(raw?: string | null): UseCase | null {
  * signing in rather than before. Students are listed but not selectable:
  * children join through a parent or a school code, never by self-registering.
  */
-export function RolePicker({ onDone, initialRole }: Props) {
+export function RolePicker({ onDone, onNeedsVerification, initialRole }: Props) {
   const selectRole = useAuthStore((s) => s.selectRole);
   const user = useAuthStore((s) => s.user);
 
@@ -64,7 +69,13 @@ export function RolePicker({ onDone, initialRole }: Props) {
     setBusy(true);
     setError('');
     try {
-      const saved = await selectRole(picked.role as SignupRoleKey, { name: name.trim() });
+      const { user: saved, needsVerification } = await selectRole(picked.role as SignupRoleKey, {
+        name: name.trim(),
+      });
+      if (needsVerification) {
+        onNeedsVerification(picked.role as 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN');
+        return;
+      }
       onDone(saved.role);
     } catch (e) {
       setError(apiErrorMessage(e, "We couldn't save that. Please try again."));
@@ -113,6 +124,18 @@ export function RolePicker({ onDone, initialRole }: Props) {
         })}
       </div>
 
+      {/* Administrative roles are checked before they are granted — say so
+          here rather than surprising the applicant on the next screen. */}
+      {picked?.needsVerification && (
+        <div className="mt-4 animate-slide-down rounded-2xl border-2 border-brand-100 bg-brand-50 p-4">
+          <p className="font-body font-bold text-brand-800">We verify this one 🔍</p>
+          <p className="mt-1 font-body-x text-[13px] leading-relaxed text-brand-600">
+            Next you can enter your organisation&apos;s code, which lets you in immediately, or
+            send your details for a quick check — usually within two working days.
+          </p>
+        </div>
+      )}
+
       {/* Students can't self-register — say what to do instead. */}
       {picked && !picked.role && (
         <div className="mt-4 animate-slide-down rounded-2xl border-2 border-brand-100 bg-brand-50 p-4">
@@ -145,7 +168,7 @@ export function RolePicker({ onDone, initialRole }: Props) {
         disabled={!picked?.role || busy}
         onClick={save}
       >
-        {busy ? 'Setting up…' : 'Enter Kidora 🎉'}
+        {busy ? 'Setting up…' : picked?.needsVerification ? 'Continue →' : 'Enter Kidora 🎉'}
       </Button>
     </div>
   );

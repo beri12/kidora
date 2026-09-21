@@ -7,6 +7,7 @@ import { TokenService } from './token.service';
 import { MfaService } from './mfa.service';
 import { RegisterDto, LoginDto, SELF_SIGNUP_ROLES } from '../dto/auth.dto';
 import { SelectRoleDto } from '../dto/phone-auth.dto';
+import { isVerifiedRole } from '../../org/dto/org-request.dto';
 import { Role } from '@prisma/client';
 
 const MAX_FAILED = 5;
@@ -50,6 +51,26 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!existing) throw new UnauthorizedException('Account not found');
     if (existing.roleConfirmed) throw new ForbiddenException('Role has already been set for this account');
+
+    // School and district roles are administrative: they are never granted by
+    // asking. Answering "I'm a School Leader" only says where the applicant is
+    // headed — the account keeps its current role, nothing is written, and the
+    // client goes on to the verification form, which posts to /org/requests.
+    // roleConfirmed stays false so an abandoned application is asked again
+    // rather than leaving the account stranded as an unintended parent.
+    if (isVerifiedRole(dto.role)) {
+      // The name is still worth keeping: a reviewer needs to see who is
+      // asking, and a display name carries no privilege of its own.
+      const named = dto.name?.trim()
+        ? await this.prisma.user.update({ where: { id: userId }, data: { name: dto.name.trim() } })
+        : existing;
+
+      return {
+        needsVerification: true as const,
+        requestedRole: dto.role,
+        user: this.sanitize(named),
+      };
+    }
 
     const user = await this.prisma.user.update({
       where: { id: userId },
@@ -98,7 +119,20 @@ export class AuthService {
     const stored = await this.prisma.refreshToken.findMany({ where: { userId: payload.sub } });
     const matches = await Promise.all(stored.map((s) => bcrypt.compare(refreshToken, s.tokenHash)));
     if (!matches.some(Boolean)) throw new UnauthorizedException('Refresh token revoked');
-    return this.tokens.issue({ id: payload.sub, email: payload.email, role: payload.role });
+
+    // Read the account rather than trusting the token being replaced. Copying
+    // the old payload forward meant a role could never change in practice: an
+    // approved school leader would have kept refreshing a PARENT token for as
+    // long as they stayed signed in, and a disabled account would have kept
+    // minting new tokens indefinitely.
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true, role: true, active: true },
+    });
+    if (!user) throw new UnauthorizedException('Account not found');
+    if (!user.active) throw new ForbiddenException('This account is disabled');
+
+    return this.tokens.issue(user);
   }
 
   async logout(userId: string, jti?: string) {
@@ -108,7 +142,27 @@ export class AuthService {
   }
 
   async me(userId: string) {
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, include: { subscription: true } });
-    return this.sanitize({ ...u, subscriptionPlan: u?.subscription?.plan });
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        subscription: true,
+        // The newest access request, so the client knows whether to show a
+        // dashboard, the "pending approval" screen or the decision.
+        orgRequests: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true, requestedRole: true, status: true, organizationName: true,
+            decisionNote: true, createdAt: true, reviewedAt: true,
+          },
+        },
+      },
+    });
+    return this.sanitize({
+      ...u,
+      subscriptionPlan: u?.subscription?.plan,
+      orgRequest: u?.orgRequests?.[0] ?? null,
+      orgRequests: undefined,
+    });
   }
 }

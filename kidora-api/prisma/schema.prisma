@@ -184,8 +184,12 @@ model User {
   // AUTH / SECURITY
   // ============================================================
 
-  loginHistory   LoginHistory[]
-  refreshTokens  RefreshToken[]
+  loginHistory  LoginHistory[]
+  refreshTokens RefreshToken[]
+
+  // Requests to run a school or a district, and the reviews this user made.
+  orgRequests    OrgAccessRequest[] @relation("OrgRequester")
+  orgReviews     OrgAccessRequest[] @relation("OrgReviewer")
   sessions       Session[]
   auditLogs      AuditLog[]
   activityEvents ActivityEvent[]
@@ -216,6 +220,12 @@ model District {
   createdAt DateTime @default(now())
   schools   School[]
   users     User[]
+
+  /// Handed to a colleague so they can claim a district role without a
+  /// manual review, the same way School.joinCode works for a school.
+  joinCode String? @unique
+
+  accessRequests OrgAccessRequest[]
 }
 
 model School {
@@ -251,6 +261,64 @@ model School {
   auditLogs      AuditLog[]
   conversations  Conversation[]
   joinCode       String?         @unique
+
+  accessRequests OrgAccessRequest[]
+}
+
+/// A claim to run a school or a district, waiting on a human to check it.
+///
+/// Nobody gets an administrative role by asking for it. Choosing "School
+/// Leader" or "District Leader" during sign-up records one of these instead,
+/// and the role is only written onto the User once the request is approved —
+/// so an unapproved claim carries no permissions at any point.
+///
+/// The exception is an invitation: a request that arrives with a valid
+/// School.joinCode or District.joinCode is approved on the spot, because the
+/// organisation itself vouched for the person by giving them the code.
+model OrgAccessRequest {
+  id     String @id @default(cuid())
+  userId String
+
+  /// SCHOOL_ADMIN, SCHOOL_LEADER or DISTRICT_ADMIN. Never CHILD/PARENT/ADMIN.
+  requestedRole Role
+  status        OrgRequestStatus @default(PENDING)
+
+  // --- what the applicant claims ---
+  organizationName String
+  jobTitle         String
+  country          String?
+  region           String?
+  website          String?
+  /// Work address on the organisation's own domain, the strongest cheap signal.
+  workEmail        String?
+  contactPhone     String?
+  studentCount     Int?
+  /// A letter, staff card or similar, uploaded through /api/media/upload/file.
+  evidenceUrl      String?
+  note             String?
+
+  /// Set when the request came in with a join code, or filled in on approval.
+  schoolId     String?
+  districtId   String?
+  /// True when a join code let this through without a human looking at it.
+  autoApproved Boolean @default(false)
+
+  // --- review ---
+  reviewedById String?
+  reviewedAt   DateTime?
+  /// Shown to the applicant: why it was refused, or what is still missing.
+  decisionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User      @relation("OrgRequester", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User?     @relation("OrgReviewer", fields: [reviewedById], references: [id])
+  school     School?   @relation(fields: [schoolId], references: [id])
+  district   District? @relation(fields: [districtId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([userId, status])
 }
 
 /// Configurable rules for "On Track / Needs Support / At Risk" (spec §36).
@@ -1215,6 +1283,14 @@ model Message {
 // ---------------------------------------------------------------------------
 // ENUMS (existing values untouched; new values appended)
 // ---------------------------------------------------------------------------
+
+enum OrgRequestStatus {
+  PENDING
+  /// A reviewer needs something more before deciding; the applicant can edit.
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
 
 enum Role {
   CHILD // = STUDENT

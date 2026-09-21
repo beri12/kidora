@@ -2,7 +2,15 @@ import type { AxiosInstance } from 'axios';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api, API_URL } from '@/lib/axios';
-import type { AuthResponse, PhoneStartResponse, PhoneVerifyResponse, SignupRoleKey, User } from '@/types';
+import type {
+  AuthResponse,
+  OrgRequest,
+  PhoneStartResponse,
+  PhoneVerifyResponse,
+  SignupRoleKey,
+  SubmitOrgRequestResponse,
+  User,
+} from '@/types';
 
 interface AuthState {
   user: User | null;
@@ -17,8 +25,21 @@ interface AuthState {
   startPhone: (phone: string) => Promise<PhoneStartResponse>;
   /** Verifies the code, signing in or creating the account. */
   verifyPhone: (phone: string, code: string, name?: string) => Promise<PhoneVerifyResponse>;
-  /** Answers "How will you use Kidora?" for a brand-new account. */
-  selectRole: (role: SignupRoleKey, extra?: Record<string, string>) => Promise<User>;
+  /**
+   * Answers "How will you use Kidora?".
+   *
+   * School and district roles are not granted here: the API replies with
+   * `needsVerification`, the account keeps its current role, and the caller
+   * goes on to the verification form.
+   */
+  selectRole: (
+    role: SignupRoleKey,
+    extra?: Record<string, string>,
+  ) => Promise<{ user: User; needsVerification: boolean }>;
+  /** Submits the school / district claim (or redeems an organisation code). */
+  submitOrgRequest: (body: Record<string, unknown>) => Promise<SubmitOrgRequestResponse>;
+  /** Current status, for the "pending approval" screen. */
+  orgRequest: () => Promise<OrgRequest | null>;
   /**
    * Swaps the refresh token for a new pair. The axios interceptor passes its
    * own non-intercepted client so a 401 on the refresh call can't recurse.
@@ -99,9 +120,36 @@ export const useAuthStore = create<AuthState>()(
       // The role lives in the JWT, so the API returns a fresh token pair here
       // and the session is replaced rather than patched.
       selectRole: async (role, extra) => {
-        const { data } = await api.post<AuthResponse>('/auth/role', { role, ...(extra ?? {}) });
+        const { data } = await api.post<AuthResponse & { needsVerification?: boolean }>(
+          '/auth/role',
+          { role, ...(extra ?? {}) },
+        );
+        // A verification-gated role returns no tokens — there is no new role
+        // to put in one yet — so the session is left exactly as it was.
+        if (data.needsVerification) {
+          set({ user: data.user });
+          return { user: data.user, needsVerification: true };
+        }
         get().setSession(data);
-        return data.user;
+        return { user: data.user, needsVerification: false };
+      },
+
+      submitOrgRequest: async (body) => {
+        const { data } = await api.post<SubmitOrgRequestResponse>('/org/requests', body);
+        // An organisation code is approved on the spot, which changes the role
+        // in the database. Refreshing swaps the stale token for one that
+        // carries it, so the dashboard is reachable straight away.
+        if (data.roleGranted) {
+          await get().refresh();
+          const me = await api.get<User>('/auth/me');
+          set({ user: me.data });
+        }
+        return data;
+      },
+
+      orgRequest: async () => {
+        const { data } = await api.get<OrgRequest | null>('/org/requests/me');
+        return data;
       },
 
       // Never goes through the main axios instance: a 401 on the refresh call

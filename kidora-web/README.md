@@ -19,6 +19,7 @@ app/
   (auth)/join                       # THE entry point: phone → code → role
   (auth)/login                      # sign in (phone first, email/password behind a tap)
   (auth)/auth/callback              # social login lands here with the tokens
+  (auth)/pending                    # waiting on school / district approval
   (auth)/register                   # legacy email + password signup
   dashboard/                        # role router + per-role dashboards
     admin, teacher, teacher/upload, parent, child
@@ -46,6 +47,13 @@ There is one door: **`/join`**. A visitor types a phone number, gets a 6-digit c
 and is in — no password, and no "are you a parent / teacher / school?" question before the
 account even exists. That question (`How will you use Kidora?`) is asked once, *after*
 sign-in, and only for accounts the API flags with `needsRole`.
+
+Parent and teacher are granted immediately. **School Leader and District Leader are not**:
+picking one leads to `OrgVerifyForm`, where an organisation code admits them at once or
+their details go for review, and then to `PendingApproval` — which polls every 30 seconds
+and on window focus, so an approval that lands while the tab is open just opens the door.
+The account keeps its existing role for the whole wait; nothing is granted until a reviewer
+says so.
 
 The country picker in `constants/countries.ts` covers every dial code. Flags are not
 shipped as images: `flagEmoji('ET')` maps the ISO code onto regional indicator symbols, so

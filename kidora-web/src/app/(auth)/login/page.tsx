@@ -8,6 +8,8 @@ import { AuthShell } from '@/components/auth/AuthShell';
 import { OtpInput } from '@/components/auth/OtpInput';
 import { PhoneField, usePhoneNumber } from '@/components/auth/PhoneField';
 import { RolePicker } from '@/components/auth/RolePicker';
+import { OrgVerifyForm } from '@/components/auth/OrgVerifyForm';
+import { PendingApproval } from '@/components/auth/PendingApproval';
 import { SocialButtons } from '@/components/auth/SocialButtons';
 import { Button } from '@/components/ui/button';
 import { FieldError, Input, Label } from '@/components/ui/input';
@@ -18,7 +20,7 @@ import { apiErrorMessage } from '@/lib/api-error';
 import { useAuthStore } from '@/stores/auth.store';
 import type { Role } from '@/types';
 
-type Step = 'phone' | 'code' | 'password' | 'role';
+type Step = 'phone' | 'code' | 'password' | 'role' | 'verify' | 'pending';
 
 /**
  * Sign in. Phone + code is the default path; email and password are still
@@ -34,6 +36,8 @@ function LoginInner() {
 
   const [step, setStep] = useState<Step>('phone');
   const [busy, setBusy] = useState(false);
+  // Which administrative role the verification form is collecting for.
+  const [verifyRole, setVerifyRole] = useState<'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'>('SCHOOL_LEADER');
   const [error, setError] = useState('');
   const [invalid, setInvalid] = useState(false);
 
@@ -128,8 +132,16 @@ function LoginInner() {
 
   return (
     <AuthShell
-      title={step === 'role' ? 'Almost there!' : 'Welcome back 👋'}
-      subtitle={step === 'role' ? 'One question and you are in.' : 'Your next adventure is waiting.'}
+      title={step === 'phone' || step === 'code' || step === 'password' ? 'Welcome back 👋' : 'Almost there!'}
+      subtitle={
+        step === 'pending'
+          ? "We're verifying your organisation."
+          : step === 'verify'
+            ? 'One check and your dashboard is ready.'
+            : step === 'role'
+              ? 'One question and you are in.'
+              : 'Your next adventure is waiting.'
+      }
     >
       {step === 'phone' && (
         <div key="phone" className="animate-slide-in-right">
@@ -269,9 +281,34 @@ function LoginInner() {
 
       {step === 'role' && (
         <div key="role" className="animate-slide-in-right">
-          <RolePicker onDone={goHome} initialRole={params.get('role')} />
+          <RolePicker
+            onDone={goHome}
+            onNeedsVerification={(r) => { setVerifyRole(r); setStep('verify'); }}
+            initialRole={params.get('role')}
+          />
         </div>
       )}
+      {step === 'verify' && (
+        <div key="verify">
+          <OrgVerifyForm
+            role={verifyRole}
+            onBack={() => setStep('role')}
+            onSubmitted={(res) => {
+              // An organisation code is approved on the spot, so there is
+              // nothing to wait for — go straight to the dashboard.
+              if (res.roleGranted) goHome(res.request.requestedRole as Role);
+              else setStep('pending');
+            }}
+          />
+        </div>
+      )}
+
+      {step === 'pending' && (
+        <div key="pending" className="animate-slide-in-right">
+          <PendingApproval />
+        </div>
+      )}
+
     </AuthShell>
   );
 }

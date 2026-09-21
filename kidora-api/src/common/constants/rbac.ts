@@ -12,6 +12,12 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[] | ['*']> = {
   [AppRole.SCHOOL_ADMIN]: [
     Permission.STUDENT_VIEW, Permission.GRADE_MANAGE, Permission.COURSE_CREATE, Permission.COURSE_UPDATE,
   ],
+  // A school leader runs the school rather than a classroom: same reach as a
+  // school admin, plus managing the people in it.
+  [AppRole.SCHOOL_LEADER]: [
+    Permission.STUDENT_VIEW, Permission.GRADE_MANAGE, Permission.COURSE_CREATE,
+    Permission.COURSE_UPDATE, Permission.USER_MANAGE,
+  ],
   [AppRole.TEACHER]: [
     Permission.COURSE_CREATE, Permission.COURSE_UPDATE, Permission.LESSON_UPLOAD,
     Permission.STUDENT_VIEW, Permission.GRADE_MANAGE,

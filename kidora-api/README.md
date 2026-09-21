@@ -31,6 +31,37 @@ Kidora?" and posts the answer to `POST /api/auth/role`, which records it once an
 the token pair (the role is a JWT claim). `CHILD`, `ADMIN` and `SUPER_ADMIN` can never be
 self-assigned — children join through a parent or a school.
 
+`PARENT` and `TEACHER` are granted straight away. **`SCHOOL_ADMIN`, `SCHOOL_LEADER` and
+`DISTRICT_ADMIN` are not** — see below.
+
+## Administrative access is verified
+
+    Create account → choose role → School / District Leader
+      → verification or invitation → pending → approved → permissions on
+
+Asking for an administrative role does not grant it. `POST /auth/role` answers
+`needsVerification` and leaves `user.role` untouched; the claim is recorded by
+`POST /org/requests` as an `OrgAccessRequest`, and the role is written onto the account
+**only** by an approval. An unapproved claim carries no permissions at any point.
+
+Two ways through:
+
+| Path | What happens |
+|---|---|
+| **Invitation** — request carries a valid `School.joinCode` / `District.joinCode` | Approved in the same transaction. The organisation vouched for the person by handing over the code. |
+| **Application** — organisation name, job title, work email, website, optional evidence file | Sits at `PENDING` until Kidora staff decide. |
+
+Reviewing lives under `/api/admin/org-requests` and is restricted to `ADMIN` / `SUPER_ADMIN`
+— the roles it hands out must never be able to hand them out further. Approving creates the
+school (with a join code and grades 1–8) or the district, links the user, writes the role,
+notifies the applicant and records an `AuditLog` entry. Refusing requires a reason, which
+the applicant sees; they may then apply again.
+
+Because the role is a JWT claim, an approval takes effect on the account's next token
+refresh — `POST /auth/refresh` reads the role from the database rather than copying it out
+of the token it is replacing, which is also what stops a disabled account from refreshing
+its way back in.
+
 ## Phone sign-in (Twilio)
 One number, one code, no password. `POST /auth/phone/start` texts a 6-digit code;
 `POST /auth/phone/verify` checks it and signs the user in, creating the account on first use.

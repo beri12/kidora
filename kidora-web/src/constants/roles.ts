@@ -162,6 +162,11 @@ export interface UseCase {
   /** Tailwind gradient stops for the card's icon tile. */
   bg: string;
   shadow: string;
+  /**
+   * True when the role is administrative and has to be verified before it is
+   * granted. Picking one records a request; it does not change the account.
+   */
+  needsVerification?: boolean;
 }
 
 export const USE_CASES: UseCase[] = [
@@ -178,12 +183,12 @@ export const USE_CASES: UseCase[] = [
   {
     key: 'SCHOOL_LEADER', role: 'SCHOOL_LEADER', label: "I'm a School Leader", emoji: '🏫',
     blurb: 'Oversee teachers, classes and school-wide results.',
-    bg: 'from-sun-400 to-sun-700', shadow: 'rgba(180,83,9,.45)',
+    bg: 'from-sun-400 to-sun-700', shadow: 'rgba(180,83,9,.45)', needsVerification: true,
   },
   {
     key: 'DISTRICT_LEADER', role: 'DISTRICT_ADMIN', label: "I'm a District Leader", emoji: '🏢',
     blurb: 'Bring Kidora to every school in your district.',
-    bg: 'from-coral-400 to-coral-600', shadow: 'rgba(225,29,72,.45)',
+    bg: 'from-coral-400 to-coral-600', shadow: 'rgba(225,29,72,.45)', needsVerification: true,
   },
   {
     // Students never create their own account: a parent adds a child, or a

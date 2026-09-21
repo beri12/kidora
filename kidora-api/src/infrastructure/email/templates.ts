@@ -15,3 +15,13 @@ export const subscriptionSuccessTemplate = (name: string, plan: string) => shell
   <h1 style="color:#3B0764">You're all set, ${name}! ✅</h1>
   <p style="color:#4C1D95;font-weight:600">Your <b>${plan}</b> subscription is now active. Every premium course, game and certificate is unlocked.</p>
   <a href="#" style="display:inline-block;margin-top:16px;background:linear-gradient(135deg,#8B5CF6,#6D28D9);color:#fff;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:14px">Start learning →</a>`);
+
+/**
+ * Status update on a school / district access request. The copy is passed in
+ * rather than built here, so the service decides the wording once for the
+ * email, the SMS and the in-app notification alike.
+ */
+export const orgRequestTemplate = (name: string, title: string, body: string) => shell(`
+  <h1 style="color:#3B0764">${title}</h1>
+  <p style="color:#4C1D95;font-weight:600">Hi ${name},</p>
+  <p style="color:#4C1D95;font-weight:600">${body}</p>`);

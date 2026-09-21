@@ -16,6 +16,7 @@ import { UsersModule } from './users/users.module';
 import { CoursesModule } from './courses/courses.module';
 import { LessonsModule } from './lessons/lessons.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { OrgModule } from './org/org.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { GamesModule } from './games/games.module';
@@ -67,6 +68,7 @@ import { RedisModule } from './redis/redis.module';
     CoursesModule,
     LessonsModule,
     UploadsModule,
+    OrgModule,
     TeachersModule,
     PaymentsModule,
     GamesModule,

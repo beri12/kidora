@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
-import { subscriptionSuccessTemplate, welcomeTemplate } from './templates';
+import { orgRequestTemplate, subscriptionSuccessTemplate, welcomeTemplate } from './templates';
 
 @Injectable()
 export class EmailService {
@@ -26,6 +26,11 @@ export class EmailService {
 
   sendWelcome(to: string, name: string) {
     return this.send(to, 'Welcome to Kidora! 🎉', welcomeTemplate(name));
+  }
+
+  // Sent when a school / district access request is submitted or decided.
+  sendOrgRequestUpdate(to: string, name: string, title: string, body: string) {
+    return this.send(to, `${title} · Kidora`, orgRequestTemplate(name, title, body));
   }
 
   // Sent by the payment webhook after a successful subscription.

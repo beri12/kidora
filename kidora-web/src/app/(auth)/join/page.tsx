@@ -9,6 +9,8 @@ import { OtpInput } from '@/components/auth/OtpInput';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { SocialButtons } from '@/components/auth/SocialButtons';
 import { RolePicker } from '@/components/auth/RolePicker';
+import { OrgVerifyForm } from '@/components/auth/OrgVerifyForm';
+import { PendingApproval } from '@/components/auth/PendingApproval';
 import { Button } from '@/components/ui/button';
 import { isValidE164 } from '@/constants/countries';
 import { ROLE_HOME } from '@/constants';
@@ -16,7 +18,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { apiErrorMessage } from '@/lib/api-error';
 import type { Role } from '@/types';
 
-type Step = 'phone' | 'code' | 'role';
+type Step = 'phone' | 'code' | 'role' | 'verify' | 'pending';
 
 /**
  * The single entry point for Kidora: one phone number, one code, in or out.
@@ -35,6 +37,8 @@ function JoinInner() {
   const [step, setStep] = useState<Step>('phone');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  // Which administrative role the verification form is collecting for.
+  const [verifyRole, setVerifyRole] = useState<'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'>('SCHOOL_LEADER');
   const [error, setError] = useState('');
   const [invalid, setInvalid] = useState(false);
   const [masked, setMasked] = useState('');
@@ -104,8 +108,16 @@ function JoinInner() {
 
   return (
     <AuthShell
-      title={step === 'role' ? 'Almost there!' : 'Welcome to Kidora 🌍'}
-      subtitle={step === 'role' ? 'One question and you are in.' : 'Learn. Play. Grow.'}
+      title={step === 'phone' || step === 'code' ? 'Welcome to Kidora 🌍' : 'Almost there!'}
+      subtitle={
+        step === 'pending'
+          ? "We're verifying your organisation."
+          : step === 'verify'
+            ? 'One check and your dashboard is ready.'
+            : step === 'role'
+              ? 'One question and you are in.'
+              : 'Learn. Play. Grow.'
+      }
     >
       {step === 'phone' && (
         <div key="phone" className="animate-slide-in-right">
@@ -206,9 +218,34 @@ function JoinInner() {
 
       {step === 'role' && (
         <div key="role" className="animate-slide-in-right">
-          <RolePicker onDone={goHome} initialRole={params.get('role')} />
+          <RolePicker
+            onDone={goHome}
+            onNeedsVerification={(r) => { setVerifyRole(r); setStep('verify'); }}
+            initialRole={params.get('role')}
+          />
         </div>
       )}
+      {step === 'verify' && (
+        <div key="verify">
+          <OrgVerifyForm
+            role={verifyRole}
+            onBack={() => setStep('role')}
+            onSubmitted={(res) => {
+              // An organisation code is approved on the spot, so there is
+              // nothing to wait for — go straight to the dashboard.
+              if (res.roleGranted) goHome(res.request.requestedRole as Role);
+              else setStep('pending');
+            }}
+          />
+        </div>
+      )}
+
+      {step === 'pending' && (
+        <div key="pending" className="animate-slide-in-right">
+          <PendingApproval />
+        </div>
+      )}
+
     </AuthShell>
   );
 }
