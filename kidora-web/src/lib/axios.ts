@@ -21,15 +21,9 @@ export const api = axios.create({
   },
 });
 
-// Separate, non-intercepted instance just for the refresh call.
-// This avoids the refresh request being caught by this same
-// response interceptor if it also 401s (which caused hangs before).
-const refreshClient = axios.create({
-  baseURL: API_URL,
-  timeout: 8000, // shorter than main timeout, so refresh fails fast
-  headers: { 'Content-Type': 'application/json' },
-});
-
+// The refresh call deliberately does not go through `api`. The auth store's
+// refresh() uses window.fetch directly, so it can never be caught by this
+// same response interceptor and 401-loop (which caused hangs before).
 api.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     if (typeof window !== 'undefined') {
@@ -63,7 +57,7 @@ api.interceptors.response.use(
       try {
         if (!refreshing) {
           console.log('[api] refreshing token...');
-          refreshing = useAuthStore.getState().refresh(refreshClient);
+          refreshing = useAuthStore.getState().refresh();
         }
 
         const newToken = await refreshing;

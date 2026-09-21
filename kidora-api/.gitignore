@@ -3,10 +3,13 @@ dist
 .env
 *.log
 
-# The runtime upload directory at the project root ONLY. This pattern must
-# stay anchored with a leading slash: an unanchored `uploads` also matches
-# src/uploads/, which is source code, and git silently ignored the
-# UploadsModule that app.module.ts imports — so the API would not compile
-# for anyone who cloned the repo.
-/uploads
+# Runtime upload storage (STORAGE_DIR), at the package root only.
+#
+# Anchored with a leading slash on purpose. The previous bare `uploads`
+# pattern matched a directory of that name at ANY depth, so it also
+# swallowed src/uploads/ — the uploads module itself. That is why
+# app.module.ts imported './uploads/uploads.module' while no such file
+# existed in the repository: `git add` silently skipped it, and every
+# fresh clone failed to compile with TS2307.
+/uploads/
 dump.rdb

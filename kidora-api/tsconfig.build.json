@@ -1,9 +1,30 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Pin the root so the emitted tree is dist/main.js, not dist/src/main.js.
+    // Without this the compiler infers the common root of every included
+    // file; the prisma/*.ts scripts below used to be part of that set, which
+    // pushed the root up to the project directory and moved the entry point
+    // to dist/src/main.js — so `npm run start:prod` (node dist/main) died
+    // with MODULE_NOT_FOUND even though `npm run build` reported success.
+    "rootDir": "./src",
+    // Keep the incremental build cache inside dist/. nest-cli.json sets
+    // deleteOutDir, so dist/ is wiped at the start of every build; with the
+    // cache living outside it, TypeScript would still consider the (now
+    // deleted) output up to date and emit nothing at all, leaving `npm run
+    // build` reporting success with no dist/main.js and `start:prod` dying
+    // with MODULE_NOT_FOUND. Storing it here ties the cache's lifetime to
+    // the output it describes.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
   "exclude": [
     "node_modules",
     "test",
     "dist",
+    "scripts",
+    // Seed/backfill scripts are executed with ts-node (see the "db:seed"
+    // and "prisma.seed" entries in package.json), never from dist/.
+    "prisma",
     "**/*spec.ts"
   ]
 }

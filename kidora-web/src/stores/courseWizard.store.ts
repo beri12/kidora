@@ -93,22 +93,32 @@ export const useCourseWizard = create<CourseWizardState>()(
     }),
     {
       name: 'cl.course-wizard',
-      // thumbnailUrl/trailerUrl can be multi-megabyte base64 data URLs
-      // (from FileReader.readAsDataURL on the raw file). localStorage has
-      // a hard quota (~5-10MB per origin), so persisting these blows past
-      // it instantly and throws QuotaExceededError, which was breaking
-      // setAdvanceInfo (and therefore the whole publish flow) before any
-      // network request was ever sent. partialize controls what actually
-      // gets written to localStorage on every set() call, separately from
-      // the live in-memory state, so we strip just these two fields here.
-      // The in-memory advanceInfo (used by publishCourse in this session)
-      // still has the real values, only the persisted copy is trimmed.
-      partialize: (state) => ({
-        ...state,
-        advanceInfo: state.advanceInfo
-          ? { ...state.advanceInfo, thumbnailUrl: undefined, trailerUrl: undefined }
-          : state.advanceInfo,
-      }),
+      // thumbnailUrl/trailerUrl used to hold multi-megabyte base64 data URLs
+      // (from FileReader.readAsDataURL on the raw file), which blew past the
+      // ~5-10MB localStorage quota and threw QuotaExceededError inside
+      // setAdvanceInfo, breaking the publish flow before any request was
+      // sent. They now hold short http(s) URLs returned by the upload
+      // endpoints, so there is nothing left to strip and persisting them is
+      // what lets a half-finished wizard survive a page reload with its
+      // already-uploaded artwork intact.
+      //
+      // The guard below is kept for one migration case: a browser that still
+      // has an old entry containing a data: URL. Rehydrating that would put
+      // the oversized string straight back into state (and into the next
+      // publish payload), so those legacy values are dropped on read.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<CourseWizardState>;
+        const merged: CourseWizardState = { ...current, ...saved };
+        if (merged.advanceInfo) {
+          const { thumbnailUrl, trailerUrl } = merged.advanceInfo;
+          merged.advanceInfo = {
+            ...merged.advanceInfo,
+            thumbnailUrl: thumbnailUrl?.startsWith('data:') ? undefined : thumbnailUrl,
+            trailerUrl: trailerUrl?.startsWith('data:') ? undefined : trailerUrl,
+          };
+        }
+        return merged;
+      },
     },
   ),
 );

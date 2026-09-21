@@ -1,21 +1,26 @@
 'use client';
 import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useLiveGame } from '@/hooks/useLiveGame';
 import { Button } from '@/components/ui/button';
 
 // Live multiplayer game room over socket.io. Players join a room, ready up,
 // then answer prompts in real time; scores sync live via the NestJS gateway.
-export default function LiveGamePage({ params }: { params: { slug: string } }) {
+// Next 15 passes `params` to page components as a Promise, so a client
+// component reads the route segment with useParams() instead — the same
+// approach the other dynamic client routes here use.
+export default function LiveGamePage() {
   useRequireAuth();
+  const { slug } = useParams<{ slug: string }>();
   const [room] = useState('room-1');
-  const { connected, state, ready, answer } = useLiveGame(params.slug, room);
+  const { connected, state, ready, answer } = useLiveGame(slug, room);
 
   return (
     <div className="min-h-screen bg-brand-50 p-6">
       <div className="max-w-[900px] mx-auto">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="font-display font-extrabold text-3xl text-brand-900 capitalize">{params.slug.replace('-', ' ')}</h1>
+          <h1 className="font-display font-extrabold text-3xl text-brand-900 capitalize">{slug?.replace('-', ' ')}</h1>
           <span className={'font-body-x text-sm px-3 py-1 rounded-full ' + (connected ? 'bg-grass-100 text-grass-600' : 'bg-rose-100 text-rose-600')}>
             {connected ? '● Live' : '○ Connecting…'}
           </span>

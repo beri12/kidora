@@ -1,19 +1,17 @@
-import {
-  BadRequestException,
-  Controller,
-  Post,
-  UploadedFile,
-  UseGuards,
-  UseInterceptors,
-} from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { StorageService } from '../infrastructure/storage/storage.service';
+import { UploadsService } from './uploads.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
-import { POLICIES, UploadKind, assertAllowed, safeName } from './upload-policy';
+import { POLICIES, UploadKind, assertAllowed } from './upload-policy';
+
+/** The multipart body every route here expects, for the Swagger page. */
+export const FILE_BODY = {
+  schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } },
+};
 
 /**
  * Builds the multer options for one kind of upload.
@@ -22,10 +20,9 @@ import { POLICIES, UploadKind, assertAllowed, safeName } from './upload-policy';
  * same request works against local disk or S3 depending on STORAGE_DRIVER —
  * the older /courses/upload/* routes write straight to disk and therefore
  * silently ignore S3. The trade-off is that the file passes through memory,
- * which is why the size ceilings below are enforced by multer itself and not
- * only after the fact.
+ * which is why the size ceilings are enforced by multer itself.
  */
-const options = (kind: UploadKind) => ({
+export const uploadOptions = (kind: UploadKind) => ({
   storage: memoryStorage(),
   limits: { files: 1, fileSize: POLICIES[kind].maxBytes },
   // Rejecting here means a wrong-typed file is refused while it streams,
@@ -43,8 +40,8 @@ const options = (kind: UploadKind) => ({
 });
 
 /**
- * Generic upload endpoints, mounted at the paths the web app already declares
- * in `src/lib/api.ts` (`/media/upload/image|video|file|subtitle`).
+ * Upload endpoints at the paths the web app declares in `src/lib/api.ts`
+ * (`/media/upload/image|video|file|subtitle`).
  *
  * Any signed-in user may upload: students attach files to assignment
  * submissions, teachers attach lesson material. What a file may be, and how
@@ -55,60 +52,41 @@ const options = (kind: UploadKind) => ({
 @UseGuards(JwtAuthGuard)
 @Controller('media/upload')
 export class UploadsController {
-  constructor(private storage: StorageService) {}
-
-  private async store(file: Express.Multer.File, kind: UploadKind, user: AuthUser) {
-    if (!file) throw new BadRequestException('No file uploaded');
-
-    // The filter already ran, but a direct call must not be able to skip it.
-    assertAllowed(kind, file);
-
-    const stored = await this.storage.save({
-      originalname: safeName(file.originalname),
-      buffer: file.buffer,
-      mimetype: file.mimetype,
-      size: file.size,
-    });
-
-    return {
-      ...stored,
-      // `fileName` mirrors what /courses/upload/* returns, so either endpoint
-      // can be swapped in without touching the caller.
-      fileName: stored.name,
-      mimeType: file.mimetype,
-      uploadedBy: user.id,
-    };
-  }
+  constructor(private uploads: UploadsService) {}
 
   @Post('image')
   @ApiConsumes('multipart/form-data')
+  @ApiBody(FILE_BODY)
   @ApiOperation({ summary: 'Upload an image (jpg, png, webp, gif, avif · max 10MB)' })
-  @UseInterceptors(FileInterceptor('file', options('image')))
+  @UseInterceptors(FileInterceptor('file', uploadOptions('image')))
   image(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: AuthUser) {
-    return this.store(file, 'image', user);
+    return this.uploads.store(file, 'image', user.id);
   }
 
   @Post('video')
   @ApiConsumes('multipart/form-data')
+  @ApiBody(FILE_BODY)
   @ApiOperation({ summary: 'Upload a video (mp4, webm, mov, mkv · max UPLOAD_MAX_BYTES)' })
-  @UseInterceptors(FileInterceptor('file', options('video')))
+  @UseInterceptors(FileInterceptor('file', uploadOptions('video')))
   video(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: AuthUser) {
-    return this.store(file, 'video', user);
+    return this.uploads.store(file, 'video', user.id);
   }
 
   @Post('file')
   @ApiConsumes('multipart/form-data')
+  @ApiBody(FILE_BODY)
   @ApiOperation({ summary: 'Upload a document (pdf, office, txt, csv, zip · max 50MB)' })
-  @UseInterceptors(FileInterceptor('file', options('file')))
+  @UseInterceptors(FileInterceptor('file', uploadOptions('file')))
   file(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: AuthUser) {
-    return this.store(file, 'file', user);
+    return this.uploads.store(file, 'file', user.id);
   }
 
   @Post('subtitle')
   @ApiConsumes('multipart/form-data')
+  @ApiBody(FILE_BODY)
   @ApiOperation({ summary: 'Upload subtitles (vtt, srt · max 2MB)' })
-  @UseInterceptors(FileInterceptor('file', options('subtitle')))
+  @UseInterceptors(FileInterceptor('file', uploadOptions('subtitle')))
   subtitle(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: AuthUser) {
-    return this.store(file, 'subtitle', user);
+    return this.uploads.store(file, 'subtitle', user.id);
   }
 }

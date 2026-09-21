@@ -9,5 +9,10 @@ dist/
 
 .env
 .env.*
+# ...but the checked-in templates are the documentation for the two above.
+!.env.example
+!**/.env.example
 
 *.log
+*.tsbuildinfo
+**/*.tsbuildinfo

@@ -104,3 +104,24 @@ export function safeName(originalname: string): string {
   // eslint-disable-next-line no-control-regex
   return base.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200) || 'file';
 }
+
+/**
+ * Works out which kind a file is, for the generic upload route that does not
+ * say up front. Returns null when it matches none of them, so the caller can
+ * refuse it rather than guess.
+ */
+export function detectKind(file: { originalname: string; mimetype: string }): UploadKind | null {
+  for (const kind of ['image', 'video', 'file', 'subtitle'] as UploadKind[]) {
+    try {
+      assertAllowed(kind, file);
+      return kind;
+    } catch {
+      // Not this kind; try the next.
+    }
+  }
+  return null;
+}
+
+/** The largest ceiling of any kind, used by the generic route's interceptor. */
+export const maxAnyBytes = () =>
+  Math.max(...(Object.values(POLICIES).map((p) => p.maxBytes)));

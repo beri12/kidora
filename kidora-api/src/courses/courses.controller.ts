@@ -3,6 +3,7 @@ import {
   UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { JwtAuthGuard } from '../auth/dto/Jwt-auth.guard';
@@ -22,7 +23,23 @@ import {
 @Roles('TEACHER')
 @Controller('courses')
 export class CoursesController {
-  constructor(private readonly coursesService: CoursesService) {}
+  constructor(
+    private readonly coursesService: CoursesService,
+    private readonly config: ConfigService,
+  ) {}
+
+  // Uploaded files are served by the API (see useStaticAssets in main.ts),
+  // but the frontend runs on a different origin (:3000 in development), so
+  // a relative "/uploads/..." path resolves against the Next.js server and
+  // 404s. Returning an absolute URL built from storage.publicBase makes the
+  // value usable directly as <img src> / <video src> / CSS url() anywhere
+  // in the app, and matches what UploadsController already returns.
+  private publicUrl(subdir: string, filename: string): string {
+    const base = (
+      this.config.get<string>('storage.publicBase') ?? 'http://localhost:4000/uploads'
+    ).replace(/\/+$/, '');
+    return `${base}/${subdir}/${filename}`;
+  }
 
   // --- literal-path routes first, before any :id wildcard routes ---
 
@@ -45,7 +62,7 @@ export class CoursesController {
   }))
   uploadVideo(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No file uploaded');
-    return { url: `/uploads/videos/${file.filename}`, fileName: file.originalname };
+    return { url: this.publicUrl('videos', file.filename), fileName: file.originalname };
   }
 
   @Post('upload/thumbnail')
@@ -62,7 +79,7 @@ export class CoursesController {
   }))
   uploadThumbnail(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No file uploaded');
-    return { url: `/uploads/thumbnails/${file.filename}`, fileName: file.originalname };
+    return { url: this.publicUrl('thumbnails', file.filename), fileName: file.originalname };
   }
 
   @Post('draft')

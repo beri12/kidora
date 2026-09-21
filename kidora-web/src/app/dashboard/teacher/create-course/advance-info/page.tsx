@@ -3,8 +3,20 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useCourseWizard } from '@/stores/courseWizard.store';
-import { publishCourse } from '@/services/courseWizard';
+import { publishCourse, uploadImage, uploadVideo } from '@/services/courseWizard';
 import { WizardStepper } from '@/components/course-witzard/WizardStepper';
+
+// Surfaces the API's real complaint (unsupported type, file too large,
+// missing auth) instead of a generic failure string.
+function uploadErrorMessage(err: any, label: string): string {
+  const body = err?.response?.data?.message;
+  const detail = Array.isArray(body) ? body.join(', ') : body;
+  if (detail) return `Could not upload the ${label}: ${detail}`;
+  if (err?.response?.status === 413) {
+    return `Could not upload the ${label}: the file is too large.`;
+  }
+  return `Could not upload the ${label}: ${err?.message ?? 'please try again.'}`;
+}
 
 export default function AdvanceInformationPage() {
   useRequireAuth(['TEACHER']);
@@ -14,10 +26,18 @@ export default function AdvanceInformationPage() {
   const [description, setDescription] = useState('');
   const [learningPoints, setLearningPoints] = useState(['', '', '', '']);
   const [requirements, setRequirements] = useState(['', '', '', '']);
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  // For each asset we track three separate things:
+  //   *Preview  - a local object URL, shown immediately so the teacher sees
+  //               the file straight away without waiting for the network.
+  //   *Url      - the URL the API returns once the file is actually stored.
+  //               This is the only value that may be sent to the backend.
+  //   *Progress - upload percentage, or null when no upload is running.
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
-  const [trailerFile, setTrailerFile] = useState<File | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailProgress, setThumbnailProgress] = useState<number | null>(null);
   const [trailerPreview, setTrailerPreview] = useState<string | null>(null);
+  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
+  const [trailerProgress, setTrailerProgress] = useState<number | null>(null);
 
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
@@ -29,25 +49,64 @@ export default function AdvanceInformationPage() {
       setDescription(advanceInfo.description ?? '');
       setLearningPoints(advanceInfo.learningPoints?.length ? advanceInfo.learningPoints : ['', '', '', '']);
       setRequirements(advanceInfo.requirements?.length ? advanceInfo.requirements : ['', '', '', '']);
+      // Already-uploaded assets survive a page reload: they are plain URLs
+      // on the API, so they can be restored as both value and preview.
+      if (advanceInfo.thumbnailUrl) {
+        setThumbnailUrl(advanceInfo.thumbnailUrl);
+        setThumbnailPreview(advanceInfo.thumbnailUrl);
+      }
+      if (advanceInfo.trailerUrl) {
+        setTrailerUrl(advanceInfo.trailerUrl);
+        setTrailerPreview(advanceInfo.trailerUrl);
+      }
     }
   }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function onThumbnail(e: React.ChangeEvent<HTMLInputElement>) {
+  // The file is uploaded as soon as it is picked, rather than at publish
+  // time. Previously the preview was a FileReader data URL and that base64
+  // string was sent as thumbnailUrl/trailerUrl, which meant the file was
+  // never stored anywhere: a several-hundred-megabyte video became a
+  // multi-megabyte JSON string that the publish request could not carry.
+  // Uploading here keeps publish a small JSON request that only references
+  // URLs, and surfaces upload errors while there is still time to fix them.
+  async function onThumbnail(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file after a failure
     if (!file) return;
-    setThumbnailFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setThumbnailPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
+
+    setError('');
+    setThumbnailPreview(URL.createObjectURL(file));
+    setThumbnailUrl(null);
+    setThumbnailProgress(0);
+    try {
+      const { url } = await uploadImage(file, setThumbnailProgress);
+      setThumbnailUrl(url);
+    } catch (err: any) {
+      setThumbnailPreview(null);
+      setError(uploadErrorMessage(err, 'thumbnail'));
+    } finally {
+      setThumbnailProgress(null);
+    }
   }
 
-  function onTrailer(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onTrailer(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    setTrailerFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setTrailerPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
+
+    setError('');
+    setTrailerPreview(URL.createObjectURL(file));
+    setTrailerUrl(null);
+    setTrailerProgress(0);
+    try {
+      const { url } = await uploadVideo(file, setTrailerProgress);
+      setTrailerUrl(url);
+    } catch (err: any) {
+      setTrailerPreview(null);
+      setError(uploadErrorMessage(err, 'trailer'));
+    } finally {
+      setTrailerProgress(null);
+    }
   }
 
   async function publish() {
@@ -56,12 +115,21 @@ export default function AdvanceInformationPage() {
       return;
     }
 
+    // A publish that ran mid-upload used to silently drop the asset; block
+    // instead so the teacher does not end up with a course missing its art.
+    if (thumbnailProgress !== null || trailerProgress !== null) {
+      setError('Please wait for the uploads to finish before publishing.');
+      return;
+    }
+
     setError('');
     setPublishing(true);
 
     const finalAdvanceInfo = {
-      thumbnailUrl: thumbnailPreview ?? undefined, // swap for an uploaded URL once you wire real file storage
-      trailerUrl: trailerPreview ?? undefined,
+      // Only ever the URLs returned by the upload endpoints — never the
+      // local object-URL previews, which mean nothing outside this tab.
+      thumbnailUrl: thumbnailUrl ?? undefined,
+      trailerUrl: trailerUrl ?? undefined,
       description,
       learningPoints: learningPoints.filter((p) => p.trim() !== ''),
       requirements: requirements.filter((r) => r.trim() !== ''),
@@ -119,10 +187,18 @@ export default function AdvanceInformationPage() {
               {thumbnailPreview ? (
                 <div className="relative">
                   <img src={thumbnailPreview} alt="Thumbnail" className="w-full h-40 object-cover rounded-lg" />
-                  <button onClick={() => { setThumbnailFile(null); setThumbnailPreview(null); }} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full">✕</button>
+                  <button onClick={() => { setThumbnailPreview(null); setThumbnailUrl(null); }} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full">✕</button>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">1200x800px, jpg/png</p>
+                <p className="text-sm text-gray-500">1200x800px, jpg/png/webp, up to 10MB</p>
+              )}
+              {thumbnailProgress !== null && (
+                <div className="mt-3">
+                  <div className="h-2 w-full rounded-full bg-gray-200">
+                    <div className="h-2 rounded-full bg-purple-600 transition-all" style={{ width: `${thumbnailProgress}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">Uploading… {thumbnailProgress}%</p>
+                </div>
               )}
               <input type="file" id="thumb" accept="image/*" className="hidden" onChange={onThumbnail} />
               <label htmlFor="thumb" className="inline-block mt-4 px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition cursor-pointer text-sm font-medium">
@@ -137,10 +213,18 @@ export default function AdvanceInformationPage() {
               {trailerPreview ? (
                 <div className="relative">
                   <video src={trailerPreview} controls className="w-full h-40 rounded-lg" />
-                  <button onClick={() => { setTrailerFile(null); setTrailerPreview(null); }} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full">✕</button>
+                  <button onClick={() => { setTrailerPreview(null); setTrailerUrl(null); }} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full">✕</button>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">720p minimum, under 1GB</p>
+                <p className="text-sm text-gray-500">720p minimum, mp4/webm/mov</p>
+              )}
+              {trailerProgress !== null && (
+                <div className="mt-3">
+                  <div className="h-2 w-full rounded-full bg-gray-200">
+                    <div className="h-2 rounded-full bg-purple-600 transition-all" style={{ width: `${trailerProgress}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">Uploading… {trailerProgress}%</p>
+                </div>
               )}
               <input type="file" id="trailer" accept="video/*" className="hidden" onChange={onTrailer} />
               <label htmlFor="trailer" className="inline-block mt-4 px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition cursor-pointer text-sm font-medium">
@@ -207,7 +291,11 @@ export default function AdvanceInformationPage() {
           <button onClick={() => router.push('/dashboard/teacher/create-course/curriculum')} className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium">
             Previous
           </button>
-          <button onClick={publish} disabled={publishing} className="px-8 py-3 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium disabled:opacity-50">
+          <button
+            onClick={publish}
+            disabled={publishing || thumbnailProgress !== null || trailerProgress !== null}
+            className="px-8 py-3 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium disabled:opacity-50"
+          >
             {publishing ? 'Publishing…' : 'Publish course'}
           </button>
         </div>

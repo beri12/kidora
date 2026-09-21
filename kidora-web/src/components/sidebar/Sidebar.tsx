@@ -5,11 +5,13 @@ import { cn } from '@/lib/utils';
 import type { Role } from '@/types';
 
 const SCHOOL_NAV = [
-  { href: '/dashboard/school', label: 'Overview', icon: '📊' },
-  { href: '/school/teachers', label: 'Teachers', icon: '🍎' },
+  { href: '/school/dashboard', label: 'Overview', icon: '📊' },
   { href: '/school/students', label: 'Students', icon: '👥' },
+  { href: '/school/teachers', label: 'Teachers', icon: '🧑‍🏫' },
   { href: '/school/classes', label: 'Classes', icon: '🏫' },
+  { href: '/school/courses', label: 'Courses', icon: '📚' },
   { href: '/school/analytics', label: 'Analytics', icon: '📈' },
+  { href: '/school/billing', label: 'Billing', icon: '💳' },
 ];
 
 const NAV: Record<Role, { href: string; label: string; icon: string }[]> = {
@@ -36,12 +38,16 @@ const NAV: Record<Role, { href: string; label: string; icon: string }[]> = {
     { href: '/games', label: 'Games', icon: '🎮' },
     { href: '/dashboard/child/rewards', label: 'Rewards', icon: '🏆' },
   ],
+  // Every school-side role was missing here. The component renders NAV[role]
+  // directly, so a signed-in school admin did not merely lose the menu — the
+  // lookup returned undefined and .map() threw, taking the page down.
   SCHOOL_ADMIN: SCHOOL_NAV,
-  // A school leader sees the same school-level menu as a school admin.
+  // A school leader runs the same school, so the same menu.
   SCHOOL_LEADER: SCHOOL_NAV,
   DISTRICT_ADMIN: [
     { href: '/dashboard/district', label: 'Overview', icon: '📊' },
     { href: '/school/analytics', label: 'Analytics', icon: '📈' },
+    { href: '/school/teachers', label: 'Teachers', icon: '🧑‍🏫' },
     { href: '/school/billing', label: 'Billing', icon: '💳' },
   ],
 };
@@ -52,7 +58,7 @@ export function Sidebar({ role }: { role: Role }) {
     <aside className="w-60 shrink-0 bg-white border-r-2 border-brand-100 p-4 hidden md:block">
       <div className="font-body-x text-[11px] text-brand-400 uppercase px-3 mb-2">{role} menu</div>
       <nav className="flex flex-col gap-1">
-        {NAV[role].map((item) => (
+        {(NAV[role] ?? []).map((item) => (
           <Link key={item.href} href={item.href}
             className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl font-display font-extrabold text-[15px]',
               path === item.href ? 'bg-brand-100 text-brand-800' : 'text-brand-600 hover:bg-brand-50')}>
