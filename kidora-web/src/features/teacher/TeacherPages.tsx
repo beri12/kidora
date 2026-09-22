@@ -5,7 +5,7 @@ import { Plus, Users } from "lucide-react";
 import { TeacherShell } from "./TeacherShell";
 import { useTeacherClasses, useTeacherClass, useTeacherStudents, useTeacherCourses, useTeacherTasks, useTeacherActivity, useGradebook, useTeacherAnalytics, useTeacherAssignments } from "@/lib/hooks/queries";
 import { TopHeader, Card, CardHeader, CardBody, Pill, ProgressBar, Avatar, EmptyState, ErrorState, Skeleton, Tabs, SearchBar, Select, DataTable, ActivityList, ProgressLineChart, healthTone, healthLabel, cn } from "@/components/dashboard";
-import { dueLabel, fmtDate, timeAgo } from "@/lib/format";
+import { dueLabel, timeAgo } from "@/lib/format";
 
 function Page<T>({ title, sub, q, children, actions }: { title: string; sub?: string; q: { isPending: boolean; isError: boolean; error: unknown; data?: T; refetch: () => unknown }; children: (d: T) => ReactNode; actions?: ReactNode }) {
   return (

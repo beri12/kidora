@@ -161,12 +161,6 @@ me(
  @CurrentUser() user:AuthUser
 ){
 
- console.log(
-  "CURRENT USER:",
-  user
- );
-
-
  return this.auth.me(user.id);
 
 }

@@ -60,7 +60,8 @@ export class ChatService {
     const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
     const reactions: Record<string, string[]> = (msg?.reactions as any) ?? {};
     const list = new Set(reactions[emoji] ?? []);
-    list.has(userId) ? list.delete(userId) : list.add(userId);
+    if (list.has(userId)) list.delete(userId);
+    else list.add(userId);
     reactions[emoji] = [...list];
     return this.prisma.message.update({ where: { id: messageId }, data: { reactions } });
   }

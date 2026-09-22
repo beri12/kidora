@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useCourseWizard, type Section, type Lecture, type LectureQuiz } from '@/stores/courseWizard.store';
+import { useCourseWizard, type Section, type LectureQuiz } from '@/stores/courseWizard.store';
 import { saveCurriculumDraft, uploadVideo } from '@/services/courseWizard';
 import { WizardStepper } from '@/components/course-witzard/WizardStepper';
 
@@ -271,6 +271,13 @@ export default function CurriculumPage() {
       persistToLocalStorage(activeCourseId, sections);
       await saveCurriculumDraft(activeCourseId, sections);
       markStepDone('curriculum');
+
+      // The localStorage copy is crash insurance for the time between typing
+      // and the server accepting it. The server has it now, and the wizard
+      // store (itself persisted) carries it forward, so the copy has done its
+      // job. clearLocalStorageDraft existed for exactly this and was never
+      // called, which left a draft behind after every course.
+      clearLocalStorageDraft();
 
       router.push('/dashboard/teacher/create-course/advance-info');
     } catch (err: any) {

@@ -85,7 +85,7 @@ the number already has an account, so it cannot be used to test who is on Kidora
 
 ## Run (dev)
 ```bash
-cp .env.example .env
+cp .env.example .env          # every variable the code reads is listed there
 npm install
 docker compose up -d postgres redis mailhog
 npm run prisma:migrate
@@ -179,5 +179,12 @@ The `children-learning-web` (Kidora web) app consumes these via typed React Quer
   set it as `TIKTOK_CLIENT_ID` and the strategy sends it under the name TikTok expects.
 - `User.email` is nullable: an account created from a phone number has no email address.
   Anything that emails a user must check for one first.
+- One Redis serves the cache, the socket.io adapter and the rate limits.
+  Set `REDIS_URL` (or `REDIS_HOST`/`REDIS_PORT`) — either works everywhere
+  now; they used to be read in different places, so setting only one left
+  part of the app pointing at localhost.
+- `npm run lint` works in both apps. It never did before: the API had no
+  ESLint config at all, and the web app dropped into an interactive setup
+  prompt.
 - Stripe webhook needs the raw body (enabled via `rawBody: true` in main.ts). Use
   `stripe listen --forward-to localhost:4000/api/payments/stripe/webhook` in dev.

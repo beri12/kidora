@@ -1,7 +1,8 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { ChatService } from './chat.service';
 
 // Real-time chat gateway.
@@ -15,12 +16,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private logger = new Logger('ChatGateway');
   private online = new Map<string, Set<string>>(); // userId -> socketIds
 
-  constructor(private chat: ChatService, private jwt: JwtService) {}
+  constructor(
+    private chat: ChatService,
+    private jwt: JwtService,
+    private config: ConfigService,
+  ) {}
 
   async handleConnection(client: Socket) {
     try {
       const token = client.handshake.auth?.token as string;
-      const payload: any = this.jwt.verify(token, { secret: process.env.JWT_SECRET });
+      // Verify with the secret the tokens are actually signed with.
+      // This used to read process.env.JWT_SECRET, which is set nowhere and
+      // is not what TokenService signs with (JWT_ACCESS_SECRET), so the
+      // secret was undefined and every socket connection failed auth.
+      const payload: any = this.jwt.verify(token, {
+        secret: this.config.get<string>('auth.accessSecret'),
+      });
       client.data.userId = payload.sub;
       const set = this.online.get(payload.sub) ?? new Set();
       set.add(client.id);

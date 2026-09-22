@@ -12,7 +12,7 @@ export default function MessagesPage() {
   const { data: convos } = useQuery({ queryKey: ['conversations'], queryFn: async () => (await api.get<Convo[]>('/chat/conversations')).data });
   const [active, setActive] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  const { connected, messages, typingUsers, online, me, send, setTyping, react, remove } = useChat(active);
+  const { connected, messages, typingUsers, me, send, setTyping, react, remove } = useChat(active);
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.parentElement?.scrollTo({ top: 1e9 }); }, [messages]);
   useEffect(() => { if (!active && convos?.length) setActive(convos[0].id); }, [convos, active]);

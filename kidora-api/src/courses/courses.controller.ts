@@ -6,10 +6,11 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { JwtAuthGuard } from '../auth/dto/Jwt-auth.guard';
-import { RolesGuard } from '../auth/dto/Roles.guard';
-import { Roles } from '../auth/dto/Roles.decorator';
-import { CurrentUser } from '../auth/dto/Current-user.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AppRole } from '../common/enums/role.enum';
 
 import { CoursesService } from './courses.service';
 import {
@@ -20,7 +21,17 @@ import {
 } from './dto/Course-wizard.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('TEACHER')
+// Everyone the permission matrix grants COURSE_CREATE to (see
+// common/constants/rbac.ts). It used to read @Roles('TEACHER') alone, which
+// locked school leaders and admins out of routes they are entitled to.
+@Roles(
+  AppRole.TEACHER,
+  AppRole.SCHOOL_ADMIN,
+  AppRole.SCHOOL_LEADER,
+  AppRole.DISTRICT_ADMIN,
+  AppRole.ADMIN,
+  AppRole.SUPER_ADMIN,
+)
 @Controller('courses')
 export class CoursesController {
   constructor(

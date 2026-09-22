@@ -10,13 +10,16 @@ import { json, urlencoded } from 'express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { redisUrl } from './config/redis.config';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
 // sync across every API instance (horizontal scaling / sticky sessions).
 class RedisIoAdapter extends IoAdapter {
   private adapterConstructor!: ReturnType<typeof createAdapter>;
   async connect() {
-    const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
+    // Derived, so REDIS_HOST/REDIS_PORT work here too — docker-compose sets
+    // those and no REDIS_URL, which used to leave this pointing at localhost.
+    const url = redisUrl();
     const pub = createClient({ url });
     const sub = pub.duplicate();
     await Promise.all([pub.connect(), sub.connect()]);

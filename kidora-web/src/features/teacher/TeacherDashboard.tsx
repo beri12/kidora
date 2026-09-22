@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Users, BookOpen, ClipboardList, BarChart3, Award, Plus, MessageSquare, Bell, TrendingUp, BadgeCheck, Bot, ListChecks, FileText, PieChart, Lightbulb } from "lucide-react";
+import { Users, BookOpen, ClipboardList, BarChart3, Award, Plus, MessageSquare, TrendingUp, Bot, ListChecks, FileText, PieChart, Lightbulb } from "lucide-react";
 import { TeacherShell } from "./TeacherShell";
 import { useTeacherDashboard } from "@/lib/hooks/queries";
-import { TopHeader, StatCard, Card, CardHeader, CardBody, ProgressBar, ProgressLineChart, ActivityList, Pill, EmptyState, ErrorState, DashboardSkeleton, RangePicker, Avatar, cn } from "@/components/dashboard";
+import { TopHeader, StatCard, Card, CardHeader, CardBody, ProgressBar, ProgressLineChart, ActivityList, Pill, EmptyState, ErrorState, DashboardSkeleton, RangePicker } from "@/components/dashboard";
 import { dueLabel, fmtDate, fmtTime } from "@/lib/format";
 import type { TeacherDashboard as Data } from "@/types/lms";
 

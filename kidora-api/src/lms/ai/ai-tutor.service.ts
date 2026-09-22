@@ -38,7 +38,10 @@ export class AiTutorService {
     const history = await this.prisma.aIConversation.findMany({ where: { userId, kind }, orderBy: { createdAt: 'desc' }, take: 6 });
     const messages = [...history.reverse().flatMap((h) => [{ role: 'user' as const, content: h.message }, { role: 'assistant' as const, content: h.response }]), { role: 'user' as const, content: p.message.slice(0, 2000) }];
 
-    let text = '', tokens = 0;
+    // No initialisers: the try assigns both and the catch always throws,
+    // so a default here could only ever mask a missing assignment.
+    let text: string;
+    let tokens: number;
     try { const r = await this.provider.complete({ system: `${SYSTEM_BASE}\n${KIND_PROMPTS[kind]}${context}`, messages, maxTokens: 600 }); text = r.text; tokens = r.tokens ?? 0; }
     catch { throw new ServiceUnavailableException('The tutor is unavailable right now. Please try again later.'); }
 

@@ -248,7 +248,8 @@ export class QuizzesService {
         (answer) => answer.questionId === question.id,
       );
 
-      let correct: boolean | null = false;
+      // Assigned on every branch below, including the final else.
+      let correct: boolean | null;
       let pointsAwarded = 0;
 
       /**

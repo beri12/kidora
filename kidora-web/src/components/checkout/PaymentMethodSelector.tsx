@@ -1,7 +1,7 @@
 // components/checkout/PaymentMethodSelector.tsx
 "use client";
 
-import { CardIcon, StripeBadge, PayPalBadge, ApplePayBadge, TelebirrBadge } from "./icons";
+import { CardIcon, PayPalBadge, ApplePayBadge, TelebirrBadge } from "./icons";
 import type { PaymentProvider } from "@/lib/payment";
 
 interface MethodOption {

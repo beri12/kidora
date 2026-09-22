@@ -4,7 +4,7 @@ import Link from "next/link";
 import { GraduationCap, Users, BookOpen, LayoutGrid, BarChart3, UserPlus, UserRoundPlus, FilePlus2, FileCheck2, MessageSquare, FileBarChart2, AlertTriangle } from "lucide-react";
 import { SchoolShell } from "./SchoolShell";
 import { useSchoolDashboard } from "@/lib/hooks/queries";
-import { TopHeader, StatCard, Card, CardHeader, CardBody, ProgressBar, ProgressLineChart, ActivityList, Pill, EmptyState, ErrorState, DashboardSkeleton, RangePicker, cn } from "@/components/dashboard";
+import { TopHeader, StatCard, Card, CardHeader, CardBody, ProgressBar, ProgressLineChart, ActivityList, EmptyState, ErrorState, DashboardSkeleton, RangePicker, cn } from "@/components/dashboard";
 import { fmtNumber, timeAgo } from "@/lib/format";
 import type { SchoolDashboard as Data } from "@/types/lms";
 

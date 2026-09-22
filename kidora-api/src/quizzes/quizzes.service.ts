@@ -11,7 +11,7 @@ export class QuizzesService {
   async get(id: string) {
     const quiz = await this.prisma.quiz.findUnique({ where: { id }, include: { questions: true } });
     if (!quiz) throw new NotFoundException('Quiz not found');
-    return { ...quiz, questions: quiz.questions.map(({ correct, ...q }) => q) };
+    return { ...quiz, questions: quiz.questions.map(({ correct: _correct, ...q }) => q) };
   }
 
   // Grade server-side, award points (10/correct), badge on perfect score.

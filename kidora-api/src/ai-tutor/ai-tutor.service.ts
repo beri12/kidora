@@ -84,7 +84,7 @@ export class AiTutorService {
       for (const line of decoder.decode(value).split('\n')) {
         const t = line.replace(/^data: /, '').trim();
         if (!t || t === '[DONE]') continue;
-        try { const tok = JSON.parse(t).choices?.[0]?.delta?.content; if (tok) { full += tok; yield tok; } } catch {}
+        try { const tok = JSON.parse(t).choices?.[0]?.delta?.content; if (tok) { full += tok; yield tok; } } catch { /* a partial or malformed SSE chunk: skip it and read the next */ }
       }
     }
     await this.prisma.aIConversation.create({ data: { userId, message, response: full } });

@@ -1,13 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
-import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
 // Requires: npm i passport-oauth2 axios ; set GITHUB_CLIENT_ID/SECRET.
 @Injectable()
 export class GithubStrategy extends PassportStrategy(Strategy, 'github') {
-  constructor(config: ConfigService) {
+  constructor() {
     super({
       authorizationURL: 'https://github.com/login/oauth/authorize',
       tokenURL: 'https://github.com/login/oauth/access_token',

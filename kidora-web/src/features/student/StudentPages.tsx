@@ -3,12 +3,11 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Lock, Check, Award, Trophy, Medal, Bot, Send, ExternalLink, Clock } from "lucide-react";
 import { StudentShell } from "./StudentShell";
-import { CourseTile } from "./StudentDashboard";
 import {
   useStudentCourses, useStudentQuests, useClaimQuest, useStudentAssignments, useStudentQuizzes, useStudentExams,
   useStudentCertificates, useStudentBadges, useLeaderboard, useWorldMap, useAiHistory, useAiAsk, useSubmitAssignment,
 } from "@/lib/hooks/queries";
-import { TopHeader, Card, CardBody, CardHeader, Pill, ProgressBar, Avatar, EmptyState, ErrorState, Skeleton, Tabs, cn } from "@/components/dashboard";
+import { TopHeader, Card, CardBody, Pill, ProgressBar, Avatar, EmptyState, ErrorState, Skeleton, Tabs, cn } from "@/components/dashboard";
 import { dueLabel, fmtDate, fmtNumber, timeAgo } from "@/lib/format";
 import type { WorldNode } from "@/types/lms";
 

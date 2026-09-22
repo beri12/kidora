@@ -50,7 +50,7 @@ describe('tenancy', () => {
 
 describe('RolesGuard', () => {
   const guard = new RolesGuard(new Reflector());
-  const ctx = (user: AuthUser | undefined, roles: string[]) => ({
+  const ctx = (user: AuthUser | undefined, _roles: string[]) => ({
     getHandler: () => ({}), getClass: () => ({}),
     switchToHttp: () => ({ getRequest: () => ({ user }) }),
   });

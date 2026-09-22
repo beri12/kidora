@@ -1,8 +1,9 @@
 import Redis from 'ioredis';
+import { redisUrl } from '../config/redis.config';
 
 export const RedisProvider = {
   provide: 'REDIS_CLIENT',
   useFactory: () => {
-    return new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    return new Redis(redisUrl());
   },
 };

@@ -9,8 +9,15 @@ declare module 'axios' {
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
-if (typeof window !== 'undefined') {
-  console.log('[api] baseURL:', API_URL);
+// Request tracing is useful while developing and noise (or a leak) in
+// production: the URLs include ids, and anything logged here ends up in the
+// browser console of every visitor. Gated on NODE_ENV rather than removed,
+// so it is one env var away when debugging.
+const debug = process.env.NODE_ENV !== 'production';
+const trace = (...args: unknown[]) => { if (debug) console.log(...args); };
+
+if (debug && typeof window !== 'undefined') {
+  trace('[api] baseURL:', API_URL);
 }
 
 export const api = axios.create({
@@ -33,7 +40,7 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
-    console.log('[api] ->', config.method?.toUpperCase(), (config.baseURL ?? '') + (config.url ?? ''));
+    trace('[api] ->', config.method?.toUpperCase(), (config.baseURL ?? '') + (config.url ?? ''));
     return config;
   },
   (error) => Promise.reject(error),
@@ -43,11 +50,11 @@ let refreshing: Promise<string | null> | null = null;
 
 api.interceptors.response.use(
   (res) => {
-    console.log('[api] <-', res.status, res.config.url);
+    trace('[api] <-', res.status, res.config.url);
     return res;
   },
   async (error: AxiosError) => {
-    console.error('[api] error', error.code, error.message, error.config?.url);
+    if (debug) console.error('[api] error', error.code, error.message, error.config?.url);
 
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
@@ -56,13 +63,13 @@ api.interceptors.response.use(
 
       try {
         if (!refreshing) {
-          console.log('[api] refreshing token...');
+          trace('[api] refreshing token...');
           refreshing = useAuthStore.getState().refresh();
         }
 
         const newToken = await refreshing;
         refreshing = null;
-        console.log('[api] refresh result:', newToken ? 'got new token' : 'null');
+        trace('[api] refresh result:', newToken ? 'got new token' : 'null');
 
         if (newToken) {
           original.headers.Authorization = `Bearer ${newToken}`;

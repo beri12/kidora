@@ -10,6 +10,10 @@ export class CacheService implements OnModuleDestroy {
     this.client = new Redis({
       host: config.get('redis.host'),
       port: config.get('redis.port'),
+      username: config.get('redis.username'),
+      password: config.get('redis.password'),
+      // Managed Redis (rediss://) refuses plaintext connections.
+      ...(config.get('redis.tls') ? { tls: {} } : {}),
       maxRetriesPerRequest: 3, // fail after 3 retries instead of queueing forever
       connectTimeout: 5000,    // give up connecting after 5s instead of hanging
       retryStrategy(times) {
