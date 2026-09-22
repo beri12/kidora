@@ -68,6 +68,47 @@ export class PhoneAuthService {
     return rest;
   }
 
+  /**
+   * Deliver the code, and decide what a failed delivery means.
+   *
+   * Outside production a refused send must not be the end of the road. A
+   * Twilio TRIAL account only texts numbers on its verified list, so every
+   * other number answered 503 and phone sign-up could not be exercised at all
+   * on a developer's machine — even though the code had been generated and
+   * stored. The code is handed back instead, exactly as it is when Twilio is
+   * not configured, and the reason is logged.
+   *
+   * In production the send failing is the whole operation failing: the caller
+   * is told, and the stored code is dropped so the next attempt starts clean.
+   */
+  private async deliver(phone: string, code: string, keysToClear: string[]) {
+    const isProd = process.env.NODE_ENV === 'production';
+    try {
+      await this.sms.sendOtp(phone, code);
+    } catch (err) {
+      if (isProd) {
+        await Promise.all(keysToClear.map((k) => this.cache.del(k)));
+        throw err instanceof HttpException
+          ? err
+          : new ServiceUnavailableException("We couldn't send the code. Check the number and try again.");
+      }
+      this.logger.error(
+        `SMS to ${PhoneAuthService.mask(phone)} was refused, so the code is being returned in the response instead. ` +
+        `The reason is logged above by [SMS].`,
+      );
+      return { devCode: code, smsFailed: true as const };
+    }
+
+    // Without Twilio credentials the SMS is only logged, so hand the code back
+    // to the caller — that keeps the flow usable in local development. Never
+    // in production, whatever the SMS configuration is.
+    if (!this.sms.enabled && !isProd) {
+      this.logger.warn(`Twilio is not configured — OTP for ${PhoneAuthService.mask(phone)} is ${code}`);
+      return { devCode: code, smsFailed: false as const };
+    }
+    return { devCode: undefined, smsFailed: false as const };
+  }
+
   // --- step 1: send the code ---------------------------------------------
 
   /**
@@ -100,26 +141,18 @@ export class PhoneAuthService {
     await this.cache.set(this.otpKey(phone), record, OTP_TTL);
     await this.cache.set(this.cooldownKey(phone), 1, RESEND_COOLDOWN);
 
-    try {
-      await this.sms.sendOtp(phone, code);
-    } catch {
-      await this.cache.del(this.otpKey(phone));
-      await this.cache.del(this.cooldownKey(phone));
-      throw new ServiceUnavailableException("We couldn't send the code. Check the number and try again.");
-    }
-
-    // Without Twilio credentials the SMS is only logged, so hand the code back
-    // to the caller — that keeps the flow usable in local development. Never
-    // in production, whatever the SMS configuration is.
-    const devCode = !this.sms.enabled && process.env.NODE_ENV !== 'production' ? code : undefined;
-    if (devCode) this.logger.warn(`Twilio is not configured — OTP for ${PhoneAuthService.mask(phone)} is ${code}`);
+    const { devCode, smsFailed } = await this.deliver(phone, code, [
+      this.otpKey(phone),
+      this.cooldownKey(phone),
+    ]);
 
     return {
-      sent: true,
+      sent: !smsFailed,
       phone: PhoneAuthService.mask(phone),
       expiresIn: OTP_TTL,
       resendIn: RESEND_COOLDOWN,
       ...(devCode ? { devCode } : {}),
+      ...(smsFailed ? { smsFailed: true as const } : {}),
     };
   }
 
@@ -227,21 +260,18 @@ export class PhoneAuthService {
     await this.cache.set(this.attachKey(userId, phone), record, OTP_TTL);
     await this.cache.set(this.attachCooldownKey(userId), 1, RESEND_COOLDOWN);
 
-    try {
-      await this.sms.sendOtp(phone, code);
-    } catch {
-      await this.cache.del(this.attachKey(userId, phone));
-      await this.cache.del(this.attachCooldownKey(userId));
-      throw new ServiceUnavailableException("We couldn't send the code. Check the number and try again.");
-    }
+    const { devCode, smsFailed } = await this.deliver(phone, code, [
+      this.attachKey(userId, phone),
+      this.attachCooldownKey(userId),
+    ]);
 
-    const devCode = !this.sms.enabled && process.env.NODE_ENV !== 'production' ? code : undefined;
     return {
-      sent: true,
+      sent: !smsFailed,
       phone: PhoneAuthService.mask(phone),
       expiresIn: OTP_TTL,
       resendIn: RESEND_COOLDOWN,
       ...(devCode ? { devCode } : {}),
+      ...(smsFailed ? { smsFailed: true as const } : {}),
     };
   }
 

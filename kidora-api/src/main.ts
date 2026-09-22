@@ -11,6 +11,7 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { redisUrl } from './config/redis.config';
+import { oauthCallbackUrl } from './config/oauth-callback';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
 // sync across every API instance (horizontal scaling / sticky sessions).
@@ -91,5 +92,50 @@ async function bootstrap() {
   const port = process.env.PORT ?? 4000;
   await app.listen(port);
   console.log(`Kidora API running on http://localhost:${port}/api  (docs: /api/docs)`);
+  reportSignInSetup();
+}
+
+/**
+ * What sign-in can actually do on this machine, printed once at boot.
+ *
+ * "I put it in .env and it still doesn't work" is nearly always one of two
+ * things, and neither is visible from the code: a social provider whose
+ * redirect URI is not the one registered with the provider, or Twilio on a
+ * trial account. Both are printed here with the exact value to copy, so the
+ * mismatch is obvious before anyone opens a browser.
+ */
+function reportSignInSetup() {
+  const on = (v?: string) => Boolean(v && v.trim());
+
+  // Read through the same helper the strategies use, so this can never print
+  // a URL different from the one actually sent to the provider.
+  const providers = ['google', 'facebook', 'tiktok', 'github', 'microsoft', 'apple'];
+
+  const lines: string[] = [];
+  for (const name of providers) {
+    const idKey = `${name.toUpperCase()}_CLIENT_ID`;
+    const secretKey = `${name.toUpperCase()}_CLIENT_SECRET`;
+    if (!on(process.env[idKey])) continue;
+    lines.push(`  ${name}: on — register this redirect URI with the provider, exactly:`);
+    lines.push(`      ${oauthCallbackUrl(name)}`);
+    if (!on(process.env[secretKey])) {
+      lines.push(`    WARNING: ${idKey} is set but ${secretKey} is not, so ${name} sign-in will be rejected.`);
+    }
+  }
+
+  console.log('\nSign-in:');
+  console.log(lines.length ? lines.join('\n') : '  Social sign-in: off (no provider client ids set)');
+
+  const twilio = on(process.env.TWILIO_ACCOUNT_SID ?? process.env.TWILIO_SID)
+    && on(process.env.TWILIO_AUTH_TOKEN ?? process.env.TWILIO_TOKEN)
+    && on(process.env.TWILIO_PHONE_NUMBER ?? process.env.TWILIO_FROM ?? process.env.TWILIO_MESSAGING_SERVICE_SID);
+
+  console.log(
+    twilio
+      ? '  SMS: Twilio configured. On a TRIAL account only verified numbers receive texts;\n'
+        + '       outside production a refused send returns the code in the response instead.'
+      : '  SMS: Twilio not configured — one-time codes are printed here and returned in the response.',
+  );
+  console.log(`  Web app redirected to: ${process.env.WEB_URL ?? 'http://localhost:3000'}  (set WEB_URL if that is wrong)\n`);
 }
 bootstrap();

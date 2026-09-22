@@ -1,6 +1,34 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 
 /**
+ * A send that Twilio refused, carrying its error code so callers can tell a
+ * configuration problem from a bad number.
+ *
+ * The codes worth naming, because each has a different fix:
+ *   21608  trial account — the recipient is not on the verified-numbers list
+ *   21211  the "to" number is not a real number
+ *   21408  the account has no permission to send to that country
+ *   21606/21659  the "from" number is not one this account can send from
+ */
+export class SmsDeliveryError extends ServiceUnavailableException {
+  constructor(message: string, readonly twilioCode?: number) {
+    super(message);
+  }
+}
+
+/** What to tell the operator — not the end user — about a refused send. */
+const REMEDY: Record<number, string> = {
+  21608:
+    'This is a Twilio TRIAL account: it can only text numbers you have verified. ' +
+    'Add the number at twilio.com/console/phone-numbers/verified, or upgrade the account. ' +
+    'For local development, leave the Twilio variables unset instead and the code is logged here.',
+  21211: 'Twilio rejected the destination number. Check the country code.',
+  21408: 'This Twilio account is not permitted to send to that country. Enable the region under Messaging > Geo permissions.',
+  21606: 'TWILIO_PHONE_NUMBER is not an SMS-capable number on this account.',
+  21659: 'TWILIO_PHONE_NUMBER is not owned by this account.',
+};
+
+/**
  * Twilio SMS sender.
  *
  * Both of the naming conventions Twilio's own docs use are accepted, because
@@ -88,8 +116,10 @@ export class SmsService {
       // Twilio's message carries the actionable detail (unverified number,
       // trial-account restriction, bad from-number); keep it in the logs but
       // don't leak account details to the caller.
-      this.logger.error(`Twilio send to ${to} failed: ${(e as Error).message}`);
-      throw new ServiceUnavailableException('Could not send the SMS code. Try again shortly.');
+      const code = Number((e as { code?: number }).code) || undefined;
+      this.logger.error(`Twilio send to ${to} failed${code ? ` (${code})` : ''}: ${(e as Error).message}`);
+      if (code && REMEDY[code]) this.logger.error(REMEDY[code]);
+      throw new SmsDeliveryError('Could not send the SMS code. Try again shortly.', code);
     }
   }
 

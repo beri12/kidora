@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
+import { oauthCallbackUrl } from '../../config/oauth-callback';
 
 // Requires: npm i passport-oauth2 axios ; set GITHUB_CLIENT_ID/SECRET.
 @Injectable()
@@ -12,7 +13,7 @@ export class GithubStrategy extends PassportStrategy(Strategy, 'github') {
       tokenURL: 'https://github.com/login/oauth/access_token',
       clientID: process.env.GITHUB_CLIENT_ID || 'missing',
       clientSecret: process.env.GITHUB_CLIENT_SECRET || 'missing',
-      callbackURL: process.env.GITHUB_CALLBACK_URL || 'http://localhost:4000/api/auth/github/callback',
+      callbackURL: oauthCallbackUrl('github'),
       scope: ['user:email'],
     });
   }

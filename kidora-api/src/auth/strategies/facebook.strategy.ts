@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
+import { oauthCallbackUrl } from '../../config/oauth-callback';
 
 const GRAPH = process.env.FACEBOOK_API_VERSION || 'v19.0';
 
@@ -15,7 +16,7 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
       tokenURL: `https://graph.facebook.com/${GRAPH}/oauth/access_token`,
       clientID: process.env.FACEBOOK_CLIENT_ID || 'missing',
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET || 'missing',
-      callbackURL: process.env.FACEBOOK_CALLBACK_URL || 'http://localhost:4000/api/auth/facebook/callback',
+      callbackURL: oauthCallbackUrl('facebook'),
       scope: ['email', 'public_profile'],
     });
   }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
+import { oauthCallbackUrl } from '../../config/oauth-callback';
 
 // TikTok Login Kit (v2). Set TIKTOK_CLIENT_ID (TikTok calls it the client key)
 // and TIKTOK_CLIENT_SECRET to enable.
@@ -17,7 +18,7 @@ export class TiktokStrategy extends PassportStrategy(Strategy, 'tiktok') {
       tokenURL: 'https://open.tiktokapis.com/v2/oauth/token/',
       clientID: process.env.TIKTOK_CLIENT_ID || 'missing',
       clientSecret: process.env.TIKTOK_CLIENT_SECRET || 'missing',
-      callbackURL: process.env.TIKTOK_CALLBACK_URL || 'http://localhost:4000/api/auth/tiktok/callback',
+      callbackURL: oauthCallbackUrl('tiktok'),
       scope: ['user.info.basic'],
       scopeSeparator: ',',
     });

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
+import { oauthCallbackUrl } from '../../config/oauth-callback';
 
 // Microsoft Identity (v2.0). Set MICROSOFT_CLIENT_ID/SECRET/TENANT.
 @Injectable()
@@ -13,7 +14,7 @@ export class MicrosoftStrategy extends PassportStrategy(Strategy, 'microsoft') {
       tokenURL: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
       clientID: process.env.MICROSOFT_CLIENT_ID || 'missing',
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET || 'missing',
-      callbackURL: process.env.MICROSOFT_CALLBACK_URL || 'http://localhost:4000/api/auth/microsoft/callback',
+      callbackURL: oauthCallbackUrl('microsoft'),
       scope: ['user.read'],
     });
   }

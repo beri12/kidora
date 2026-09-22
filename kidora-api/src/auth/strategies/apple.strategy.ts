@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
+import { oauthCallbackUrl } from '../../config/oauth-callback';
 
 // Sign in with Apple. Apple returns an id_token (JWT) you decode for email/sub.
 // Set APPLE_CLIENT_ID + APPLE_TEAM_ID + APPLE_KEY_ID + APPLE_PRIVATE_KEY and
@@ -13,7 +14,7 @@ export class AppleStrategy extends PassportStrategy(Strategy, 'apple') {
       tokenURL: 'https://appleid.apple.com/auth/token',
       clientID: process.env.APPLE_CLIENT_ID || 'missing',
       clientSecret: process.env.APPLE_CLIENT_SECRET || 'missing',
-      callbackURL: process.env.APPLE_CALLBACK_URL || 'http://localhost:4000/api/auth/apple/callback',
+      callbackURL: oauthCallbackUrl('apple'),
       scope: ['name', 'email'],
     });
   }
