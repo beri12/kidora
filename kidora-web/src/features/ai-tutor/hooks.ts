@@ -1,36 +1,18 @@
-'use client';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/axios';
+"use client";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { aiApi } from "@/lib/api/ai";
 
-export interface TutorReply {
-  answer: string;
-  suggestions?: string[];
-}
-
-export interface TutorHistoryEntry {
-  id: string;
-  message: string;
-  answer: string;
-  createdAt: string;
-}
+export const aiKeys = { history: ["ai", "history"] as const };
 
 /**
- * Asks Kai a question — POST /api/ai/chat.
- *
- * A mutation rather than a query: each message is a distinct action with a
- * side effect (it is stored in the tutor history), and the page drives the
- * transcript from its own state via onSuccess.
+ * Asks Kai a question. Exposed as a bare mutation because the chat page drives
+ * its own transcript and calls `ai.mutate(text, { onSuccess })`.
  */
 export function useAITutor() {
-  return useMutation<TutorReply, unknown, string>({
-    mutationFn: async (message: string) =>
-      (await api.post<TutorReply>('/ai/chat', { message })).data,
-  });
+  return useMutation({ mutationFn: (message: string) => aiApi.ask(message) });
 }
 
-export function useAITutorHistory() {
-  return useQuery({
-    queryKey: ['ai', 'history'],
-    queryFn: async () => (await api.get<TutorHistoryEntry[]>('/ai/chat/history')).data,
-  });
+/** Past conversations, for restoring the transcript. */
+export function useAIHistory() {
+  return useQuery({ queryKey: aiKeys.history, queryFn: aiApi.history, staleTime: 5 * 60_000 });
 }

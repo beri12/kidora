@@ -7,6 +7,7 @@ import type {
   OrgRequest,
   PhoneStartResponse,
   PhoneVerifyResponse,
+  Role,
   SignupRoleKey,
   SubmitOrgRequestResponse,
   User,
@@ -47,6 +48,31 @@ interface AuthState {
   refresh: (client?: AxiosInstance) => Promise<string | null>;
   logout: () => void;
   hasPlan: () => boolean;
+}
+
+/**
+ * Mirror the signed-in role into a cookie for src/middleware.ts.
+ *
+ * The middleware runs on the edge, before any React code, so it cannot read
+ * this store — localStorage is not sent with a navigation request. Without
+ * this the cookie was never written by anything, so `role` was always
+ * undefined there and every protected route bounced a perfectly valid
+ * session to /login.
+ *
+ * It is deliberately not httpOnly (client JavaScript has to write it) and is
+ * therefore forgeable. That is fine: the middleware only decides which shell
+ * to render. Every request the page then makes is authorised for real by the
+ * API's JwtAuthGuard + RolesGuard against the bearer token.
+ */
+const ROLE_COOKIE = 'kidora_role';
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days, same order as the refresh token
+
+function syncRoleCookie(role: Role | null | undefined) {
+  if (typeof document === 'undefined') return; // SSR / tests
+  const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = role
+    ? `${ROLE_COOKIE}=${role}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax${secure}`
+    : `${ROLE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
 }
 
 // Auth store — persisted to localStorage. The axios interceptor reads
@@ -189,7 +215,20 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'cl.auth',
-      onRehydrateStorage: () => (state) => { if (state) state.hydrated = true; },
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.hydrated = true;
+        // A returning visitor has the session in localStorage but no cookie
+        // (it may have expired, or been dropped). Put it back before the next
+        // navigation asks the middleware about it.
+        syncRoleCookie(state.user?.role ?? null);
+      },
     },
   ),
 );
+
+// Every path that touches `user` — sign-in, role selection, an approved org
+// request, refresh failure, logout — goes through the store, so subscribing
+// once here is what keeps the cookie honest, rather than a call bolted onto
+// each of them that the next one will forget.
+useAuthStore.subscribe((s) => syncRoleCookie(s.user?.role ?? null));

@@ -11,6 +11,7 @@ import { StudentService } from './student/student.service';
 import { StudentController } from './student/student.controller';
 import { TeacherService } from './teacher/teacher.service';
 import { TeacherController } from './teacher/teacher.controller';
+import { TeacherLibraryService } from './teacher/teacher-library.service';
 import { SchoolService } from './school/school.service';
 import { SchoolController } from './school/school.controller';
 import { ParentService } from './parent/parent.service';
@@ -28,6 +29,19 @@ import { AiTutorService } from './ai/ai-tutor.service';
 import { AiController } from './ai/ai.controller';
 import { KIDORA_AI_PROVIDER, UnconfiguredAiProvider } from './ai/ai-provider';
 import { AttendanceController } from './attendance/attendance.controller';
+import { AuthoringService } from './authoring/authoring.service';
+import { AssessmentAuthoringService } from './authoring/assessment-authoring.service';
+import { PublishService } from './authoring/publish.service';
+import { StudioService } from './authoring/studio.service';
+import { AuthoringController } from './authoring/authoring.controller';
+import { PeerReviewService } from './peer-review/peer-review.service';
+import { UploadsController } from './uploads/uploads.controller';
+import { UploadsService } from './uploads/uploads.service';
+import { VideoProcessingService } from './uploads/video-processing.service';
+import { PeerReviewController, TeacherPeerReviewController } from './peer-review/peer-review.controller';
+import { CompletionService } from './learning/completion.service';
+import { LearningService } from './learning/learning.service';
+import { LearningController, BrowseFiltersController } from './learning/learning.controller';
 
 /**
  * Add `LmsModule` to the `imports` array of your existing AppModule.
@@ -40,13 +54,15 @@ import { AttendanceController } from './attendance/attendance.controller';
  *   3. KIDORA_REDIS   -> your ioredis client; KIDORA_AI_PROVIDER -> your AI service.
  */
 @Module({
-  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController],
+  controllers: [StudentController, TeacherController, SchoolController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController, BrowseFiltersController, PeerReviewController, TeacherPeerReviewController, UploadsController],
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
-    StudentService, TeacherService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
+    StudentService, TeacherService, TeacherLibraryService, SchoolService, ParentService, QuizzesService, AssignmentsService, ExamsService, CertificatesService, MessagesService, AiTutorService,
+    AuthoringService, AssessmentAuthoringService, PublishService, StudioService, CompletionService, LearningService, PeerReviewService,
+    UploadsService, VideoProcessingService,
     { provide: KIDORA_REDIS, useValue: undefined }, // e.g. { provide: KIDORA_REDIS, useFactory: (r: RedisService) => r.getClient(), inject: [RedisService] }
     { provide: KIDORA_AI_PROVIDER, useClass: UnconfiguredAiProvider },
   ],
-  exports: [RewardsService, TenancyService, AnalyticsService, CertificatesService],
+  exports: [RewardsService, TenancyService, AnalyticsService, CertificatesService, CompletionService],
 })
 export class LmsModule {}

@@ -1,77 +1,45 @@
-'use client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/axios';
+"use client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { avatarApi, type Avatar } from "@/lib/api/avatar";
 
-export interface Avatar {
-  skinColor?: string;
-  hair?: string;
-  clothes?: string;
-  pet?: string;
-  accessories?: string[];
-  [key: string]: unknown;
-}
-
-export interface AvatarItem {
-  id: string;
-  name: string;
-  category?: string;
-  rarity?: string;
-  price: number;
-}
-
-const avatarKeys = {
-  mine: ['avatar'] as const,
-  items: (category?: string) => ['avatar', 'items', category ?? 'all'] as const,
-  inventory: ['inventory'] as const,
+export const avatarKeys = {
+  me: ["avatar", "me"] as const,
+  items: (category?: string) => ["avatar", "items", category ?? "all"] as const,
+  inventory: ["avatar", "inventory"] as const,
 };
 
-/**
- * The customiser reads `data` and calls `update.mutate(patch)` on every
- * click, so the saved avatar and its mutation are returned together.
- *
- * The patch is merged onto the cached avatar optimistically so the preview
- * updates on the same frame as the click instead of waiting for the round
- * trip; a failed save rolls back to the previous value.
- */
+/** The signed-in user's avatar plus the mutation that saves changes. */
 export function useAvatar() {
   const qc = useQueryClient();
-
-  const query = useQuery({
-    queryKey: avatarKeys.mine,
-    queryFn: async () => (await api.get<Avatar>('/avatar')).data,
-  });
-
+  const query = useQuery({ queryKey: avatarKeys.me, queryFn: avatarApi.get, staleTime: 5 * 60_000 });
   const update = useMutation({
-    mutationFn: async (patch: Record<string, unknown>) =>
-      (await api.put<Avatar>('/avatar', patch)).data,
-    onMutate: async (patch) => {
-      await qc.cancelQueries({ queryKey: avatarKeys.mine });
-      const previous = qc.getQueryData<Avatar>(avatarKeys.mine);
-      qc.setQueryData<Avatar>(avatarKeys.mine, { ...(previous ?? {}), ...patch });
-      return { previous };
-    },
-    onError: (_err, _patch, context) => {
-      if (context?.previous) qc.setQueryData(avatarKeys.mine, context.previous);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: avatarKeys.mine }),
+    mutationFn: (patch: Partial<Avatar>) => avatarApi.update(patch),
+    // Write the server's copy straight into the cache so the preview does not
+    // flicker back to the old look while a refetch is in flight.
+    onSuccess: (saved) => qc.setQueryData(avatarKeys.me, saved),
   });
-
   return { ...query, update };
 }
 
-/** Shop catalogue — GET /api/avatar/items. */
+/** Shop catalogue; public, so it does not need a session. */
 export function useAvatarItems(category?: string) {
   return useQuery({
     queryKey: avatarKeys.items(category),
-    queryFn: async () =>
-      (await api.get<AvatarItem[]>('/avatar/items', { params: category ? { category } : undefined })).data,
+    queryFn: () => avatarApi.items(category),
+    staleTime: 10 * 60_000,
   });
 }
 
-/** Items the signed-in user already owns — GET /api/inventory. */
 export function useInventory() {
-  return useQuery({
-    queryKey: avatarKeys.inventory,
-    queryFn: async () => (await api.get<AvatarItem[]>('/inventory')).data,
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: avatarKeys.inventory, queryFn: avatarApi.inventory, staleTime: 60_000 });
+  const equip = useMutation({
+    mutationFn: ({ itemId, equipped = true }: { itemId: string; equipped?: boolean }) =>
+      avatarApi.equip(itemId, equipped),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: avatarKeys.inventory });
+      qc.invalidateQueries({ queryKey: avatarKeys.me });
+    },
   });
+  return { ...query, equip };
 }

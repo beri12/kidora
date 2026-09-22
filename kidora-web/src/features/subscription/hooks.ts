@@ -1,76 +1,36 @@
-'use client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/axios';
+"use client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { billingApi, type PlanKey } from "@/lib/api/billing";
 
-export type PlanKey = 'free' | 'family' | 'school';
-
-export interface Subscription {
-  plan: PlanKey | string;
-  status: string;
-  renewsAt?: string | null;
-}
-
-export interface Usage {
-  lessons: number;
-  aiChats: number;
-  games: number;
-}
-
-export interface Invoice {
-  id: string;
-  amountCents: number;
-  currency?: string;
-  status: string;
-  createdAt: string;
-}
-
-const subKeys = {
-  mine: ['subscription'] as const,
-  usage: ['subscription', 'usage'] as const,
-  invoices: ['invoices'] as const,
+export const billingKeys = {
+  subscription: ["billing", "subscription"] as const,
+  usage: ["billing", "usage"] as const,
+  invoices: ["billing", "invoices"] as const,
 };
 
 /**
- * The account page reads `data`, `usage`, `setPlan` and `cancel` off a single
- * hook, so the plan query, the usage query and both mutations are bundled
- * here. Every mutation refreshes the subscription so the header reflects the
- * new plan without a manual reload.
+ * Current plan, its usage counters, and the plan-change mutations.
+ * The account page destructures `{ data, usage, setPlan, cancel }`.
  */
 export function useSubscription() {
   const qc = useQueryClient();
-
-  const query = useQuery({
-    queryKey: subKeys.mine,
-    queryFn: async () => (await api.get<Subscription>('/subscriptions')).data,
-  });
-
-  const usage = useQuery({
-    queryKey: subKeys.usage,
-    queryFn: async () => (await api.get<Usage>('/subscriptions/usage')).data,
-  });
+  const query = useQuery({ queryKey: billingKeys.subscription, queryFn: billingApi.subscription, staleTime: 60_000 });
+  const usage = useQuery({ queryKey: billingKeys.usage, queryFn: billingApi.usage, staleTime: 60_000 });
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: subKeys.mine });
-    qc.invalidateQueries({ queryKey: subKeys.usage });
+    qc.invalidateQueries({ queryKey: billingKeys.subscription });
+    qc.invalidateQueries({ queryKey: billingKeys.usage });
+    qc.invalidateQueries({ queryKey: billingKeys.invoices });
   };
 
-  const setPlan = useMutation({
-    mutationFn: async (plan: PlanKey | string) =>
-      (await api.post<Subscription>('/subscriptions', { plan })).data,
-    onSuccess: invalidate,
-  });
+  const setPlan = useMutation({ mutationFn: (plan: PlanKey) => billingApi.setPlan(plan), onSuccess: invalidate });
+  const cancel = useMutation({ mutationFn: () => billingApi.cancel(), onSuccess: invalidate });
 
-  const cancel = useMutation({
-    mutationFn: async () => (await api.post<Subscription>('/subscriptions/cancel')).data,
-    onSuccess: invalidate,
-  });
-
+  // `usage` is the query object, not its data: the account page reads
+  // usage.data and needs the loading/error flags alongside it.
   return { ...query, usage, setPlan, cancel };
 }
 
 export function useInvoices() {
-  return useQuery({
-    queryKey: subKeys.invoices,
-    queryFn: async () => (await api.get<Invoice[]>('/invoices')).data,
-  });
+  return useQuery({ queryKey: billingKeys.invoices, queryFn: billingApi.invoices, staleTime: 5 * 60_000 });
 }

@@ -4,17 +4,27 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/types';
 
-const SCHOOL_NAV = [
+interface NavItem { href: string; label: string; icon: string }
+
+// These point at the LMS tree (/student, /teacher, /parent, /school) — the one
+// wired to the backend. They used to point at /dashboard/*, so a user who
+// signed in landed on the new dashboard and was then walked straight back to
+// the old pages by the first sidebar link they clicked.
+// /dashboard/teacher/upload is the exception: the course-upload wizard only
+// exists there.
+
+// SCHOOL_ADMIN and SCHOOL_LEADER see the same menu; shared so they can't drift.
+const SCHOOL_NAV: NavItem[] = [
   { href: '/school/dashboard', label: 'Overview', icon: '📊' },
+  { href: '/school/teachers', label: 'Teachers', icon: '🍎' },
   { href: '/school/students', label: 'Students', icon: '👥' },
-  { href: '/school/teachers', label: 'Teachers', icon: '🧑‍🏫' },
   { href: '/school/classes', label: 'Classes', icon: '🏫' },
   { href: '/school/courses', label: 'Courses', icon: '📚' },
   { href: '/school/analytics', label: 'Analytics', icon: '📈' },
   { href: '/school/billing', label: 'Billing', icon: '💳' },
 ];
 
-const NAV: Record<Role, { href: string; label: string; icon: string }[]> = {
+const NAV: Record<Role, NavItem[]> = {
   ADMIN: [
     { href: '/dashboard/admin', label: 'Overview', icon: '📊' },
     { href: '/students', label: 'Users', icon: '👥' },
@@ -22,33 +32,39 @@ const NAV: Record<Role, { href: string; label: string; icon: string }[]> = {
     { href: '/dashboard/admin/payments', label: 'Payments', icon: '💳' },
   ],
   TEACHER: [
-    { href: '/dashboard/teacher', label: 'Overview', icon: '📊' },
-    { href: '/dashboard/teacher/courses', label: 'My Courses', icon: '📚' },
-    { href: '/students', label: 'Students', icon: '👥' },
+    { href: '/teacher/dashboard', label: 'Overview', icon: '📊' },
+    { href: '/teacher/courses', label: 'My Courses', icon: '📚' },
+    { href: '/teacher/students', label: 'Students', icon: '👥' },
+    { href: '/teacher/assignments', label: 'Assignments', icon: '📝' },
     { href: '/dashboard/teacher/upload', label: 'Upload', icon: '⬆️' },
   ],
   PARENT: [
-    { href: '/dashboard/parent', label: 'Overview', icon: '📊' },
-    { href: '/dashboard/parent/reports', label: 'Reports', icon: '📈' },
+    { href: '/parent/dashboard', label: 'Overview', icon: '📊' },
+    { href: '/parent/progress', label: 'Progress', icon: '📈' },
+    { href: '/parent/assignments', label: 'Assignments', icon: '📝' },
     { href: '/pricing', label: 'Subscription', icon: '💎' },
   ],
   CHILD: [
-    { href: '/dashboard/child', label: 'Home', icon: '🏠' },
-    { href: '/courses', label: 'Courses', icon: '📚' },
+    { href: '/student/dashboard', label: 'Home', icon: '🏠' },
+    { href: '/student/courses', label: 'Courses', icon: '📚' },
     { href: '/games', label: 'Games', icon: '🎮' },
-    { href: '/dashboard/child/rewards', label: 'Rewards', icon: '🏆' },
+    { href: '/student/badges', label: 'Rewards', icon: '🏆' },
   ],
-  // Every school-side role was missing here. The component renders NAV[role]
-  // directly, so a signed-in school admin did not merely lose the menu — the
-  // lookup returned undefined and .map() threw, taking the page down.
+  // The org roles had no entry, so NAV[role] was undefined and the sidebar
+  // threw on .map — on the very dashboard a school or district leader lands
+  // on immediately after signing up.
   SCHOOL_ADMIN: SCHOOL_NAV,
-  // A school leader runs the same school, so the same menu.
   SCHOOL_LEADER: SCHOOL_NAV,
   DISTRICT_ADMIN: [
-    { href: '/dashboard/district', label: 'Overview', icon: '📊' },
+    { href: '/school/dashboard', label: 'Overview', icon: '📊' },
     { href: '/school/analytics', label: 'Analytics', icon: '📈' },
-    { href: '/school/teachers', label: 'Teachers', icon: '🧑‍🏫' },
     { href: '/school/billing', label: 'Billing', icon: '💳' },
+  ],
+  SUPER_ADMIN: [
+    { href: '/dashboard/admin', label: 'Overview', icon: '📊' },
+    { href: '/students', label: 'Users', icon: '👥' },
+    { href: '/courses', label: 'Courses', icon: '📚' },
+    { href: '/dashboard/admin/payments', label: 'Payments', icon: '💳' },
   ],
 };
 

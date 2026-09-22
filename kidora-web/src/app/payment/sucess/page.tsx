@@ -84,9 +84,8 @@ function PaymentSuccessInner() {
   );
 }
 
-// useSearchParams() opts a route into client-side rendering, so Next requires
-// it to sit under a Suspense boundary or the static export of this page
-// fails. Same wrapper pattern as the register and onboarding routes.
+// useSearchParams opts the page into client rendering, which the production
+// build rejects unless a Suspense boundary marks where to bail out.
 export default function PaymentSuccessPage() {
   return (
     <Suspense fallback={null}>

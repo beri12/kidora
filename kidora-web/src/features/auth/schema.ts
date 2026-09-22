@@ -14,13 +14,37 @@ export const passwordSchema = z
   .regex(/[A-Za-z]/, "Include a letter")
   .regex(/[0-9]/, "Include a number");
 
+/**
+ * Mobile numbers are sent to Twilio, which requires E.164. The server
+ * normalises local numbers against SMS_DEFAULT_COUNTRY_CODE, so this only has
+ * to reject what is obviously not a phone number.
+ */
+export const phoneSchema = z
+  .string()
+  .trim()
+  .min(7, "Enter a valid mobile number")
+  .max(20, "That number looks too long")
+  .regex(/^\+?[0-9\s()\-.]+$/, "Digits only, with an optional leading +");
+
 export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Password is required"),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
-export const signupRoleKeySchema = z.enum(["CHILD", "PARENT", "TEACHER", "SCHOOL", "DISTRICT"]);
+/**
+ * These are the keys SIGNUP_ROLES actually uses, which are the backend Role
+ * enum values. The old list used the short "SCHOOL"/"DISTRICT" spellings, so
+ * picking School Leader or District Leader failed validation on a `role` field
+ * the form never renders an error for — the submit button simply did nothing.
+ */
+export const signupRoleKeySchema = z.enum([
+  "CHILD",
+  "PARENT",
+  "TEACHER",
+  "SCHOOL_ADMIN",
+  "DISTRICT_ADMIN",
+]);
 
 export const registerSchema = z
   .object({
@@ -28,6 +52,7 @@ export const registerSchema = z
     email: emailSchema,
     password: passwordSchema,
     confirm: z.string().min(1, "Confirm your password"),
+    phone: phoneSchema.optional().or(z.literal("")),
     role: signupRoleKeySchema,
   })
   .refine((v) => v.password === v.confirm, { path: ["confirm"], message: "Passwords don't match" });
@@ -44,15 +69,24 @@ export const roleFieldSchemas = {
     subject: z.string().trim().min(1, "Required"),
     schoolCode: z.string().trim().max(24, "That code looks too long").optional().or(z.literal("")),
   }),
-  SCHOOL: z.object({
+  SCHOOL_ADMIN: z.object({
     schoolName: z.string().trim().min(2, "Required").max(160, "Name is too long"),
     country: z.string().trim().min(2, "Required"),
   }),
-  DISTRICT: z.object({
+  DISTRICT_ADMIN: z.object({
     districtName: z.string().trim().min(2, "Required").max(160, "Name is too long"),
     region: z.string().trim().min(2, "Required"),
   }),
 } as const;
+
+/** Step 1 of SMS sign-in. */
+export const otpRequestSchema = z.object({ phone: phoneSchema });
+
+/** Step 2 of SMS sign-in. */
+export const otpVerifySchema = z.object({
+  phone: phoneSchema,
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code"),
+});
 
 export const forgotSchema = z.object({ email: emailSchema });
 export const resetSchema = z

@@ -16,6 +16,7 @@ import {
 import { AuthService } from './services/auth.service';
 import { MfaService } from './services/mfa.service';
 import { SmsMfaService } from './services/sms-mfa.service';
+import { PhoneAuthService } from './services/phone-auth.service';
 
 
 import {
@@ -23,6 +24,9 @@ import {
   LoginDto,
   RefreshDto,
   MfaVerifyDto,
+  RequestOtpDto,
+  VerifyOtpDto,
+  SetPhoneDto,
 } from './dto/auth.dto';
 
 
@@ -49,7 +53,9 @@ constructor(
 
  private mfa:MfaService,
 
- private smsMfa:SmsMfaService
+ private smsMfa:SmsMfaService,
+
+ private phoneAuth:PhoneAuthService
 
 ){}
 
@@ -115,6 +121,115 @@ refresh(
 
  return this.auth.refresh(
   dto.refreshToken
+ );
+
+}
+
+
+
+
+
+/**
+ * Passwordless SMS sign-in, step 1.
+ *
+ * Always answers `{ sent: true }`, even for a number with no account, so the
+ * endpoint cannot be used to find out who is registered.
+ */
+
+@Public()
+
+@Post('otp/request')
+
+requestOtp(
+ @Body() dto:RequestOtpDto
+){
+
+ return this.phoneAuth.requestLoginCode(
+  dto.phone
+ );
+
+}
+
+
+
+
+/**
+ * Passwordless SMS sign-in, step 2. Returns the same token pair as /auth/login.
+ */
+
+@Public()
+
+@Post('otp/verify')
+
+verifyOtp(
+ @Body() dto:VerifyOtpDto,
+ @Req() req:any
+){
+
+ return this.phoneAuth.verifyLoginCode(
+
+  dto.phone,
+
+  dto.code,
+
+  req.ip,
+
+  req.headers['user-agent'] ?? ''
+
+ );
+
+}
+
+
+
+
+/** Attach a mobile number to the signed-in account and text a code to it. */
+
+@ApiBearerAuth()
+
+@UseGuards(JwtAuthGuard)
+
+@Post('phone/request')
+
+requestPhoneVerification(
+ @CurrentUser() user:AuthUser,
+ @Body() dto:SetPhoneDto
+){
+
+ return this.phoneAuth.requestVerifyCode(
+  user.id,
+  dto.phone
+ );
+
+}
+
+
+
+
+/**
+ * Confirm the number attached above.
+ *
+ * `phone/confirm`, not `phone/verify`: the latter is the PUBLIC sign-in route
+ * on PhoneAuthController, and two @Controller('auth') classes share one path
+ * space. Whichever registers first wins, so the guarded route here shadowed
+ * the sign-in one and every phone login answered 401.
+ */
+
+@ApiBearerAuth()
+
+@UseGuards(JwtAuthGuard)
+
+@Post('phone/confirm')
+
+confirmPhone(
+ @CurrentUser() user:AuthUser,
+ @Body() dto:VerifyOtpDto
+){
+
+ return this.phoneAuth.confirmPhone(
+  user.id,
+  dto.phone,
+  dto.code
  );
 
 }

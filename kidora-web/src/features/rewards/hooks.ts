@@ -1,89 +1,53 @@
-'use client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/axios';
+"use client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { economyApi } from "@/lib/api/economy";
 
-export interface Wallet {
-  coins: number;
-  gems: number;
-  xp: number;
-  level: number;
-}
-
-export interface Mission {
-  id: string;
-  title: string;
-  rewardCoins: number;
-  rewardXP: number;
-  completed: boolean;
-}
-
-export interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  unlockedAt?: string | null;
-}
-
-const rewardKeys = {
-  wallet: ['rewards', 'wallet'] as const,
-  missions: ['missions'] as const,
-  achievements: ['achievements'] as const,
+export const rewardKeys = {
+  wallet: ["economy", "wallet"] as const,
+  transactions: ["economy", "transactions"] as const,
+  missions: ["economy", "missions"] as const,
+  achievements: ["economy", "achievements"] as const,
 };
 
-/** Coin / gem / XP wallet — GET /api/rewards. */
+/** Coin/gem/XP wallet. */
 export function useRewards() {
-  return useQuery({
-    queryKey: rewardKeys.wallet,
-    queryFn: async () => (await api.get<Wallet>('/rewards')).data,
-  });
+  return useQuery({ queryKey: rewardKeys.wallet, queryFn: economyApi.wallet, staleTime: 30_000 });
 }
 
-/**
- * Buys a shop item — POST /api/rewards/purchase.
- *
- * Both the wallet (coins were spent) and the inventory (the item is now
- * owned) are invalidated, so the balance and the shop's affordability checks
- * update together.
- */
+export function useTransactions() {
+  return useQuery({ queryKey: rewardKeys.transactions, queryFn: economyApi.transactions, staleTime: 60_000 });
+}
+
+/** Buying an item debits the wallet, so both are refetched. */
 export function usePurchase() {
   const qc = useQueryClient();
-  return useMutation<unknown, unknown, string>({
-    mutationFn: async (itemId: string) =>
-      (await api.post('/rewards/purchase', { itemId })).data,
+  return useMutation({
+    mutationFn: (itemId: string) => economyApi.purchase(itemId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: rewardKeys.wallet });
-      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: rewardKeys.transactions });
+      qc.invalidateQueries({ queryKey: ["avatar"] });
     },
   });
 }
 
 /**
- * Daily missions plus the completion mutation, since the page destructures
- * `data` and `complete` from one hook. Completing a mission pays out coins
- * and XP, so the wallet is refreshed alongside the mission list.
+ * Missions plus the mutation that completes one. The rewards page destructures
+ * `{ data, complete }`, so the mutation rides along with the query.
  */
 export function useMissions() {
   const qc = useQueryClient();
-
-  const query = useQuery({
-    queryKey: rewardKeys.missions,
-    queryFn: async () => (await api.get<Mission[]>('/missions')).data,
-  });
-
-  const complete = useMutation<unknown, unknown, string>({
-    mutationFn: async (id: string) => (await api.post(`/missions/${id}/complete`)).data,
+  const query = useQuery({ queryKey: rewardKeys.missions, queryFn: economyApi.missions, staleTime: 30_000 });
+  const complete = useMutation({
+    mutationFn: (id: string) => economyApi.completeMission(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: rewardKeys.missions });
       qc.invalidateQueries({ queryKey: rewardKeys.wallet });
     },
   });
-
   return { ...query, complete };
 }
 
 export function useAchievements() {
-  return useQuery({
-    queryKey: rewardKeys.achievements,
-    queryFn: async () => (await api.get<Achievement[]>('/achievements')).data,
-  });
+  return useQuery({ queryKey: rewardKeys.achievements, queryFn: economyApi.achievements, staleTime: 60_000 });
 }

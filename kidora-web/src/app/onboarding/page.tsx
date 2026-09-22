@@ -3,6 +3,7 @@ import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ONBOARDING } from '@/constants/roles';
 import { ROLE_HOME } from '@/constants';
+import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/button';
 import { Input, Label } from '@/components/ui/input';
 
@@ -21,7 +22,14 @@ function OnboardingInner() {
   const params = useSearchParams();
   const roleKey = (params.get('role') || 'CHILD').toUpperCase();
   const steps = useMemo(() => ONBOARDING[roleKey] ?? ONBOARDING.CHILD, [roleKey]);
-  const dashboard = ROLE_HOME[(roleKey === 'SCHOOL' || roleKey === 'DISTRICT' ? 'ADMIN' : roleKey) as keyof typeof ROLE_HOME] ?? '/';
+  // The signed-in account is the source of truth for where onboarding ends:
+  // ?role= is a UI hint and mapping SCHOOL/DISTRICT onto ADMIN used to land a
+  // school leader on the platform-admin dashboard, which their role cannot open.
+  const user = useAuthStore((s) => s.user);
+  const dashboard =
+    (user && ROLE_HOME[user.role]) ??
+    ROLE_HOME[roleKey as keyof typeof ROLE_HOME] ??
+    '/';
 
   const [i, setI] = useState(0);
   const [data, setData] = useState<Record<string, string>>({});

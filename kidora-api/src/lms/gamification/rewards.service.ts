@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ActivityService } from '../common/activity.service';
 import { CacheService } from '../common/cache.service';
 import { levelFromXp, periodKeyFor, todayDate } from './level.util';
+import { CompletionService } from '../learning/completion.service';
 
 type Tx = Prisma.TransactionClient;
 export interface RewardOutcome { xp: number; coins: number; leveledUp: boolean; newLevel: number; unlockedAchievements: string[]; completedQuests: string[]; }
@@ -15,7 +16,7 @@ export interface RewardOutcome { xp: number; coins: number; leveledUp: boolean; 
  */
 @Injectable()
 export class RewardsService {
-  constructor(private prisma: PrismaService, private activity: ActivityService, private cache: CacheService) {}
+  constructor(private prisma: PrismaService, private activity: ActivityService, private cache: CacheService, private completion: CompletionService) {}
 
   /** Lesson completed by a student. Safe to call twice: second call is a no-op. */
   async onLessonCompleted(studentId: string, lessonId: string, timeSpentSec = 0) {
@@ -40,7 +41,7 @@ export class RewardsService {
   }
 
   /** Quiz graded (called by QuizzesService after scoring). */
-  async onQuizSubmitted(studentId: string, p: { quizId: string; attemptId: string; title: string; percent: number; xpReward: number; schoolId?: string | null; isExam: boolean }) {
+  async onQuizSubmitted(studentId: string, p: { quizId: string; attemptId: string; title: string; percent: number; xpReward: number; schoolId?: string | null; isExam: boolean; courseId?: string | null }) {
     return this.prisma.$transaction(async (tx) => {
       const xp = Math.round(p.xpReward * Math.max(0.25, p.percent / 100));
       const out = await this.grant(tx, studentId, { xp, coins: Math.round(xp / 4), sourceKey: `attempt:${p.attemptId}`, description: `${p.isExam ? 'Exam' : 'Quiz'}: ${p.title} (${p.percent}%)` });
@@ -48,17 +49,21 @@ export class RewardsService {
       out.completedQuests = await this.advanceQuests(tx, studentId, [{ metric: 'QUIZZES_COMPLETED', by: 1 }, ...(p.percent >= 80 ? [{ metric: 'QUIZ_SCORE_ABOVE' as MissionMetric, by: 1 }] : [])]);
       out.unlockedAchievements = await this.checkAchievements(tx, studentId);
       await this.activity.log({ userId: studentId, schoolId: p.schoolId, type: p.isExam ? 'EXAM_COMPLETED' : 'QUIZ_SUBMITTED', title: `Scored ${p.percent}% on ${p.title}`, entityType: 'quiz', entityId: p.quizId, xpDelta: xp }, tx);
+      // Passing a required quiz or the final exam can be the last thing
+      // standing between the student and course completion.
+      if (p.courseId) await this.completion.sync(tx, studentId, p.courseId);
       await this.invalidate(studentId);
       return out;
     });
   }
 
-  async onAssignmentSubmitted(studentId: string, p: { assignmentId: string; submissionId: string; title: string; xpReward: number; schoolId?: string | null }) {
+  async onAssignmentSubmitted(studentId: string, p: { assignmentId: string; submissionId: string; title: string; xpReward: number; schoolId?: string | null; courseId?: string | null }) {
     return this.prisma.$transaction(async (tx) => {
       const out = await this.grant(tx, studentId, { xp: p.xpReward, coins: Math.round(p.xpReward / 5), sourceKey: `submission:${p.submissionId}`, description: `Submitted ${p.title}` });
       out.completedQuests = await this.advanceQuests(tx, studentId, [{ metric: 'ASSIGNMENTS_SUBMITTED', by: 1 }]);
       out.unlockedAchievements = await this.checkAchievements(tx, studentId);
       await this.activity.log({ userId: studentId, schoolId: p.schoolId, type: 'ASSIGNMENT_SUBMITTED', title: `Completed assignment: ${p.title}`, entityType: 'assignment', entityId: p.assignmentId, xpDelta: p.xpReward }, tx);
+      if (p.courseId) await this.completion.sync(tx, studentId, p.courseId);
       await this.invalidate(studentId);
       return out;
     });
@@ -107,18 +112,11 @@ export class RewardsService {
   }
 
   private async rollupCourse(tx: Tx, studentId: string, courseId: string, lastLessonId: string) {
-    const [total, done] = await Promise.all([
-      tx.lesson.count({ where: { courseId, status: 'PUBLISHED' } }),
-      tx.progress.count({ where: { userId: studentId, completed: true, lesson: { courseId } } }),
-    ]);
-    const percent = total ? Math.round((done / total) * 100) : 0;
-    const completed = total > 0 && done >= total;
-    await tx.courseEnrollment.upsert({
-      where: { courseId_studentId: { courseId, studentId } },
-      create: { courseId, studentId, progressPercent: percent, lessonsCompleted: done, lastLessonId, lastActivityAt: new Date(), status: completed ? 'COMPLETED' : 'ACTIVE', completedAt: completed ? new Date() : null },
-      update: { progressPercent: percent, lessonsCompleted: done, lastLessonId, lastActivityAt: new Date(), ...(completed ? { status: 'COMPLETED', completedAt: new Date() } : {}) },
-    });
-    if (completed) {
+    // Completion is not "all lessons ticked" — a course can also require its
+    // quizzes, assignments or final exam. CompletionService owns that decision
+    // and writes the enrollment row (and the certificate) to match.
+    const { justCompleted } = await this.completion.sync(tx, studentId, courseId, lastLessonId);
+    if (justCompleted) {
       const c = await tx.course.findUniqueOrThrow({ where: { id: courseId }, select: { title: true, xpReward: true, schoolId: true } });
       await this.grant(tx, studentId, { xp: c.xpReward, coins: Math.round(c.xpReward / 4), sourceKey: `course:${courseId}:${studentId}`, description: `Finished ${c.title}` });
       await this.advanceQuests(tx, studentId, [{ metric: 'COURSES_COMPLETED', by: 1 }]);

@@ -1,11 +1,14 @@
+
+// Mirrors the Prisma Role enum in kidora-api/prisma/schema.prisma exactly.
 export type Role =
   | 'CHILD'
   | 'PARENT'
   | 'TEACHER'
-  | 'ADMIN'
   | 'SCHOOL_ADMIN'
   | 'SCHOOL_LEADER'
-  | 'DISTRICT_ADMIN';
+  | 'DISTRICT_ADMIN'
+  | 'SUPER_ADMIN'
+  | 'ADMIN';
 
 /** The roles a visitor may pick for themselves in the "How will you use Kidora?" step. */
 export type SignupRoleKey = Extract<
@@ -29,6 +32,8 @@ export interface User {
   points: number;
   streak: number;
   avatarColor: string;
+  schoolId?: string | null;
+  districtId?: string | null;
   subscriptionPlan?: 'free' | 'family' | 'school';
 }
 
@@ -94,14 +99,39 @@ export interface Course {
   slug: string;
   title: string;
   description: string;
-  ageBand: string;
+  /** Optional on drafts — the wizard fills it in later. */
+  ageBand?: string;
   gradient: string;
   accent: string;
   subject?: Subject;
   lessons?: Lesson[];
+  sections?: Section[];
   teacherId?: string;
   isPremium?: boolean;
+  /** Drafts are unpublished; the teacher list badges off this. */
+  published?: boolean;
+  status?: 'DRAFT' | 'PUBLISHED' | 'REVIEW' | 'ARCHIVED';
+  thumbnailUrl?: string | null;
+  trailerUrl?: string | null;
+  createdAt?: string;
   _count?: { lessons: number };
+}
+
+export interface Section {
+  id: string;
+  title: string;
+  order: number;
+  description?: string;
+  lectures?: Lecture[];
+}
+
+export interface Lecture {
+  id: string;
+  title: string;
+  order: number;
+  content?: string | null;
+  videoUrl?: string | null;
+  videoFileName?: string | null;
 }
 
 export interface Lesson {

@@ -37,6 +37,7 @@ model User {
   id           String  @id @default(cuid())
   // Email is optional: a Kidora account can be created from a phone number
   // alone (phone + OTP), from a social provider, or from email + password.
+  // (`phone` is declared with phoneVerified a few lines below.)
   email        String? @unique
   passwordHash String?
   name         String
@@ -71,6 +72,11 @@ model User {
   lockedUntil  DateTime?
 
   emailVerified Boolean @default(false)
+
+  /// Per-user preferences (notifications, language, appearance, privacy).
+  /// A Json column rather than a table: the shape is UI-driven and read only
+  /// with the user record, so a join would buy nothing.
+  settings Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -193,6 +199,15 @@ model User {
   sessions       Session[]
   auditLogs      AuditLog[]
   activityEvents ActivityEvent[]
+  // ============================================================
+  // CALENDAR / SUPPORT
+  // ============================================================
+
+  calendarEvents  CalendarEvent[]  @relation("CalendarAuthor")
+  calendarAboutMe CalendarEvent[]  @relation("CalendarStudent")
+  supportTickets  SupportTicket[]  @relation("SupportRequester")
+  supportAssigned SupportTicket[]  @relation("SupportAssignee")
+  supportMessages SupportMessage[] @relation("SupportAuthor")
 
   // ============================================================
   // PAYMENTS / SUBSCRIPTIONS
@@ -205,6 +220,13 @@ model User {
   // ============================================================
   // INDEXES
   // ============================================================
+  ownedResources  Resource[]         @relation("TeacherResources")
+  peerReviews     PeerReview[]       @relation("PeerReviewer")
+  instructorOf    CourseInstructor[] @relation("InstructorOf")
+  courseReviews   CourseReview[]     @relation("CourseReviewer")
+  coursePublishes CourseVersion[]    @relation("CoursePublisher")
+  uploadSessions  UploadSession[]    @relation("Uploader")
+  contentProgress ContentProgress[]  @relation("ContentProgressStudent")
 
   @@index([schoolId, role])
   @@index([schoolId, gradeId])
@@ -263,6 +285,9 @@ model School {
   joinCode       String?         @unique
 
   accessRequests OrgAccessRequest[]
+  resources      Resource[]
+  calendarEvents CalendarEvent[]
+  supportTickets SupportTicket[]
 }
 
 /// A claim to run a school or a district, waiting on a human to check it.
@@ -370,6 +395,7 @@ model SchoolClass {
   assignments       Assignment[]
   exams             Exam[]
   attendance        Attendance[]
+  calendarEvents    CalendarEvent[]
 
   @@unique([schoolId, gradeId, name, academicYear])
 }
@@ -496,21 +522,47 @@ model Course {
   sections         Section[]
 
   // --- LMS additions ---
-  schoolId     String? // null = platform-wide course
-  gradeId      String?
-  world        World? // world-map placement
-  worldOrder   Int                @default(0)
-  xpReward     Int                @default(100) // on course completion
-  publishedAt  DateTime?
-  reviewNote   String?
-  school       School?            @relation(fields: [schoolId], references: [id])
-  grade        Grade?             @relation(fields: [gradeId], references: [id])
-  enrollments  CourseEnrollment[]
-  classCourses ClassCourse[]
-  quizzes      Quiz[]
-  assignments  Assignment[]
-  exams        Exam[]
-  certificates Certificate[]
+  schoolId    String? // null = platform-wide course
+  gradeId     String?
+  world       World? // world-map placement
+  worldOrder  Int       @default(0)
+  xpReward    Int       @default(100) // on course completion
+  publishedAt DateTime?
+  reviewNote  String?
+
+  // --- course authoring ---
+  shortDescription String       @default("")
+  bannerUrl        String?
+  difficulty       Difficulty   @default(MEDIUM)
+  access           CourseAccess @default(FREE)
+  estimatedMinutes Int?
+  archivedAt       DateTime?
+
+  // Completion rules. What a student must finish before the course counts as
+  // done — read by the completion check, not by the UI.
+  requireAllLessons     Boolean @default(true)
+  requireAllQuizzes     Boolean @default(false)
+  requireAllAssignments Boolean @default(false)
+  requireFinalExam      Boolean @default(false)
+  passingScore          Int     @default(60)
+  issuesCertificate     Boolean @default(false)
+
+  prerequisiteFor CoursePrerequisite[] @relation("CoursePrereqTarget")
+  instructors     CourseInstructor[]
+  outcomes        LearningOutcome[]
+  reviews         CourseReview[]
+  versions        CourseVersion[]
+  uploadSessions  UploadSession[]
+  prerequisites   CoursePrerequisite[] @relation("CoursePrereqOwner")
+  school          School?              @relation(fields: [schoolId], references: [id])
+  grade           Grade?               @relation(fields: [gradeId], references: [id])
+  enrollments     CourseEnrollment[]
+  classCourses    ClassCourse[]
+  quizzes         Quiz[]
+  assignments     Assignment[]
+  exams           Exam[]
+  certificates    Certificate[]
+  calendarEvents  CalendarEvent[]
 
   @@index([schoolId, status])
   @@index([schoolId, gradeId, subjectId])
@@ -527,7 +579,12 @@ model Section {
   course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   // --- LMS additions ---
-  description String   @default("")
+  description String            @default("")
+  /// Coursera-style module: a week of study. Optional, because a course does
+  /// not have to be organised by week.
+  weekNumber  Int?
+  exams       Exam[]
+  outcomes    LearningOutcome[]
   lessons     Lesson[]
 }
 
@@ -560,18 +617,24 @@ model Lesson {
   resources Resource[]
 
   // --- LMS additions ---
-  sectionId   String?
-  description String             @default("")
-  status      LessonStatus       @default(PUBLISHED) // existing lessons stay visible
-  xpReward    Int                @default(10)
-  coinReward  Int                @default(5)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @default(now()) @updatedAt
-  section     Section?           @relation(fields: [sectionId], references: [id])
-  contents    LessonContent[]
-  activities  LessonActivity[]
-  assignments Assignment[]
-  currentFor  CourseEnrollment[] @relation("EnrollmentCurrentLesson")
+  sectionId    String?
+  description  String             @default("")
+  status       LessonStatus       @default(PUBLISHED) // existing lessons stay visible
+  xpReward     Int                @default(10)
+  coinReward   Int                @default(5)
+  objectives   String[]           @default([])
+  estimatedMin Int                @default(5)
+  isRequired   Boolean            @default(true)
+  /// A free-preview lesson: openable before enrolling. The access check reads
+  /// this, so it is a server-side rule, not a badge on the card.
+  isPreview    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @default(now()) @updatedAt
+  section      Section?           @relation(fields: [sectionId], references: [id])
+  contents     LessonContent[]
+  activities   LessonActivity[]
+  assignments  Assignment[]
+  currentFor   CourseEnrollment[] @relation("EnrollmentCurrentLesson")
 
   @@index([courseId, sectionId, order])
 }
@@ -579,18 +642,54 @@ model Lesson {
 /// Ordered content blocks inside a lesson (video / text / audio / image /
 /// interactive / resource).
 model LessonContent {
-  id        String      @id @default(cuid())
-  lessonId  String
-  type      ContentType
-  order     Int         @default(0)
-  title     String      @default("")
-  body      String? // text / markdown
-  url       String? // video, audio, image, file
-  meta      Json        @default("{}")
-  createdAt DateTime    @default(now())
-  lesson    Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id       String      @id @default(cuid())
+  lessonId String
+  type     ContentType
+  order    Int         @default(0)
+  title    String      @default("")
+  body     String? // text / markdown
+  url      String? // video, audio, image, file
+  meta     Json        @default("{}")
+
+  // --- item metadata (Coursera "course_items") ---
+  /// How long this single item should take, not the whole lesson.
+  estimatedMin Int        @default(3)
+  isRequired   Boolean    @default(true)
+  status       ItemStatus @default(PUBLISHED)
+
+  // --- video items ---
+  durationSeconds Int?
+  /// WebVTT captions, stored inline so the player needs no second request.
+  transcriptVtt   String?
+  /// Ungraded in-video checks: [{ atSeconds, prompt, options, correct }].
+  /// Never scored — they exist to make a child pause and think.
+  checkpoints     Json    @default("[]")
+
+  // --- reading items ---
+  /// Downloadable attachments: [{ name, url, sizeBytes, mimeType }].
+  downloadUrls Json @default("[]")
+
+  // --- assessment items ---
+  /// An item of type QUIZ, ASSIGNMENT or PEER_REVIEW points at the real row
+  /// rather than duplicating it, so one ordered sequence per lesson covers
+  /// every item type while the existing attempt and grading engines stay the
+  /// single source of truth.
+  quizId       String?
+  assignmentId String?
+  /// Where an EXTERNAL_RESOURCE item points. Kept separate from `url` so a
+  /// link to someone else's site is never mistaken for a file we host.
+  externalUrl  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @default(now()) @updatedAt
+  lesson       Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  quiz         Quiz?             @relation("QuizItem", fields: [quizId], references: [id], onDelete: Cascade)
+  assignment   Assignment?       @relation("AssignmentItem", fields: [assignmentId], references: [id], onDelete: Cascade)
+  video        VideoAsset?
+  progress     ContentProgress[]
 
   @@index([lessonId, order])
+  @@index([quizId])
+  @@index([assignmentId])
 }
 
 model LessonActivity {
@@ -608,16 +707,27 @@ model LessonActivity {
 }
 
 model Resource {
-  id        String       @id @default(cuid())
-  name      String
-  courseId  String
-  kind      ResourceKind @default(other)
-  url       String
-  sizeBytes Int          @default(0)
-  lessonId  String
-  createdAt DateTime     @default(now())
-  course    Course       @relation(fields: [courseId], references: [id])
-  lesson    Lesson       @relation(fields: [lessonId], references: [id])
+  id          String       @id @default(cuid())
+  name        String
+  courseId    String?
+  kind        ResourceKind @default(other)
+  url         String
+  sizeBytes   Int          @default(0)
+  /// Optional: a resource can sit in the teacher's library before it is
+  /// attached to any lesson, which is how the Resources page works.
+  lessonId    String?
+  teacherId   String?
+  schoolId    String?
+  description String       @default("")
+  mimeType    String?
+  createdAt   DateTime     @default(now())
+  course      Course?      @relation(fields: [courseId], references: [id])
+  lesson      Lesson?      @relation(fields: [lessonId], references: [id])
+  teacher     User?        @relation("TeacherResources", fields: [teacherId], references: [id])
+  school      School?      @relation(fields: [schoolId], references: [id])
+
+  @@index([teacherId, createdAt])
+  @@index([courseId])
 }
 
 // ---------------------------------------------------------------------------
@@ -632,20 +742,28 @@ model Quiz {
   questions QuizQuestion[]
 
   // --- LMS additions ---
-  kind         QuizKind      @default(LESSON)
-  description  String        @default("")
-  courseId     String?
-  timeLimitSec Int?
-  maxAttempts  Int           @default(3)
-  passingScore Int           @default(60) // percent
-  shuffle      Boolean       @default(false)
-  published    Boolean       @default(true)
-  xpReward     Int           @default(20)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @default(now()) @updatedAt
-  course       Course?       @relation(fields: [courseId], references: [id])
-  attempts     QuizAttempt[]
-  exam         Exam?
+  kind             QuizKind        @default(LESSON)
+  description      String          @default("")
+  courseId         String?
+  timeLimitSec     Int?
+  maxAttempts      Int             @default(3)
+  passingScore     Int             @default(60) // percent
+  shuffle          Boolean         @default(false)
+  shuffleAnswers   Boolean         @default(false)
+  showExplanations Boolean         @default(true)
+  showScore        Boolean         @default(true)
+  allowRetry       Boolean         @default(true)
+  isRequired       Boolean         @default(false)
+  grading          QuizGrading     @default(FORMATIVE)
+  sectionId        String?
+  published        Boolean         @default(true)
+  xpReward         Int             @default(20)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @default(now()) @updatedAt
+  course           Course?         @relation(fields: [courseId], references: [id])
+  attempts         QuizAttempt[]
+  items            LessonContent[] @relation("QuizItem")
+  exam             Exam?
 
   @@index([courseId, kind])
 }
@@ -664,6 +782,11 @@ model QuizQuestion {
   answerText     String? // for SHORT_ANSWER / TRUE_FALSE reference
   points         Int          @default(1)
   explanation    String?
+  hint           String?
+  /// MATCHING: [{ left, right }] pairs, shuffled for the student.
+  pairs          Json         @default("[]")
+  /// ORDERING: the correct sequence as option indexes.
+  correctOrder   Int[]        @default([])
   difficulty     Difficulty   @default(MEDIUM)
   order          Int          @default(0)
   imageUrl       String?
@@ -716,8 +839,12 @@ model Exam {
   id                String        @id @default(cuid())
   title             String
   description       String        @default("")
-  schoolId          String
+  /// Nullable: a platform-wide course has no school, and its final exam still
+  /// has to be creatable.
+  schoolId          String?
   courseId          String
+  /// Set for a module (end-of-week) exam; null for the course final exam.
+  sectionId         String?
   classId           String?
   quizId            String        @unique
   teacherId         String
@@ -730,8 +857,9 @@ model Exam {
   issuesCertificate Boolean       @default(true)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @default(now()) @updatedAt
-  school            School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school            School?       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   course            Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section           Section?      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   class             SchoolClass?  @relation(fields: [classId], references: [id])
   quiz              Quiz          @relation(fields: [quizId], references: [id])
   teacher           User          @relation("ExamTeacher", fields: [teacherId], references: [id])
@@ -742,29 +870,43 @@ model Exam {
 }
 
 model Assignment {
-  id           String                 @id @default(cuid())
-  title        String
-  description  String                 @default("")
-  instructions String                 @default("")
-  schoolId     String?
-  courseId     String?
-  lessonId     String?
-  classId      String?
-  teacherId    String
-  status       AssignmentStatus       @default(DRAFT)
-  dueAt        DateTime?
-  maxScore     Int                    @default(100)
-  attachments  Json                   @default("[]") // [{name,url,sizeBytes}]
-  allowLate    Boolean                @default(true)
-  xpReward     Int                    @default(30)
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @default(now()) @updatedAt
-  school       School?                @relation(fields: [schoolId], references: [id])
-  course       Course?                @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson       Lesson?                @relation(fields: [lessonId], references: [id])
-  class        SchoolClass?           @relation(fields: [classId], references: [id])
-  teacher      User                   @relation("AssignmentTeacher", fields: [teacherId], references: [id])
-  submissions  AssignmentSubmission[]
+  id               String                 @id @default(cuid())
+  title            String
+  description      String                 @default("")
+  instructions     String                 @default("")
+  schoolId         String?
+  courseId         String?
+  lessonId         String?
+  classId          String?
+  teacherId        String
+  status           AssignmentStatus       @default(DRAFT)
+  dueAt            DateTime?
+  maxScore         Int                    @default(100)
+  attachments      Json                   @default("[]") // [{name,url,sizeBytes}]
+  allowLate        Boolean                @default(true)
+  /// [{ criterion, points, description }] — shown to the student and used by
+  /// the grading form to total a score.
+  rubric           Json                   @default("[]")
+  submissionType   SubmissionType         @default(BOTH)
+  allowedFileTypes String[]               @default([])
+  allowResubmit    Boolean                @default(false)
+  isRequired       Boolean                @default(false)
+  /// > 0 turns this into a peer-reviewed assignment: each submission is sent
+  /// to this many classmates to score against the rubric.
+  peerReviewCount  Int                    @default(0)
+  /// Reviews a student must complete before their own marks are released,
+  /// which is what stops everyone submitting and nobody reviewing.
+  peerReviewsDue   Int                    @default(0)
+  xpReward         Int                    @default(30)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @default(now()) @updatedAt
+  school           School?                @relation(fields: [schoolId], references: [id])
+  course           Course?                @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson           Lesson?                @relation(fields: [lessonId], references: [id])
+  class            SchoolClass?           @relation(fields: [classId], references: [id])
+  teacher          User                   @relation("AssignmentTeacher", fields: [teacherId], references: [id])
+  submissions      AssignmentSubmission[]
+  items            LessonContent[]        @relation("AssignmentItem")
 
   @@index([schoolId, status, dueAt])
   @@index([classId, dueAt])
@@ -778,6 +920,12 @@ model AssignmentSubmission {
   status       SubmissionStatus @default(SUBMITTED)
   content      String?
   attachments  Json             @default("[]")
+  attemptNo    Int              @default(1)
+  /// Per-criterion scores mirroring Assignment.rubric.
+  rubricScores Json             @default("[]")
+  /// Mean of the completed peer reviews, once enough have come in.
+  peerScore    Int?
+  peerReviews  PeerReview[]
   submittedAt  DateTime         @default(now())
   isLate       Boolean          @default(false)
   score        Int?
@@ -1328,8 +1476,11 @@ enum TxnType {
 enum CourseStatus {
   DRAFT
   PUBLISHED
-  REVIEW // new: awaiting school approval
-  ARCHIVED // new
+  REVIEW // awaiting school approval
+  ARCHIVED
+  /// Was live, taken down. Distinct from DRAFT (never published) and from
+  /// ARCHIVED (retired): enrolled students keep their access.
+  UNPUBLISHED
 }
 
 enum LessonType {
@@ -1389,6 +1540,17 @@ enum ContentType {
   IMAGE
   INTERACTIVE
   RESOURCE
+  HEADING
+  PARAGRAPH
+  DOCUMENT
+  CODE
+  CALLOUT
+  EXAMPLE
+  QUESTION
+  QUIZ
+  ASSIGNMENT
+  PEER_REVIEW
+  EXTERNAL_RESOURCE
 }
 
 enum LessonActivityType {
@@ -1411,6 +1573,8 @@ enum QuestionType {
   TRUE_FALSE
   MULTIPLE_SELECT
   SHORT_ANSWER
+  MATCHING
+  ORDERING
 }
 
 enum Difficulty {
@@ -1534,4 +1698,402 @@ enum AIKind {
   MISTAKE
   RECOMMEND
   TEACHER_ASSIST
+}
+
+// ---------------------------------------------------------------------------
+// CALENDAR
+// ---------------------------------------------------------------------------
+
+/// Explicit calendar entries. Assignment/exam/quiz deadlines are NOT copied
+/// here — the calendar API merges them from their own tables at read time, so
+/// a due date can never drift out of sync with two stored copies.
+model CalendarEvent {
+  id          String            @id @default(cuid())
+  title       String
+  description String            @default("")
+  type        CalendarEventType @default(EVENT)
+  startsAt    DateTime
+  endsAt      DateTime?
+  allDay      Boolean           @default(false)
+  location    String?
+  color       String?
+
+  /// Who created it; they may always edit and delete it.
+  createdById String
+  createdBy   User   @relation("CalendarAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+
+  /// Audience. A null schoolId means a personal event visible only to its author.
+  schoolId  String?
+  school    School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classId   String?
+  class     SchoolClass? @relation(fields: [classId], references: [id], onDelete: Cascade)
+  courseId  String?
+  course    Course?      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  /// Set when the event is about one student (a parent-teacher meeting).
+  studentId String?
+  student   User?        @relation("CalendarStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([schoolId, startsAt])
+  @@index([classId, startsAt])
+  @@index([createdById, startsAt])
+  @@index([studentId, startsAt])
+}
+
+enum CalendarEventType {
+  EVENT
+  CLASS
+  LESSON
+  MEETING
+  HOLIDAY
+  REMINDER
+}
+
+// ---------------------------------------------------------------------------
+// SUPPORT
+// ---------------------------------------------------------------------------
+
+model SupportTicket {
+  id        String              @id @default(cuid())
+  /// Short human-quotable reference, e.g. KID-4F2A9C.
+  reference String              @unique
+  subject   String
+  category  SupportCategory     @default(GENERAL)
+  status    SupportTicketStatus @default(OPEN)
+  priority  SupportPriority     @default(NORMAL)
+
+  requesterId String
+  requester   User    @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assigneeId  String?
+  assignee    User?   @relation("SupportAssignee", fields: [assigneeId], references: [id])
+  schoolId    String?
+  school      School? @relation(fields: [schoolId], references: [id])
+
+  messages SupportMessage[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
+  resolvedAt DateTime?
+
+  @@index([requesterId, status])
+  @@index([status, createdAt])
+  @@index([schoolId, status])
+}
+
+model SupportMessage {
+  id        String        @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User          @relation("SupportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  /// Internal notes are visible to support staff only, never to the requester.
+  internal  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+enum SupportCategory {
+  GENERAL
+  ACCOUNT
+  BILLING
+  TECHNICAL
+  COURSE
+  SAFETY
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+/// How a student may reach a course. Enforced server-side in the course
+/// access check, never by the browser.
+enum CourseAccess {
+  FREE
+  PREMIUM
+  SCHOOL_ONLY
+  INVITE_ONLY
+}
+
+enum SubmissionType {
+  TEXT
+  FILE
+  BOTH
+}
+
+/// A course that must be completed before another becomes available.
+model CoursePrerequisite {
+  id             String   @id @default(cuid())
+  courseId       String
+  prerequisiteId String
+  createdAt      DateTime @default(now())
+  course         Course   @relation("CoursePrereqOwner", fields: [courseId], references: [id], onDelete: Cascade)
+  prerequisite   Course   @relation("CoursePrereqTarget", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, prerequisiteId])
+  @@index([prerequisiteId])
+}
+
+/// Coursera's distinction: a formative quiz is practice (instant feedback,
+/// retry freely, not counted); a summative one is assessed.
+enum QuizGrading {
+  FORMATIVE
+  SUMMATIVE
+}
+
+enum PeerReviewStatus {
+  ASSIGNED
+  SUBMITTED
+  SKIPPED
+}
+
+/// One classmate's review of one submission.
+///
+/// Reviewer and author are both Users, so the pair is unique and a student can
+/// never be assigned their own work — the service enforces that, and the
+/// unique constraint stops a double assignment.
+model PeerReview {
+  id           String           @id @default(cuid())
+  submissionId String
+  reviewerId   String
+  status       PeerReviewStatus @default(ASSIGNED)
+  /// Per-criterion scores mirroring Assignment.rubric.
+  scores       Json             @default("[]")
+  total        Int?
+  comment      String?
+  assignedAt   DateTime         @default(now())
+  submittedAt  DateTime?
+
+  submission AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   User                 @relation("PeerReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, reviewerId])
+  @@index([reviewerId, status])
+}
+
+/// A single content item's lifecycle, independent of the course's.
+enum ItemStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum InstructorRole {
+  LEAD
+  CO_INSTRUCTOR
+  ASSISTANT
+}
+
+/// A course can be taught by more than one person. Course.teacherId stays the
+/// author and owner; this is who is credited and who may help teach.
+model CourseInstructor {
+  id        String         @id @default(cuid())
+  courseId  String
+  userId    String
+  role      InstructorRole @default(CO_INSTRUCTOR)
+  bio       String?
+  order     Int            @default(0)
+  createdAt DateTime       @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation("InstructorOf", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@index([userId])
+}
+
+/// "What you will learn", as rows rather than a string array, so they can be
+/// ordered and attached to a module as well as the whole course.
+model LearningOutcome {
+  id        String   @id @default(cuid())
+  courseId  String
+  /// Null = a course-level outcome; set = an outcome for that module.
+  sectionId String?
+  text      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, order])
+  @@index([sectionId, order])
+}
+
+/// A learner's rating, which is what the course card's stars come from.
+model CourseReview {
+  id        String   @id @default(cuid())
+  courseId  String
+  studentId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation("CourseReviewer", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@index([courseId, rating])
+}
+
+/// A snapshot of the whole course tree taken at each publish, so a teacher can
+/// see what changed between versions and what students were actually shown.
+model CourseVersion {
+  id            String   @id @default(cuid())
+  courseId      String
+  version       Int
+  publishedById String?
+  note          String?
+  /// The serialised tree as published.
+  snapshot      Json
+  createdAt     DateTime @default(now())
+
+  course      Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  publishedBy User?  @relation("CoursePublisher", fields: [publishedById], references: [id])
+
+  @@unique([courseId, version])
+  @@index([courseId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// VIDEO + UPLOADS
+// ---------------------------------------------------------------------------
+
+/// How far a byte transfer has got.
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
+/// What has happened to a video after the bytes landed.
+enum VideoProcessingStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+/// The video file behind a LessonContent item of type VIDEO.
+///
+/// A separate row rather than more columns on LessonContent because a video
+/// has a lifecycle of its own — uploading, processing, ready or failed — while
+/// the item it belongs to is just a position in the lesson's running order.
+/// One video per item; a lesson holds as many VIDEO items as the teacher adds,
+/// which is what makes several videos in one lesson work.
+model VideoAsset {
+  id            String @id @default(cuid())
+  contentItemId String @unique
+
+  /// Where the object lives in the bucket. Never taken from user input.
+  storageKey      String
+  /// Playback URL. Null until the upload completes.
+  url             String?
+  /// Generated during processing, or uploaded by the teacher.
+  thumbnailUrl    String?
+  /// Whether the teacher uploaded the thumbnail themselves, so processing does
+  /// not overwrite a deliberate choice with a generated frame.
+  thumbnailCustom Boolean @default(false)
+
+  durationSeconds Int?
+  fileSizeBytes   BigInt @default(0)
+  mimeType        String
+
+  uploadStatus     UploadStatus          @default(PENDING)
+  processingStatus VideoProcessingStatus @default(PENDING)
+  /// Why processing failed, shown to the teacher so a failure is actionable.
+  error            String?
+
+  captionsUrl   String?
+  transcriptUrl String?
+  /// Whether a student may download the file rather than only stream it.
+  allowDownload Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  contentItem LessonContent @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@index([processingStatus])
+}
+
+/// One attempt to put a file into storage.
+///
+/// Created before any bytes move, so the server has already checked who is
+/// uploading, that they own the course, and that the type and size are allowed
+/// — the browser is told where to send the file only after that.
+model UploadSession {
+  id     String @id @default(cuid())
+  userId String
+
+  /// The course the file is destined for. Ownership is checked against it.
+  courseId String?
+  lessonId String?
+
+  fileName      String
+  fileSizeBytes BigInt
+  mimeType      String
+  /// Server-generated object key. Sanitised, never echoed from the client.
+  storageKey    String  @unique
+  /// name + size + course, so re-picking the same file returns the session
+  /// already in flight instead of uploading it twice.
+  fingerprint   String?
+
+  status        UploadStatus @default(PENDING)
+  bytesReceived BigInt       @default(0)
+  /// Single-use secret for the direct-PUT route used by the local driver.
+  token         String       @unique
+  expiresAt     DateTime
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  user   User    @relation("Uploader", fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fingerprint])
+  @@index([userId, status])
+  @@index([courseId])
+  @@index([expiresAt])
+}
+
+/// A student's progress through one content item.
+///
+/// Lesson-level Progress stays the rollup the dashboards read; this is the
+/// per-item detail that makes a tick against each video and "resume at 04:32"
+/// possible. watchedSeconds is deliberately not the same as lastPositionSec:
+/// dragging the scrubber to the end moves the position but watches nothing,
+/// and completion is judged on the former.
+model ContentProgress {
+  id            String @id @default(cuid())
+  studentId     String
+  contentItemId String
+
+  lastPositionSec Int       @default(0)
+  watchedSeconds  Int       @default(0)
+  durationSeconds Int?
+  completed       Boolean   @default(false)
+  completedAt     DateTime?
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  student     User          @relation("ContentProgressStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  contentItem LessonContent @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, contentItemId])
+  @@index([contentItemId])
 }

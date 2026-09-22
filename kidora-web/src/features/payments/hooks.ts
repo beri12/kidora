@@ -1,27 +1,15 @@
-'use client';
-import { useMutation } from '@tanstack/react-query';
-import { api } from '@/lib/axios';
-
-export interface CheckoutSession {
-  url: string;
-  id?: string;
-}
-
-export interface PaypalOrder {
-  id: string;
-}
+"use client";
+import { useMutation } from "@tanstack/react-query";
+import { paymentsApi } from "@/lib/api/payments";
+import type { PlanKey } from "@/lib/api/billing";
 
 /**
- * Stripe hosted checkout — POST /api/payments/stripe/checkout.
- *
- * The redirect happens here rather than in the page so every caller gets the
- * same behaviour, and the mutation stays `isPending` through the navigation
- * (the button keeps its "Redirecting…" label instead of flicking back).
+ * Starts Stripe hosted checkout and sends the browser to it.
+ * The redirect happens here so every caller behaves the same way.
  */
 export function useStripeCheckout() {
-  return useMutation<CheckoutSession, unknown, string>({
-    mutationFn: async (plan: string) =>
-      (await api.post<CheckoutSession>('/payments/stripe/checkout', { plan })).data,
+  return useMutation({
+    mutationFn: (plan: PlanKey) => paymentsApi.stripeCheckout(plan),
     onSuccess: (session) => {
       if (session?.url) window.location.href = session.url;
     },
@@ -29,22 +17,22 @@ export function useStripeCheckout() {
 }
 
 /**
- * PayPal order lifecycle.
- *
- * <PayPalButtons> expects plain promise-returning callbacks — createOrder
- * must resolve to the order id string and onApprove awaits the capture — so
- * these are exposed as functions rather than as mutation objects.
+ * PayPal Smart Buttons: create an order, then capture it after approval.
+ * The pricing page calls `paypal.create(plan)` and `paypal.capture(orderID)`
+ * directly from the button callbacks, so both are plain promises rather than
+ * mutations.
  */
 export function usePaypalOrder() {
-  const createOrder = async (plan: string): Promise<string> => {
-    const { data } = await api.post<PaypalOrder>('/payments/paypal/order', { plan });
-    return data.id;
-  };
+  const order = useMutation({ mutationFn: (plan: PlanKey) => paymentsApi.paypalOrder(plan) });
+  const capture = useMutation({ mutationFn: (orderId: string) => paymentsApi.paypalCapture(orderId) });
 
-  const capture = async (orderId: string) => {
-    const { data } = await api.post('/payments/paypal/capture', { orderId });
-    return data;
+  return {
+    // <PayPalButtons createOrder> must resolve to the order id string, so
+    // these are plain promise-returning functions rather than mutation objects.
+    createOrder: async (plan: PlanKey) => (await order.mutateAsync(plan)).orderId,
+    capture: (orderId: string) => capture.mutateAsync(orderId),
+    isPending: order.isPending || capture.isPending,
+    orderMutation: order,
+    captureMutation: capture,
   };
-
-  return { createOrder, capture };
 }

@@ -1,0 +1,177 @@
+import {
+  BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Req,
+  UploadedFile, UseGuards, UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles, SCHOOL_ADMIN_ROLES, TEACHER_ROLES } from '../common/decorators/roles.decorator';
+import { CurrentUser, type AuthUser } from '../common/decorators/current-user.decorator';
+import { StorageService } from '../../infrastructure/storage/storage.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { UploadsService } from './uploads.service';
+import { CompleteUploadDto, PresignUploadDto, UpdateVideoDto } from './dto';
+
+/** What a teacher may upload, and how large. */
+const ACCEPT: Record<string, { mimes: RegExp; maxBytes: number; label: string }> = {
+  video: { mimes: /^video\/(mp4|webm|ogg|quicktime|x-matroska)$/, maxBytes: 500 * 1024 * 1024, label: 'a video' },
+  audio: { mimes: /^audio\/(mpeg|mp3|wav|ogg|webm|aac|mp4)$/, maxBytes: 100 * 1024 * 1024, label: 'an audio file' },
+  image: { mimes: /^image\/(png|jpeg|jpg|gif|webp|svg\+xml)$/, maxBytes: 10 * 1024 * 1024, label: 'an image' },
+  document: {
+    mimes: /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|presentationml\.presentation|spreadsheetml\.sheet)|application\/vnd\.ms-(excel|powerpoint)|text\/plain|text\/csv|text\/markdown)$/,
+    maxBytes: 50 * 1024 * 1024,
+    label: 'a document',
+  },
+  captions: { mimes: /^(text\/vtt|text\/plain|application\/x-subrip)$/, maxBytes: 2 * 1024 * 1024, label: 'a captions file' },
+};
+
+const LARGEST = Math.max(...Object.values(ACCEPT).map((a) => a.maxBytes));
+
+function classify(mimetype: string) {
+  for (const [kind, rule] of Object.entries(ACCEPT)) {
+    if (rule.mimes.test(mimetype)) return { kind, rule };
+  }
+  return null;
+}
+
+/**
+ * One upload endpoint for everything a teacher adds to a course.
+ *
+ * It goes through StorageService, so the same code writes to local disk in
+ * development and to S3/R2 in production by changing STORAGE_DRIVER — the
+ * three ad-hoc multer endpoints on the courses controller each hard-coded a
+ * local directory and could never do that.
+ *
+ * Files are held in memory rather than streamed to disk by multer: the type is
+ * checked against the real mime before anything is written, so an unwanted
+ * file never lands on the filesystem at all.
+ */
+@ApiTags('uploads')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(...TEACHER_ROLES, ...SCHOOL_ADMIN_ROLES)
+@Controller('uploads')
+export class UploadsController {
+  constructor(private storage: StorageService, private prisma: PrismaService, private uploads: UploadsService) {}
+
+  /**
+   * `library`, not the bare `/uploads`: UploadsLegacyController already serves
+   * POST /uploads for every signed-in user, and two @Controller('uploads')
+   * classes share one path space — whichever registered first won and the
+   * other was dead. This one is the teacher-only door that also files the
+   * upload in the resource library, so it says so in its path.
+   */
+  @Post('library')
+  @ApiOperation({ summary: 'Upload one file and add it to the teacher library. Returns the URL to store on the item.' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LARGEST } }))
+  async upload(@CurrentUser() u: AuthUser, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Choose a file to upload.');
+
+    const match = classify(file.mimetype);
+    if (!match) {
+      throw new BadRequestException(
+        `Kidora does not accept ${file.mimetype || 'that file type'}. Upload a video, image, audio file, PDF, Office document or captions file.`,
+      );
+    }
+    if (file.size > match.rule.maxBytes) {
+      const mb = Math.round(match.rule.maxBytes / (1024 * 1024));
+      throw new BadRequestException(`That file is too large. The limit for ${match.rule.label} is ${mb} MB.`);
+    }
+
+    const stored = await this.storage.save({
+      originalname: file.originalname,
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
+
+    // Remember it in the teacher's library so it can be reused on another
+    // lesson without uploading twice.
+    const resource = await this.prisma.resource.create({
+      data: {
+        name: stored.name,
+        url: stored.url,
+        kind: stored.kind,
+        sizeBytes: stored.sizeBytes,
+        mimeType: file.mimetype,
+        teacherId: u.id,
+        schoolId: u.schoolId,
+      },
+      select: { id: true },
+    });
+
+    return {
+      id: resource.id,
+      url: stored.url,
+      name: stored.name,
+      sizeBytes: stored.sizeBytes,
+      kind: stored.kind,
+      mimeType: file.mimetype,
+      /** Which content block type this file naturally becomes. */
+      contentType: match.kind === 'video' ? 'VIDEO'
+        : match.kind === 'audio' ? 'AUDIO'
+        : match.kind === 'image' ? 'IMAGE'
+        : match.kind === 'captions' ? 'RESOURCE'
+        : 'DOCUMENT',
+    };
+  }
+
+  /* ------------------------------------------------------------ video ---- */
+
+  @Post('presign')
+  @ApiOperation({
+    summary: 'Ask for somewhere to put a video. Checks the teacher owns the course, and the type and size, before handing out a URL.',
+  })
+  presign(@CurrentUser() u: AuthUser, @Body() dto: PresignUploadDto) {
+    return this.uploads.presign(u, dto);
+  }
+
+  @Put('direct/:token')
+  @ApiOperation({
+    summary: 'Receive the bytes when storage cannot presign (local disk). Streamed to storage, never buffered.',
+  })
+  async direct(@CurrentUser() u: AuthUser, @Param('token') token: string, @Req() req: Request) {
+    const declared = Number(req.headers['content-length'] ?? 0) || undefined;
+    return this.uploads.receiveDirect(u, token, req, declared);
+  }
+
+  @Post('complete')
+  @ApiOperation({ summary: 'The bytes are in storage: create the content item and its video, and start processing.' })
+  complete(@CurrentUser() u: AuthUser, @Body() dto: CompleteUploadDto) {
+    return this.uploads.complete(u, dto);
+  }
+
+  @Post('sessions/:sessionId/abort')
+  @ApiOperation({ summary: 'Give up on an upload and delete whatever reached storage.' })
+  abort(@CurrentUser() u: AuthUser, @Param('sessionId') sessionId: string) {
+    return this.uploads.abort(u, sessionId);
+  }
+
+  @Get('videos/:videoId/status')
+  @ApiOperation({ summary: 'Upload and processing state, polled by the teacher UI.' })
+  status(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string) {
+    return this.uploads.status(u, videoId);
+  }
+
+  @Patch('videos/:videoId')
+  @ApiOperation({ summary: 'Title, description, duration, thumbnail, captions, download and preview settings.' })
+  updateVideo(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string, @Body() dto: UpdateVideoDto) {
+    return this.uploads.update(u, videoId, dto);
+  }
+
+  @Post('videos/:videoId/retry')
+  @ApiOperation({ summary: 'Run processing again after a failure.' })
+  retry(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string) {
+    return this.uploads.retryProcessing(u, videoId);
+  }
+
+  @Delete('videos/:videoId')
+  @ApiOperation({ summary: 'Delete the video, its object in storage, and the item that held it.' })
+  removeVideo(@CurrentUser() u: AuthUser, @Param('videoId') videoId: string) {
+    return this.uploads.remove(u, videoId);
+  }
+}

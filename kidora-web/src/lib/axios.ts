@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/stores/auth.store';
+import { API_BASE_URL } from '@/lib/api/client';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {

@@ -43,6 +43,12 @@ page.on('pageerror', (e) => errs.push(e.message));
 
 const phone = () => String(910000000 + Math.floor(Math.random() * 89999999));
 
+// A name this run alone will use. Every run leaves its request in the queue,
+// so a fixed name meant step 4 found — and approved — some earlier run's
+// pending request, and this run's applicant waited for an approval that had
+// gone to someone else.
+const SCHOOL = `Walkthrough School ${Date.now().toString(36)}`;
+
 async function signUp() {
   await page.goto(`${WEB}/join`, { waitUntil: 'networkidle' });
   await page.getByLabel('Phone number').fill(phone());
@@ -58,8 +64,12 @@ await signUp();
 await page.getByRole('button', { name: /I'm a Parent/ }).click();
 await page.getByPlaceholder('Your name').fill('Test Parent');
 await page.getByRole('button', { name: /Enter Kidora/ }).click();
-await page.waitForURL(/dashboard/, { timeout: 20000 });
-is('lands on the parent dashboard', new URL(page.url()).pathname, '/dashboard/parent');
+// ROLE_HOME points at the LMS tree, so a parent lands on /parent/dashboard.
+// The old /dashboard/* pages still exist, which is why the loose /dashboard/
+// match below is not enough on its own — /login?next=/parent/dashboard also
+// contains the word, and that is exactly how the missing role cookie hid.
+await page.waitForURL(/\/parent\/dashboard/, { timeout: 20000 });
+is('lands on the parent dashboard', new URL(page.url()).pathname, '/parent/dashboard');
 
 console.log('\n2 · A student is told to ask a grown-up');
 await signUp();
@@ -80,7 +90,7 @@ is('offers the code route first', await page.getByPlaceholder('K7M2QP').isVisibl
 await page.screenshot({ path: `${shots}/w1-verify.png` });
 
 await page.getByRole('button', { name: /Register a school/ }).click();
-await page.getByPlaceholder('Sunrise Academy').fill('Walkthrough School');
+await page.getByPlaceholder('Sunrise Academy').fill(SCHOOL);
 await page.getByPlaceholder('Principal', { exact: true }).fill('Principal');
 await page.getByPlaceholder('principal@school.edu').fill('head@walkthrough.edu.et');
 await page.getByRole('button', { name: /Submit for review/ }).click();
@@ -113,9 +123,21 @@ if (!started.body.devCode) {
 const verified = await post('/auth/phone/verify', { phone: ADMIN_PHONE, code: started.body.devCode });
 const adminTok = verified.body.accessToken;
 
-const queue = await fetch(`${API}/admin/org-requests?status=PENDING`, {
-  headers: { Authorization: `Bearer ${adminTok}` },
-}).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+// The queue is oldest-first and paged, and every run leaves its request
+// behind, so this run's request is on the LAST page, not the first. Walk the
+// pages until it turns up rather than asserting on page one.
+const pageOf = (skip) =>
+  fetch(`${API}/admin/org-requests?status=PENDING&take=100&skip=${skip}`, {
+    headers: { Authorization: `Bearer ${adminTok}` },
+  }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+
+let queue = await pageOf(0);
+let mine = (queue.body.items || []).find((r) => r.organizationName === SCHOOL);
+for (let skip = 100; !mine && queue.status === 200 && skip < (queue.body.total ?? 0); skip += 100) {
+  const next = await pageOf(skip);
+  if (next.status !== 200) break;
+  mine = (next.body.items || []).find((r) => r.organizationName === SCHOOL);
+}
 
 if (queue.status === 403) {
   console.log(`  ✗ ${ADMIN_PHONE} is not staff, so it cannot review. Promote it with:`);
@@ -124,8 +146,8 @@ if (queue.status === 403) {
 }
 is('the reviewer can open the queue', queue.status, 200);
 
-const mine = (queue.body.items || []).find((r) => r.organizationName === 'Walkthrough School');
 is('the request is waiting in the queue', Boolean(mine), true);
+if (!mine) { console.log(`\n${pass} passed, ${fail} failed`); await b.close(); process.exit(1); }
 
 const approved = await post(`/admin/org-requests/${mine.id}/approve`, { decisionNote: 'Verified' }, adminTok);
 is('it approves', approved.body.status, 'APPROVED');
@@ -133,8 +155,8 @@ console.log('  (approved out of band — the applicant’s tab is still open)');
 
 console.log('\n5 · The open tab picks it up');
 await page.getByRole('button', { name: /Check again/ }).click();
-await page.waitForURL(/dashboard/, { timeout: 25000 });
-is('the tab moves itself to the school dashboard', new URL(page.url()).pathname, '/dashboard/school');
+await page.waitForURL(/\/school\/dashboard/, { timeout: 25000 });
+is('the tab moves itself to the school dashboard', new URL(page.url()).pathname, '/school/dashboard');
 const after = await page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('cl.auth')).state;
   const p = s.accessToken.split('.')[1];

@@ -7,6 +7,7 @@
 // serialise the plugin's config object on this version.
 import next from '@next/eslint-plugin-next';
 import reactHooks from 'eslint-plugin-react-hooks';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
@@ -17,7 +18,10 @@ export default tseslint.config(
   // ("rule not found") — and the dependency checks it silences never run.
   {
     files: ['**/*.{ts,tsx,js,jsx}'],
-    plugins: { 'react-hooks': reactHooks },
+    // jsx-a11y is registered because the codebase carries
+    // `eslint-disable jsx-a11y/...` comments; without the plugin each one is
+    // itself an error ("rule not found") and fails `next build`.
+    plugins: { 'react-hooks': reactHooks, 'jsx-a11y': jsxA11y },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
@@ -33,8 +37,10 @@ export default tseslint.config(
       // The API boundary is loosely typed in places; a warning keeps it
       // visible without failing the build.
       '@typescript-eslint/no-explicit-any': 'warn',
+      // A warning, not an error: an unused import is worth seeing but is no
+      // reason to fail a production build. `npm run lint` still reports them.
       '@typescript-eslint/no-unused-vars': [
-        'error',
+        'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true },
       ],
     },

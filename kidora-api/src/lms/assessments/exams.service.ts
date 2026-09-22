@@ -31,8 +31,4 @@ export class ExamsService {
     }
     return exam;
   }
-
-  listForTeacher(u: AuthUser) {
-    return this.prisma.exam.findMany({ where: { schoolId: u.schoolId ?? undefined, OR: [{ teacherId: u.id }, { class: { teachers: { some: { teacherId: u.id } } } }] }, orderBy: { scheduledAt: 'asc' }, include: { course: { select: { title: true } }, class: { select: { name: true } }, _count: { select: { attempts: true } } } });
-  }
 }

@@ -33,7 +33,10 @@ export class AssessmentsController {
   @Roles(...STAFF) @Patch('teacher/assignments/:id/publish') publish(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.assignments.publish(u, id); }
   @Roles(...STAFF) @Get('teacher/assignments/:id/submissions') submissions(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.assignments.submissions(u, id); }
   @Roles(...STAFF) @Patch('teacher/submissions/:id/grade') grade(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: GradeSubmissionDto) { return this.assignments.grade(u, id, dto); }
-  @Roles(...STAFF) @Get('teacher/exams') listExams(@CurrentUser() u: AuthUser) { return this.exams.listForTeacher(u); }
+  // GET teacher/exams lives on TeacherController: two @Controller classes cannot
+  // both serve one path, and only one of them ever answered. Its listing is a
+  // superset of the one here (paged, searchable, filterable by status) and is
+  // the shape kidora-web asks for, so this duplicate is gone rather than racing it.
   @Roles(...STAFF) @Post('teacher/exams') createExam(@CurrentUser() u: AuthUser, @Body() dto: CreateExamDto) { return this.exams.create(u, dto); }
   @Roles(...STAFF) @Patch('teacher/exams/:id/status/:status') examStatus(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('status') status: 'SCHEDULED' | 'OPEN' | 'CLOSED') { return this.exams.setStatus(u, id, status); }
 }

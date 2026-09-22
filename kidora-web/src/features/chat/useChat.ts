@@ -1,8 +1,8 @@
-'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
-import { useAuthStore } from '@/stores/auth.store';
-import { API_URL } from '@/lib/axios';
+"use client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
+import { useAuthStore } from "@/stores/auth.store";
+import { API_ORIGIN } from "@/lib/api/client";
 
 export interface ChatMessage {
   id: string;
@@ -11,31 +11,24 @@ export interface ChatMessage {
   body: string;
   type?: string;
   attachmentUrl?: string | null;
-  replyToId?: string | null;
-  /** emoji -> the user ids that reacted with it. */
+  /** emoji -> user ids. Always an object so callers can Object.entries it. */
   reactions: Record<string, string[]>;
   editedAt?: string | null;
   deletedAt?: string | null;
-  createdAt?: string;
+  createdAt: string;
 }
 
-const WS_URL = API_URL.replace(/\/api\/?$/, '');
-
 /**
- * Live conversation over the /chat socket.io namespace.
+ * Live conversation over the ChatGateway (namespace "/chat").
  *
- * The socket is created once per (conversation, token) pair. Joining emits
- * chat:join, which the gateway answers with chat:history — so the transcript
- * is seeded from the server rather than kept in component state across
- * conversation switches.
- *
- * `reactions` is typed as Record<string, string[]> rather than left implicit
- * so Object.entries(...) in the UI yields string[] for the reactor list and
- * `.length` is a number, not an unknown.
+ * Event names mirror the gateway exactly: chat:join / chat:history /
+ * chat:message / chat:typing / chat:react / chat:delete. The socket
+ * authenticates with the same access token as the REST calls, so the gateway
+ * resolves the same user and its room checks apply.
  */
 export function useChat(conversationId: string | null) {
   const token = useAuthStore((s) => s.accessToken);
-  const me = useAuthStore((s) => s.user?.id ?? null);
+  const me = useAuthStore((s) => s.user?.id) ?? null;
 
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -44,101 +37,91 @@ export function useChat(conversationId: string | null) {
   const [online, setOnline] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!conversationId || !token) {
-      setMessages([]);
-      setConnected(false);
-      return;
-    }
+    if (!token) return;
 
-    const socket = io(`${WS_URL}/chat`, {
+    const socket = io(`${API_ORIGIN}/chat`, {
       auth: { token },
-      transports: ['websocket'],
+      transports: ["websocket"],
     });
     socketRef.current = socket;
 
-    const upsert = (msg: ChatMessage) =>
-      setMessages((list) => {
-        const i = list.findIndex((m) => m.id === msg.id);
-        if (i === -1) return [...list, msg];
-        const next = [...list];
-        next[i] = { ...next[i], ...msg };
-        return next;
-      });
+    socket.on("connect", () => setConnected(true));
+    socket.on("disconnect", () => setConnected(false));
 
-    socket.on('connect', () => {
-      setConnected(true);
-      socket.emit('chat:join', { conversationId });
+    socket.on("chat:history", (p: { conversationId: string; messages: ChatMessage[] }) => {
+      // Ignore history for a conversation the user has already switched away from.
+      if (p.conversationId === conversationId) {
+        setMessages(p.messages.map((m) => ({ ...m, reactions: m.reactions ?? {} })));
+      }
     });
-    socket.on('disconnect', () => setConnected(false));
 
-    socket.on('chat:history', (p: { conversationId: string; messages: ChatMessage[] }) => {
-      if (p.conversationId === conversationId) setMessages(p.messages ?? []);
+    const normalise = (m: ChatMessage): ChatMessage => ({ ...m, reactions: m.reactions ?? {} });
+
+    socket.on("chat:message", (m: ChatMessage) => {
+      const msg = normalise(m);
+      setMessages((prev) => (prev.some((x) => x.id === msg.id) ? prev : [...prev, msg]));
     });
-    socket.on('chat:message', upsert);
-    socket.on('chat:edited', upsert);
-    socket.on('chat:deleted', (p: { id: string }) =>
-      setMessages((list) =>
-        list.map((m) => (m.id === p.id ? { ...m, deletedAt: new Date().toISOString() } : m)),
-      ),
-    );
-    socket.on('chat:reaction', (p: { id: string; reactions: Record<string, string[]> }) =>
-      setMessages((list) => list.map((m) => (m.id === p.id ? { ...m, reactions: p.reactions } : m))),
+
+    socket.on("chat:edited", (m: ChatMessage) =>
+      setMessages((prev) => prev.map((x) => (x.id === m.id ? normalise(m) : x))),
     );
 
-    socket.on('chat:typing', (p: { userId: string; typing: boolean }) =>
-      setTypingUsers((users) =>
-        p.typing ? (users.includes(p.userId) ? users : [...users, p.userId]) : users.filter((u) => u !== p.userId),
-      ),
+    socket.on("chat:deleted", (p: { id: string }) =>
+      setMessages((prev) => prev.filter((x) => x.id !== p.id)),
     );
-    socket.on('chat:presence', (p: { userId: string; online: boolean }) =>
-      setOnline((users) =>
-        p.online ? (users.includes(p.userId) ? users : [...users, p.userId]) : users.filter((u) => u !== p.userId),
+
+    socket.on("chat:reaction", (p: { id: string; reactions: Record<string, string[]> }) =>
+      setMessages((prev) => prev.map((x) => (x.id === p.id ? { ...x, reactions: p.reactions } : x))),
+    );
+
+    socket.on("chat:typing", (p: { userId: string; typing: boolean }) =>
+      setTypingUsers((prev) =>
+        p.typing ? (prev.includes(p.userId) ? prev : [...prev, p.userId]) : prev.filter((u) => u !== p.userId),
       ),
     );
 
-    return () => {
-      socket.off();
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [conversationId, token]);
+    socket.on("chat:presence", (p: { userId: string; online: boolean }) =>
+      setOnline((prev) =>
+        p.online ? (prev.includes(p.userId) ? prev : [...prev, p.userId]) : prev.filter((u) => u !== p.userId),
+      ),
+    );
 
-  const send = useCallback(
-    (body: string) => {
-      const text = body.trim();
-      if (!text || !conversationId) return;
-      socketRef.current?.emit('chat:message', { conversationId, body: text });
-    },
-    [conversationId],
-  );
+    return () => { socket.close(); socketRef.current = null; };
+  }, [token, conversationId]);
 
-  const setTyping = useCallback(
-    (typing: boolean) => {
-      if (!conversationId) return;
-      socketRef.current?.emit('chat:typing', { conversationId, typing });
-    },
-    [conversationId],
-  );
+  // Joining is separate from connecting so switching conversation does not
+  // tear the socket down.
+  useEffect(() => {
+    if (!conversationId || !socketRef.current) return;
+    setMessages([]);
+    setTypingUsers([]);
+    socketRef.current.emit("chat:join", { conversationId });
+  }, [conversationId, connected]);
 
-  const react = useCallback(
-    (messageId: string, emoji: string) => {
-      if (!conversationId) return;
-      socketRef.current?.emit('chat:react', { conversationId, messageId, emoji });
-    },
-    [conversationId],
-  );
+  const send = useCallback((body: string) => {
+    const text = body.trim();
+    if (!text || !conversationId) return;
+    socketRef.current?.emit("chat:message", { conversationId, body: text });
+  }, [conversationId]);
 
-  const remove = useCallback(
-    (messageId: string) => {
-      if (!conversationId) return;
-      socketRef.current?.emit('chat:delete', { conversationId, messageId });
-    },
-    [conversationId],
-  );
+  const setTyping = useCallback((typing: boolean) => {
+    if (!conversationId) return;
+    socketRef.current?.emit("chat:typing", { conversationId, typing });
+  }, [conversationId]);
+
+  const react = useCallback((id: string, emoji: string) => {
+    if (!conversationId) return;
+    socketRef.current?.emit("chat:react", { conversationId, id, emoji });
+  }, [conversationId]);
+
+  const remove = useCallback((id: string) => {
+    if (!conversationId) return;
+    socketRef.current?.emit("chat:delete", { conversationId, id });
+  }, [conversationId]);
 
   const markRead = useCallback(() => {
     if (!conversationId) return;
-    socketRef.current?.emit('chat:read', { conversationId });
+    socketRef.current?.emit("chat:read", { conversationId });
   }, [conversationId]);
 
   return { connected, messages, typingUsers, online, me, send, setTyping, react, remove, markRead };

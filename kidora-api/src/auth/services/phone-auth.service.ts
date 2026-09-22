@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -185,4 +186,100 @@ export class PhoneAuthService {
       needsRole: !user!.roleConfirmed,
     };
   }
+
+  // --- the names AuthController uses -------------------------------------
+  //
+  // Two branches built phone sign-in with different method names against the
+  // same idea. These are the other branch's names, wired to the machinery
+  // above so there is one implementation, one set of rate limits and one
+  // place where codes are hashed — not two that can drift apart.
+
+  /** Passwordless SMS sign-in, step 1. */
+  requestLoginCode(rawPhone: string, ip = '') {
+    return this.start({ phone: rawPhone }, ip);
+  }
+
+  /** Passwordless SMS sign-in, step 2. */
+  verifyLoginCode(rawPhone: string, code: string, ip = '', ua = '') {
+    return this.verify({ phone: rawPhone, code }, ip, ua);
+  }
+
+  /**
+   * Attaches a number to an account that already exists, and texts a code to
+   * it. Kept under its own cache key so an attach code can never be redeemed
+   * as a login code for somebody else's account.
+   */
+  async requestVerifyCode(userId: string, rawPhone: string) {
+    const phone = PhoneAuthService.normalize(rawPhone);
+
+    const owner = await this.prisma.user.findUnique({ where: { phone }, select: { id: true } });
+    if (owner && owner.id !== userId) {
+      throw new ConflictException('That mobile number is already on another account.');
+    }
+
+    const cooling = await this.cache.ttl(this.attachCooldownKey(userId));
+    if (cooling > 0) {
+      throw tooManyRequests(`Please wait ${cooling}s before requesting another code`);
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const record: OtpRecord = { hash: await bcrypt.hash(code, 10), attempts: 0, issuedAt: Date.now() };
+    await this.cache.set(this.attachKey(userId, phone), record, OTP_TTL);
+    await this.cache.set(this.attachCooldownKey(userId), 1, RESEND_COOLDOWN);
+
+    try {
+      await this.sms.sendOtp(phone, code);
+    } catch {
+      await this.cache.del(this.attachKey(userId, phone));
+      await this.cache.del(this.attachCooldownKey(userId));
+      throw new ServiceUnavailableException("We couldn't send the code. Check the number and try again.");
+    }
+
+    const devCode = !this.sms.enabled && process.env.NODE_ENV !== 'production' ? code : undefined;
+    return {
+      sent: true,
+      phone: PhoneAuthService.mask(phone),
+      expiresIn: OTP_TTL,
+      resendIn: RESEND_COOLDOWN,
+      ...(devCode ? { devCode } : {}),
+    };
+  }
+
+  /** Confirms the number attached above and records it on the account. */
+  async confirmPhone(userId: string, rawPhone: string, code: string) {
+    const phone = PhoneAuthService.normalize(rawPhone);
+    const key = this.attachKey(userId, phone);
+
+    const record = await this.cache.get<OtpRecord>(key);
+    if (!record) throw new BadRequestException('That code has expired. Request a new one.');
+
+    if (record.attempts >= MAX_ATTEMPTS) {
+      await this.cache.del(key);
+      throw tooManyRequests('Too many wrong codes. Request a new one.');
+    }
+
+    if (!(await bcrypt.compare(code, record.hash))) {
+      const left = OTP_TTL - Math.floor((Date.now() - record.issuedAt) / 1000);
+      await this.cache.set(key, { ...record, attempts: record.attempts + 1 }, Math.max(left, 1));
+      throw new BadRequestException('That code is not right. Try again.');
+    }
+
+    await this.cache.del(key);
+
+    // Checked again here: the number could have been claimed while the code
+    // was in flight, and `phone` is unique.
+    const owner = await this.prisma.user.findUnique({ where: { phone }, select: { id: true } });
+    if (owner && owner.id !== userId) {
+      throw new ConflictException('That mobile number is already on another account.');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { phone, phoneVerified: true },
+    });
+    return { verified: true, user: this.sanitize(user) };
+  }
+
+  private attachKey(userId: string, phone: string) { return `otp:attach:${userId}:${phone}`; }
+  private attachCooldownKey(userId: string) { return `otp:attach:cooldown:${userId}`; }
 }

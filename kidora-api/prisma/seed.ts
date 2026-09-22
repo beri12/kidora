@@ -18,7 +18,8 @@ async function main() {
   }
 
   const password = await bcrypt.hash('password123', 10);
-  const admin = await prisma.user.upsert({ where: { email: 'admin@kidora.com' }, update: {}, create: { email: 'admin@kidora.com', name: 'Admin', role: Role.ADMIN, passwordHash: password, emailVerified: true } });
+  // The row is still seeded; nothing below needs its id, so it is not bound.
+  await prisma.user.upsert({ where: { email: 'admin@kidora.com' }, update: {}, create: { email: 'admin@kidora.com', name: 'Admin', role: Role.ADMIN, passwordHash: password, emailVerified: true } });
   const teacher = await prisma.user.upsert({ where: { email: 'teacher@kidora.com' }, update: {}, create: { email: 'teacher@kidora.com', name: 'Ms. Okafor', role: Role.TEACHER, passwordHash: password, emailVerified: true } });
   const parent = await prisma.user.upsert({ where: { email: 'parent@kidora.com' }, update: {}, create: { email: 'parent@kidora.com', name: 'Priya Sharma', role: Role.PARENT, passwordHash: password, points: 1240, streak: 5, emailVerified: true } });
   await prisma.subscription.upsert({ where: { userId: parent.id }, update: {}, create: { userId: parent.id, plan: PlanKey.family, status: 'active' } });

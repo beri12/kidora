@@ -78,6 +78,21 @@ export default function TeacherUpload() {
             </select>
           </div>
         </div>
+        {/* The form kept `description` in state but never rendered a control for
+            it, so the required-field check could never be satisfied and the
+            submit button always failed validation with nothing to fix. */}
+        <div className="mt-3">
+          <Label>Description</Label>
+          <textarea
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            rows={4}
+            placeholder="What will children learn in this course?"
+            className="w-full bg-brand-50 border-2 border-brand-200 rounded-2xl px-4 py-3 font-body font-bold text-brand-900 outline-none transition-colors placeholder:text-brand-400 focus:border-brand-600"
+          />
+          <FieldError>{errors.description}</FieldError>
+        </div>
+
         <label className="flex items-center gap-2 mt-4 font-body font-bold text-brand-700">
           <input type="checkbox" checked={form.isPremium} onChange={(e) => setForm({ ...form, isPremium: e.target.checked })} /> Premium (requires subscription)
         </label>

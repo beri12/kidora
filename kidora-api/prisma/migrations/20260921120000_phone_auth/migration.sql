@@ -12,17 +12,21 @@
 ALTER TABLE "User" ALTER COLUMN "email" DROP NOT NULL;
 
 -- AlterTable
-ALTER TABLE "User" ADD COLUMN "phone" TEXT;
-ALTER TABLE "User" ADD COLUMN "phoneVerified" BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE "User" ADD COLUMN "roleConfirmed" BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE "User" ADD COLUMN "facebookId" TEXT;
-ALTER TABLE "User" ADD COLUMN "tiktokId" TEXT;
+-- IF NOT EXISTS throughout: an earlier migration on another branch
+-- (20260905120000_add_user_phone) already adds `phone` and `phoneVerified`,
+-- and the two were written in parallel. This way the column set is the same
+-- whichever of them ran first, and a half-applied run can simply be redeployed.
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phoneVerified" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "roleConfirmed" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "facebookId" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "tiktokId" TEXT;
 
 -- Existing accounts were all created through an email/password or social
 -- flow where the role was picked explicitly, so they are already confirmed.
 UPDATE "User" SET "roleConfirmed" = true;
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_phone_key" ON "User"("phone");
-CREATE UNIQUE INDEX "User_facebookId_key" ON "User"("facebookId");
-CREATE UNIQUE INDEX "User_tiktokId_key" ON "User"("tiktokId");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_phone_key" ON "User"("phone");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_facebookId_key" ON "User"("facebookId");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_tiktokId_key" ON "User"("tiktokId");
