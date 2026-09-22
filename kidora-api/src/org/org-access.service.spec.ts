@@ -50,8 +50,14 @@ function fakePrisma(opts: {
 
 const fakeEmail = () => ({ sendOrgRequestUpdate: jest.fn(async () => undefined) });
 const fakeSms = () => ({ send: jest.fn(async () => ({ sid: 'x' })) });
+const fakeCache = () => ({ bustTenancy: jest.fn(async () => undefined) });
 
-const build = (prisma: any) => new OrgAccessService(prisma, fakeEmail() as any, fakeSms() as any);
+/** The cache is handed back too, so a test can assert the tenancy was dropped. */
+const build = (prisma: any) => {
+  const cache = fakeCache();
+  const svc = new OrgAccessService(prisma, fakeEmail() as any, fakeSms() as any, cache as any);
+  return Object.assign(svc, { __cache: cache });
+};
 
 const APPLICANT = {
   id: 'u1', name: 'Marta', email: 'marta@sunrise.edu', phone: null,
@@ -111,6 +117,36 @@ describe('submit without a code', () => {
     const prisma = fakePrisma({ user: APPLICANT, school: null });
     await expect(build(prisma).submit('u1', dto({ joinCode: 'NOPE12' }))).rejects.toThrow(BadRequestException);
     expect(prisma.writes.requests).toHaveLength(0);
+  });
+});
+
+describe('a granted role reaches the guards at once', () => {
+  // JwtStrategy reads role/schoolId from the database but caches them for a
+  // minute. Granting without dropping that cache left a just-approved leader
+  // being read as their old role, so the dashboard they were sent to answered
+  // 403 until the TTL expired.
+  it('drops the cached tenancy when a code grants the role', async () => {
+    const prisma = fakePrisma({ user: APPLICANT, school: { id: 's9', active: true, districtId: null } });
+    const svc = build(prisma);
+    await svc.submit('u1', dto({ joinCode: 'k7m2qp' }));
+    expect(svc.__cache.bustTenancy).toHaveBeenCalledWith('u1');
+  });
+
+  it('drops it on a reviewer approval too', async () => {
+    const prisma = fakePrisma({
+      user: APPLICANT,
+      request: { id: 'r1', userId: 'u1', requestedRole: Role.SCHOOL_LEADER, status: OrgRequestStatus.PENDING, organizationName: 'Sunrise Academy', country: null, region: null, schoolId: null, districtId: null, user: APPLICANT },
+    });
+    const svc = build(prisma);
+    await svc.approve('r1', 'admin1', 'Verified');
+    expect(svc.__cache.bustTenancy).toHaveBeenCalledWith('u1');
+  });
+
+  it('does not drop it when nothing was granted', async () => {
+    const prisma = fakePrisma({ user: APPLICANT });
+    const svc = build(prisma);
+    await svc.submit('u1', dto());
+    expect(svc.__cache.bustTenancy).not.toHaveBeenCalled();
   });
 });
 

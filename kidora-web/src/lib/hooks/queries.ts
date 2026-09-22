@@ -35,6 +35,7 @@ export const keys = {
     gradebook: (q: object) => ["teacher", "gradebook", q] as const,
     analytics: (f: object) => ["teacher", "analytics", f] as const,
     assignments: (q: object) => ["teacher", "assignments", q] as const,
+    submissions: (id: string) => ["teacher", "assignment-submissions", id] as const,
     lessons: (q: object) => ["teacher", "lessons", q] as const,
     quizzes: (q: object) => ["teacher", "quizzes", q] as const,
     exams: (q: object) => ["teacher", "exams", q] as const,
@@ -136,6 +137,26 @@ export const useTeacherAnalytics = (f: AnalyticsFilters) =>
   useQuery({ queryKey: keys.teacher.analytics(f), queryFn: () => teacherApi.analytics(f), placeholderData: (p) => p });
 export const useTeacherAssignments = (q: Parameters<typeof teacherApi.assignments>[0]) =>
   useQuery({ queryKey: keys.teacher.assignments(q), queryFn: () => teacherApi.assignments(q), placeholderData: (p) => p });
+export const useAssignmentSubmissions = (id: string) =>
+  useQuery({ queryKey: keys.teacher.submissions(id), queryFn: () => teacherApi.assignmentSubmissions(id), enabled: !!id });
+
+/**
+ * Marking one submission. Both lists are invalidated: the detail page shows
+ * the new score, and the assignments list counts graded work in its
+ * "submitted / total" column, so leaving it alone would show a stale count
+ * the moment a teacher goes back.
+ */
+export const useGradeSubmission = (assignmentId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ submissionId, ...body }: { submissionId: string; score: number; feedback?: string }) =>
+      teacherApi.gradeSubmission(submissionId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.teacher.submissions(assignmentId) });
+      qc.invalidateQueries({ queryKey: ["teacher", "assignments"] });
+    },
+  });
+};
 
 // ----------------------------- School --------------------------------------
 export const useSchoolDashboard = (range?: string) =>
@@ -218,6 +239,14 @@ const invalidateCourse = (qc: ReturnType<typeof useQueryClient>, courseId: strin
   qc.invalidateQueries({ queryKey: keys.authoring.preview(courseId) });
   qc.invalidateQueries({ queryKey: ["authoring", "readiness", courseId] });
   qc.invalidateQueries({ queryKey: ["teacher", "courses"] });
+  // The teacher's library pages are fed by their own /teacher/* queries, not
+  // by the authoring tree, and every authoring write changes what they list.
+  // Without these a teacher who adds an assignment and then opens
+  // /teacher/assignments is served the cached page from before they made it,
+  // and their new work looks like it was never saved.
+  for (const list of ["lessons", "quizzes", "exams", "assignments", "resources"]) {
+    qc.invalidateQueries({ queryKey: ["teacher", list] });
+  }
 };
 
 export const useCourseTree = (courseId: string) =>

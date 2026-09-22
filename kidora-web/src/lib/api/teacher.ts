@@ -4,6 +4,31 @@ import type {
   AssignmentItem, Paginated, ProgressSeries, TopicPerformance,
 } from "@/types/lms";
 
+/** One student's answer to an assignment, as the marking screen sees it. */
+export interface AssignmentSubmissionRow {
+  id: string;
+  status: "SUBMITTED" | "GRADED" | "RETURNED" | "LATE";
+  content: string | null;
+  attachments: { name: string; url: string; sizeBytes: number }[] | null;
+  submittedAt: string;
+  score: number | null;
+  feedback: string | null;
+  gradedAt: string | null;
+  student: { id: string; name: string; avatarUrl?: string | null };
+}
+
+/** GET /teacher/assignments/:id/submissions — the rows and what they belong to. */
+export interface AssignmentSubmissions {
+  assignment: {
+    id: string; title: string; description: string | null; instructions: string | null;
+    status: "DRAFT" | "PUBLISHED" | "CLOSED";
+    dueAt: string | null; maxScore: number; classId: string | null;
+    course: { id: string; title: string } | null;
+    class: { id: string; name: string } | null;
+  };
+  items: AssignmentSubmissionRow[];
+}
+
 export interface TeacherStudentRow {
   id: string; name: string; avatarUrl?: string | null; className: string; grade: string;
   progressPercent: number; averageScore: number; health: "ON_TRACK" | "NEEDS_SUPPORT" | "AT_RISK";
@@ -34,4 +59,8 @@ export const teacherApi = {
   analytics: (f: AnalyticsFilters) => api.get<TeacherAnalytics>("/teacher/analytics", f),
   assignments: (q: { classId?: string; status?: string; page?: number }) =>
     api.get<Paginated<AssignmentItem & { submitted: number; total: number }>>("/teacher/assignments", q),
+  assignmentSubmissions: (id: string) =>
+    api.get<AssignmentSubmissions>(`/teacher/assignments/${id}/submissions`),
+  gradeSubmission: (submissionId: string, body: { score: number; feedback?: string }) =>
+    api.patch<AssignmentSubmissionRow>(`/teacher/submissions/${submissionId}/grade`, body),
 };

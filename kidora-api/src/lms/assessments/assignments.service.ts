@@ -54,10 +54,34 @@ export class AssignmentsService {
     return s;
   }
 
+  /**
+   * The submissions, and the assignment they belong to.
+   *
+   * The assignment travels with them because the marking screen cannot render
+   * without it: it needs the title for the heading and maxScore to bound the
+   * score box. Returning only the rows would have forced the client into a
+   * second round trip, or into guessing the denominator.
+   */
   async submissions(u: AuthUser, assignmentId: string) {
-    const a = await this.prisma.assignment.findUnique({ where: { id: assignmentId }, select: { teacherId: true, schoolId: true, classId: true } });
+    const a = await this.prisma.assignment.findUnique({
+      where: { id: assignmentId },
+      select: {
+        id: true, title: true, description: true, instructions: true, status: true,
+        dueAt: true, maxScore: true, teacherId: true, schoolId: true, classId: true,
+        course: { select: { id: true, title: true } },
+        class: { select: { id: true, name: true } },
+      },
+    });
     if (!a) throw new NotFoundException(); if (a.teacherId !== u.id) this.tenancy.assertSameSchool(u, a.schoolId);
-    return this.prisma.assignmentSubmission.findMany({ where: { assignmentId }, orderBy: { submittedAt: 'desc' }, include: { student: { select: { id: true, name: true, avatarUrl: true } } } });
+
+    const items = await this.prisma.assignmentSubmission.findMany({
+      where: { assignmentId },
+      orderBy: { submittedAt: 'desc' },
+      include: { student: { select: { id: true, name: true, avatarUrl: true } } },
+    });
+
+    const { teacherId, schoolId, ...assignment } = a;
+    return { assignment, items };
   }
 
   async grade(u: AuthUser, submissionId: string, dto: GradeSubmissionDto) {

@@ -144,6 +144,12 @@ export class AuthService {
       include: { subscription: true },
     });
 
+    // JwtStrategy reads role and tenancy from the database but caches them for
+    // a minute, so without this the account keeps being treated as a PARENT
+    // right after answering — a teacher who picks "I'm a Teacher" is refused
+    // from /teacher/* with a 403 until the TTL runs out.
+    await this.cache.bustTenancy(userId);
+
     // The role lives inside the JWT, so hand back a fresh pair rather than
     // leaving the client with a token that still says PARENT.
     const t = await this.tokens.issue(user);

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "walkthrough": "node scripts/walkthrough.mjs"
+    "walkthrough": "node scripts/walkthrough.mjs",
+    "walkthrough:assignments": "node scripts/assignments-walkthrough.mjs"
   },
   "dependencies": {
     "@paypal/react-paypal-js": "^8.8.1",

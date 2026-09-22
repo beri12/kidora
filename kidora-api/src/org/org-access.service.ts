@@ -10,6 +10,7 @@ import { OrgRequestStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { EmailService } from '../infrastructure/email/email.service';
 import { SmsService } from '../infrastructure/sms/sms.service';
+import { CacheService } from '../infrastructure/cache/cache.service';
 import { SubmitOrgRequestDto, VerifiedRole } from './dto/org-request.dto';
 
 /** Statuses that still count as "this person is waiting on us". */
@@ -45,6 +46,7 @@ export class OrgAccessService {
     private prisma: PrismaService,
     private email: EmailService,
     private sms: SmsService,
+    private cache: CacheService,
   ) {}
 
   // --- codes -------------------------------------------------------------
@@ -369,6 +371,11 @@ export class OrgAccessService {
         districtId: target.districtId,
       },
     });
+
+    // All three of these fields are cached by JwtStrategy for a minute. Until
+    // the cache is dropped, a just-approved leader is still read as a PARENT
+    // with no school, so the dashboard they were sent to answers 403.
+    await this.cache.bustTenancy(userId);
   }
 
   /** Creates the school or district an approved request described. */
