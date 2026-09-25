@@ -13,7 +13,7 @@ export type Role =
 /** The roles a visitor may pick for themselves in the "How will you use Kidora?" step. */
 export type SignupRoleKey = Extract<
   Role,
-  'PARENT' | 'TEACHER' | 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'
+  'CHILD' | 'PARENT' | 'TEACHER' | 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'
 >;
 
 export interface User {
@@ -52,8 +52,25 @@ export interface PhoneStartResponse {
   expiresIn: number;
   /** Seconds before "Resend code" is allowed again. */
   resendIn: number;
-  /** Only present in development, when Twilio is not configured. */
-  devCode?: string;
+}
+
+/**
+ * POST /auth/register, POST /auth/email/resend, and the body of the 403 an
+ * unverified account gets from POST /auth/login. The code itself only ever
+ * arrives by email.
+ */
+export interface EmailPending {
+  needsEmailVerification: true;
+  email: string;
+  /** e.g. "ab***@example.com" */
+  maskedEmail: string;
+  expiresIn: number;
+  resendIn: number;
+}
+
+/** POST /auth/email/verify */
+export interface EmailVerifyResponse extends AuthResponse {
+  needsRole: boolean;
 }
 
 export type OrgRequestStatus = 'PENDING' | 'CHANGES_REQUESTED' | 'APPROVED' | 'REJECTED';

@@ -1,8 +1,8 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { randomInt } from 'crypto';
 import { SmsService } from '../../infrastructure/sms/sms.service';
 import { OtpStore } from './otp.store';
+import { exposeOtpForTests, newOtpCode } from './otp-code';
 
 const OTP_TTL = 300; // 5 min
 const MAX_ATTEMPTS = 5;
@@ -24,7 +24,7 @@ export class SmsMfaService {
       );
     }
 
-    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const code = newOtpCode();
     await this.store.set(
       'mfa',
       userId,
@@ -37,14 +37,19 @@ export class SmsMfaService {
       OTP_TTL,
     );
 
-    const result = await this.sms.send(phone, `Your Kidora code is ${code}`);
-    return {
-      sent: true,
-      expiresIn: OTP_TTL,
-      // Only when Twilio is unconfigured outside production, so the flow stays
-      // testable without a real handset.
-      ...(result.dev && process.env.NODE_ENV !== 'production' ? { devCode: code } : {}),
-    };
+    try {
+      const result = await this.sms.sendOtp(phone, code);
+      return {
+        sent: true,
+        expiresIn: OTP_TTL,
+        // The code goes by SMS only; see exposeOtpForTests for the one exception.
+        ...(result.dev && exposeOtpForTests() ? { devCode: code } : {}),
+      };
+    } catch (err) {
+      // A code nobody received must not stay redeemable.
+      await this.store.del('mfa', userId);
+      throw err;
+    }
   }
 
   async verify(userId: string, code: string) {

@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
 import { oauthCallbackUrl } from '../../config/oauth-callback';
+import { oauthStateStore } from './oauth-state.store';
 
 const GRAPH = process.env.FACEBOOK_API_VERSION || 'v19.0';
 
@@ -18,6 +19,8 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET || 'missing',
       callbackURL: oauthCallbackUrl('facebook'),
       scope: ['email', 'public_profile'],
+      // CSRF protection for the round trip; see SignedCookieStateStore.
+      store: oauthStateStore,
     });
   }
 

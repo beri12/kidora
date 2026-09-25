@@ -20,8 +20,20 @@ export class OAuthController {
   constructor(private oauth: OAuthService, private config: ConfigService) {}
 
   private async finish(req: any, res: any) {
-    const session = await this.oauth.validateOAuthLogin(req.user as OAuthProfile);
     const web = this.config.get<string>('app.webUrl');
+
+    // ProviderGuard turns a refused or cancelled round trip into this marker.
+    if (req.user?.oauthError) {
+      const reason = req.user.oauthError === 'cancelled' ? 'cancelled' : 'failed';
+      return res.redirect(`${web}/auth/callback#error=${reason}&provider=${encodeURIComponent(req.user.provider)}`);
+    }
+
+    let session;
+    try {
+      session = await this.oauth.validateOAuthLogin(req.user as OAuthProfile);
+    } catch {
+      return res.redirect(`${web}/auth/callback#error=failed&provider=${encodeURIComponent(req.user?.provider ?? '')}`);
+    }
     // Hand tokens to the SPA via URL fragment; the client stores them.
     // `needsRole` tells the callback page whether to run the "How will you use
     // Kidora?" step or go straight to the dashboard.

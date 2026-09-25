@@ -69,19 +69,49 @@ One number, one code, no password. `POST /auth/phone/start` texts a 6-digit code
 ```bash
 TWILIO_SID=ACxxxxxxxx
 TWILIO_TOKEN=xxxxxxxx
-# either a purchased number...
-TWILIO_FROM=+15551234567
-# ...or a Messaging Service, which is what you want for international OTP traffic
+# a Messaging Service, which is what you want for international OTP traffic...
 TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxx
+# ...or a branded alphanumeric sender (not every country accepts one)...
+TWILIO_SENDER_ID=KIDORA
+# ...or a purchased number
+TWILIO_FROM=+15551234567
 ```
 
-With none of these set the SMS is only logged and the API returns the code in the response
-as `devCode` (never when `NODE_ENV=production`), so the whole flow is testable offline.
+The text reads `Kidora: 482913 is your verification code. It expires in 5 minutes.` and,
+on an https deploy, ends with the `@domain #code` line that lets Chrome on Android fill it in.
+
+The code only ever travels by SMS — it is **never** returned to the browser. With Twilio
+unset in development the SMS is printed in the API log instead; in production an unset
+Twilio makes phone sign-in answer 503 rather than pretending to send. A refused send (a
+trial account texting an unverified number, an unreachable country, a landline) fails the
+request with a reason the person can act on, and the log names Twilio's error and its fix.
 
 Codes are stored **hashed** in Redis for 5 minutes, are single-use, and are protected by
 four limits: a 45-second resend cooldown, 5 wrong guesses per code, 5 codes per number per
 hour, and 20 per source IP per hour. `/auth/phone/start` answers identically whether or not
 the number already has an account, so it cannot be used to test who is on Kidora.
+
+## Email verification
+`POST /auth/register` creates the account unverified and emails a 6-digit code; it returns
+`{ needsEmailVerification, email, maskedEmail, resendIn }` and **no tokens**.
+`POST /auth/email/verify` checks the code and signs in; `POST /auth/email/resend` sends a
+new one (and answers identically for unknown addresses). A correct password on an
+unverified account gets `403 { code: "EMAIL_NOT_VERIFIED", … }` and a fresh code, so the
+web app goes straight to the code step. Same limits as SMS codes, with a 10-minute expiry.
+Accounts that existed before this change are marked verified by migration.
+
+## Social sign-in (Google, Facebook, TikTok)
+Set `<PROVIDER>_CLIENT_ID` and `_CLIENT_SECRET`; the redirect URI to register is printed at
+startup. The OAuth `state` is HMAC-signed and bound to the browser by a short-lived
+httpOnly cookie (login-CSRF protection). A cancelled or failed round trip lands on
+`/auth/callback#error=cancelled|failed` with a readable message instead of a JSON 401.
+When a provider's verified email matches an account whose address was never verified,
+the address is marked verified and that account's unproven password is removed.
+
+## Students
+Students sign up like everyone else — phone, email or social — and pick **I'm a Student**.
+An optional school join code links them to their school (a wrong code is refused and
+nothing is saved) and an optional grade places them in it.
 
 ## Run (dev)
 ```bash
@@ -102,12 +132,12 @@ one — phone sign-in, the OTP limits, the role step, verification, pending, app
 the invitation shortcut, refusal, the upload rules and the role guards:
 
 ```bash
-npm run start:dev            # in another terminal
+AUTH_TEST_EXPOSE_OTP=true npm run start:dev   # in another terminal
 npm run test:e2e:flow        # or ./scripts/e2e-auth-flow.sh
 ```
 
-It needs the dev SMS fallback (no `TWILIO_SID`), because it reads each code out of the
-`devCode` field. It also paces itself: `/auth/phone/start` allows 6 requests a minute
+It needs Twilio unset and `AUTH_TEST_EXPOSE_OTP=true`, because it reads each code out of
+the `devCode` field — the one test-only hook that returns a code, refused in production. It also paces itself: `/auth/phone/start` allows 6 requests a minute
 per IP and the run needs about ten, so it waits between them — expect a few minutes.
 It exits non-zero if anything fails.
 

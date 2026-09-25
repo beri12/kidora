@@ -4,6 +4,10 @@ import { Prisma, Role, User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { RegisterDto } from '../dto/auth.dto';
 
+export type ProfileInput = Partial<
+  Pick<RegisterDto, 'schoolName' | 'country' | 'districtName' | 'region' | 'schoolCode' | 'gradeLevel'>
+>;
+
 @Injectable()
 export class RegistrationService {
   constructor(private prisma: PrismaService) {}
@@ -40,7 +44,12 @@ export class RegistrationService {
     return tx.activityEvent.create({ data: { ...data, meta: {} } });
   }
 
-  async applyProfile(user: Pick<User, 'id' | 'name' | 'role' | 'schoolId'>, dto: RegisterDto) {
+  /**
+   * `dto` is the role-specific part of a sign-up. It comes from the email
+   * registration form or, for phone and social accounts, from the "How will
+   * you use Kidora?" step — both carry the same optional fields.
+   */
+  async applyProfile(user: Pick<User, 'id' | 'name' | 'role' | 'schoolId'>, dto: ProfileInput) {
     return this.prisma.$transaction(async (tx) => {
       let schoolId = user.schoolId ?? null;
       let districtId: string | null = null;

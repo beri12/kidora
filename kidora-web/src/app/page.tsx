@@ -151,6 +151,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Navbar } from '@/components/navbar/Navbar';
 import Image from "next/image";
+import { SignupButton } from '@/components/auth/SignupButton';
 
 const ROLES = [
   { emoji: '\uD83E\uDDD1\u200D\uD83C\uDFEB', label: 'Teacher', role: 'TEACHER' },
@@ -340,7 +341,7 @@ export default function Home() {
           ))}
         </div>
         <div data-hero className="mt-9 flex flex-col items-center gap-3.5">
-          <Link href="/join" className="bg-brand-600 hover:-translate-y-0.5 transition-transform text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn">Sign up</Link>
+          <SignupButton className="bg-brand-600 text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn">Sign up</SignupButton>
           <div className="font-extrabold text-brand-400 text-[15px]"><span className="text-brand-500">{'\u2605\u2605\u2605\u2605\u2605'}</span> 1 million+ 5-star reviews</div>
         </div>
       </section>
@@ -485,7 +486,7 @@ export default function Home() {
         <div data-grow>
           <div className="text-6xl animate-bob inline-block">{'\uD83C\uDF31'}</div>
           <h2 data-split-words className="font-display font-extrabold text-brand-900 mt-2 mb-7" style={{ fontSize: 'clamp(36px,5vw,56px)' }}>Let{"'"}s get growing</h2>
-          <Link href="/join" className="bg-brand-600 text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn inline-block hover:-translate-y-0.5 transition-transform">Get started</Link>
+          <SignupButton className="bg-brand-600 text-white font-display font-extrabold text-[19px] px-11 py-4 rounded-full shadow-btn">Get started</SignupButton>
         </div>
       </section>
 

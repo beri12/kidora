@@ -25,3 +25,20 @@ export const orgRequestTemplate = (name: string, title: string, body: string) =>
   <h1 style="color:#3B0764">${title}</h1>
   <p style="color:#4C1D95;font-weight:600">Hi ${name},</p>
   <p style="color:#4C1D95;font-weight:600">${body}</p>`);
+
+/**
+ * The email verification code. Big, spaced digits so it can be read at a
+ * glance and typed without copying; plain-text fallback is sent alongside.
+ */
+export const verificationCodeTemplate = (name: string, code: string, minutes: number) => shell(`
+  <h1 style="color:#3B0764;margin:0 0 8px">Verify your email</h1>
+  <p style="color:#4C1D95;font-weight:600">Hi ${escapeHtml(name)}, enter this code in Kidora to finish setting up your account:</p>
+  <div style="margin:24px 0;text-align:center">
+    <span style="display:inline-block;background:#F6F2FF;border:2px solid #DDD6FE;border-radius:18px;padding:16px 28px;font-size:34px;font-weight:800;letter-spacing:10px;color:#3B0764;font-family:ui-monospace,Menlo,monospace">${code}</span>
+  </div>
+  <p style="color:#6B5B95;font-weight:600;font-size:14px">This code expires in ${minutes} minutes. If you didn't ask for it, you can safely ignore this email — nobody can sign in without it.</p>
+  <p style="color:#6B5B95;font-weight:600;font-size:14px">Kidora will never ask you for this code by phone, chat or email.</p>`);
+
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}

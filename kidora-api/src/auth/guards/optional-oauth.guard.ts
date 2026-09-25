@@ -24,6 +24,21 @@ export function ProviderGuard(name: string) {
       }
       return super.canActivate(ctx) as any;
     }
+
+    /**
+     * On the callback, a refusal — the visitor pressed "Cancel" at Google, the
+     * state check failed, the code was already used — would otherwise surface
+     * as a bare 401 JSON page on the API's domain. It is handed to the
+     * controller instead, which sends the visitor back to the web app with a
+     * readable reason.
+     */
+    handleRequest(err: any, user: any, info: any, ctx: ExecutionContext) {
+      if (user) return user;
+      const req = ctx.switchToHttp().getRequest();
+      const denied = req?.query?.error === 'access_denied' || req?.query?.error_reason === 'user_denied';
+      const reason = denied ? 'cancelled' : (info?.message as string) || (err?.message as string) || 'failed';
+      return { oauthError: reason, provider: name };
+    }
   }
   return G;
 }

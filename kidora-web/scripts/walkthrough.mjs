@@ -17,7 +17,9 @@
  *   ADMIN_PHONE  an existing SUPER_ADMIN's number, used to approve the request
  *   CHROME       path to a Chromium binary, if Playwright cannot find one
  *
- * Needs the dev SMS fallback (no TWILIO_SID): it reads each code off the page.
+ * Needs the API started with AUTH_TEST_EXPOSE_OTP=true and no TWILIO_*
+ * variables: the code is read from the API's response to the browser's own
+ * request. The page itself never shows it — that is one of the checks.
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -52,9 +54,11 @@ const SCHOOL = `Walkthrough School ${Date.now().toString(36)}`;
 async function signUp() {
   await page.goto(`${WEB}/join`, { waitUntil: 'networkidle' });
   await page.getByLabel('Phone number').fill(phone());
+  const started = page.waitForResponse((r) => r.url().endsWith('/auth/phone/start'));
   await page.getByRole('button', { name: /Continue/ }).click();
+  const { devCode: code } = await (await started).json();
   await page.getByLabel('Digit 1').waitFor({ timeout: 20000 });
-  const code = (await page.locator('text=/here is the code/').textContent()).match(/(\d{6})/)[1];
+  is('the code is not shown on screen', await page.getByText(code).count(), 0);
   await page.getByLabel('Digit 1').fill(code);
   await page.getByText('How will you use Kidora?').waitFor({ timeout: 20000 });
 }
@@ -71,12 +75,16 @@ await page.getByRole('button', { name: /Enter Kidora/ }).click();
 await page.waitForURL(/\/parent\/dashboard/, { timeout: 20000 });
 is('lands on the parent dashboard', new URL(page.url()).pathname, '/parent/dashboard');
 
-console.log('\n2 · A student is told to ask a grown-up');
+console.log('\n2 · A student signs up and lands on the student dashboard');
 await signUp();
 await page.getByRole('button', { name: /I'm a Student/ }).click();
 await page.waitForTimeout(400);
-is('explains the code route', await page.getByText(/Students join through a grown-up/).isVisible(), 'true');
-is('cannot continue as a student', await page.getByRole('button', { name: /Enter Kidora/ }).isDisabled(), 'true');
+is('offers an optional school code', await page.getByPlaceholder('K7M2QP').isVisible(), 'true');
+await page.getByPlaceholder('e.g. Leo').fill('Test Student');
+await page.getByLabel(/Your grade/).selectOption('Grade 3');
+await page.getByRole('button', { name: /start learning/ }).click();
+await page.waitForURL(/\/student\/dashboard/, { timeout: 20000 });
+is('lands on the student dashboard', new URL(page.url()).pathname, '/student/dashboard');
 
 console.log('\n3 · A school leader is verified first');
 await signUp();

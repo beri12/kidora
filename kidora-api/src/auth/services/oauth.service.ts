@@ -55,7 +55,22 @@ export class OAuthService {
       if (user.email) this.email.sendWelcome(user.email, user.name);
     } else if (column && !(user as any)[column]) {
       // Link this provider to the account the email matched.
-      user = await this.prisma.user.update({ where: { id: user.id }, data: { [column]: p.providerId } });
+      //
+      // If that account never proved it owns the address, whoever registered
+      // it may not be the person now signing in with the provider — they could
+      // have typed someone else's email with a password of their own. The
+      // provider has just proved ownership, so the address is marked verified
+      // and the unproven password is dropped rather than left as a back door.
+      const unproven = !user.emailVerified;
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          [column]: p.providerId,
+          ...(unproven ? { emailVerified: true, passwordHash: null } : {}),
+        },
+      });
+    } else if (email && !user.emailVerified && user.email === email) {
+      user = await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true, passwordHash: null } });
     }
 
     const t = await this.tokens.issue(user);

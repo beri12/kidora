@@ -278,6 +278,27 @@ export class VerifyOtpDto {
 }
 
 /**
+ * Confirms the address an email + password account was registered with.
+ */
+export class EmailVerifyDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: '482913', description: '6-digit code delivered by email' })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code.' })
+  code!: string;
+}
+
+/** "Resend code" on the email verification step. */
+export class EmailResendDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
+}
+
+/**
  * Attach (or replace) the mobile number on the signed-in account.
  */
 export class SetPhoneDto {

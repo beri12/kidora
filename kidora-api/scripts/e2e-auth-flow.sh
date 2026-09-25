@@ -8,10 +8,13 @@
 # plus the OTP rate limits, the upload rules and the role guards.
 #
 # Usage:
-#   npm run start:dev                 # in another terminal
+#   AUTH_TEST_EXPOSE_OTP=true npm run start:dev   # in another terminal
 #   ./scripts/e2e-auth-flow.sh        # or: API=http://host:4000/api ./scripts/...
 #
-# Requires Twilio to be UNCONFIGURED, so the API returns the code as `devCode`.
+# Requires Twilio to be UNCONFIGURED and the API started with
+# AUTH_TEST_EXPOSE_OTP=true, so it returns the code as `devCode` for this
+# script. Nothing else ever gets the code back: real users only receive it by
+# SMS, and the web app never shows it.
 # Each run uses a fresh block of numbers (+2519<run><n>), so runs never collide
 # and nothing has to be cleaned up between them. To remove them all later:
 #   DELETE FROM "OrgAccessRequest" WHERE "userId" IN (SELECT id FROM "User" WHERE phone LIKE '+2519%');
@@ -126,7 +129,7 @@ ok "API is up at $API"
 PROBE=$(start_otp "$(num 0)")
 if [ "$(get "$PROBE" '["devCode"]')" = "<missing>" ]; then
   printf "${RED}No devCode in the response.${OFF} Twilio looks configured.\n"
-  printf "This script needs the dev SMS fallback: unset TWILIO_SID / TWILIO_TOKEN and retry.\n"
+  printf "This script needs the test hook: unset the TWILIO_* variables and start the API with AUTH_TEST_EXPOSE_OTP=true.\n"
   exit 1
 fi
 ok "dev SMS fallback is on (codes come back in the response)"

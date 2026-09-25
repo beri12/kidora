@@ -73,7 +73,7 @@ screenshots as it goes:
 
 ```bash
 npm run dev                  # this app
-# ...and the API, in another terminal, with Twilio unconfigured
+# ...and the API, in another terminal, with Twilio unset and AUTH_TEST_EXPOSE_OTP=true
 npx playwright install chromium   # once — it drives a real browser
 npm run walkthrough
 ```

@@ -128,14 +128,25 @@ function reportSignInSetup() {
 
   const twilio = on(process.env.TWILIO_ACCOUNT_SID ?? process.env.TWILIO_SID)
     && on(process.env.TWILIO_AUTH_TOKEN ?? process.env.TWILIO_TOKEN)
-    && on(process.env.TWILIO_PHONE_NUMBER ?? process.env.TWILIO_FROM ?? process.env.TWILIO_MESSAGING_SERVICE_SID);
+    && on(process.env.TWILIO_PHONE_NUMBER ?? process.env.TWILIO_FROM
+      ?? process.env.TWILIO_SENDER_ID ?? process.env.TWILIO_MESSAGING_SERVICE_SID);
 
+  const prod = process.env.NODE_ENV === 'production';
   console.log(
     twilio
-      ? '  SMS: Twilio configured. On a TRIAL account only verified numbers receive texts;\n'
-        + '       outside production a refused send returns the code in the response instead.'
-      : '  SMS: Twilio not configured — one-time codes are printed here and returned in the response.',
+      ? '  SMS: Twilio configured — codes are texted to the number entered. On a TRIAL account only\n'
+        + '       verified numbers receive texts; any other number gets a clear "couldn\'t send" error.'
+      : prod
+        ? '  SMS: Twilio NOT configured — phone sign-in will answer 503 until it is.'
+        : '  SMS: Twilio not configured — one-time codes are printed in this log (never sent to the browser).',
   );
+  console.log(
+    '  Email codes: sent through ' + (process.env.SMTP_HOST ?? 'localhost') + ':' + (process.env.SMTP_PORT ?? '1025')
+      + (prod ? '' : ' — if unreachable, the code is printed in this log instead.'),
+  );
+  if (process.env.AUTH_TEST_EXPOSE_OTP === 'true' && !prod) {
+    console.log('  AUTH_TEST_EXPOSE_OTP=true — codes are returned in API responses for the e2e suite. Never use this for real users.');
+  }
   console.log(`  Web app redirected to: ${process.env.WEB_URL ?? 'http://localhost:3000'}  (set WEB_URL if that is wrong)\n`);
 }
 bootstrap();

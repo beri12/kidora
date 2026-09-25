@@ -4,6 +4,8 @@ import { persist } from 'zustand/middleware';
 import { api, API_URL } from '@/lib/axios';
 import type {
   AuthResponse,
+  EmailPending,
+  EmailVerifyResponse,
   OrgRequest,
   PhoneStartResponse,
   PhoneVerifyResponse,
@@ -13,6 +15,27 @@ import type {
   User,
 } from '@/types';
 
+/** POST /auth/register body. Blank optional fields are dropped before sending. */
+export type RegisterInput = {
+  name: string;
+  email: string;
+  password: string;
+  role?: string;
+} & Record<string, string | undefined>;
+
+/**
+ * The 403 an unverified account gets from a correct password carries the same
+ * shape as a registration: the API has just emailed a fresh code. Returns it,
+ * or null for any other error.
+ */
+export function emailPendingFrom(err: unknown): EmailPending | null {
+  const res = (err as { response?: { status?: number; data?: { error?: unknown } & Record<string, unknown> } })?.response;
+  if (res?.status !== 403 || !res.data) return null;
+  // The API's exception filter nests the body under `error`.
+  const body = (typeof res.data.error === 'object' && res.data.error ? res.data.error : res.data) as Partial<EmailPending> & { code?: string };
+  return body.code === 'EMAIL_NOT_VERIFIED' && body.email ? (body as EmailPending) : null;
+}
+
 interface AuthState {
   user: User | null;
   accessToken: string | null;
@@ -21,7 +44,15 @@ interface AuthState {
   setSession: (r: AuthResponse) => void;
   setTokens: (accessToken: string, refreshToken: string) => Promise<User | null>;
   login: (email: string, password: string) => Promise<User>;
-  register: (name: string, email: string, password: string, role?: string) => Promise<User>;
+  /**
+   * Creates an email + password account. The API emails a 6-digit code and
+   * issues no session until `verifyEmail` sends it back.
+   */
+  register: (payload: RegisterInput) => Promise<EmailPending>;
+  /** Confirms the emailed code and signs in. */
+  verifyEmail: (email: string, code: string) => Promise<EmailVerifyResponse>;
+  /** Emails a new code. */
+  resendEmail: (email: string) => Promise<EmailPending>;
   /** Texts a one-time code to `phone` (E.164). */
   startPhone: (phone: string) => Promise<PhoneStartResponse>;
   /** Verifies the code, signing in or creating the account. */
@@ -122,10 +153,23 @@ export const useAuthStore = create<AuthState>()(
         return data.user;
       },
 
-      register: async (name, email, password, role = 'PARENT') => {
-        const { data } = await api.post<AuthResponse>('/auth/register', { name, email, password, role });
+      register: async (payload) => {
+        const body = Object.fromEntries(
+          Object.entries(payload).filter(([, v]) => v !== undefined && String(v).trim() !== ''),
+        );
+        const { data } = await api.post<EmailPending>('/auth/register', body);
+        return data;
+      },
+
+      verifyEmail: async (email, code) => {
+        const { data } = await api.post<EmailVerifyResponse>('/auth/email/verify', { email, code });
         get().setSession(data);
-        return data.user;
+        return data;
+      },
+
+      resendEmail: async (email) => {
+        const { data } = await api.post<EmailPending>('/auth/email/resend', { email });
+        return data;
       },
 
       startPhone: async (phone) => {

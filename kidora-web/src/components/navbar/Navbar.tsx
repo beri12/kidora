@@ -6,6 +6,7 @@ import { initials } from '@/lib/utils';
 import { ROLE_HOME, SIGNUP_ROLES } from '@/constants';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { useI18n } from '@/lib/i18n';
+import { SignupButton } from '@/components/auth/SignupButton';
 
 const PRODUCTS = [
   { name: 'Kidora',         emoji: '🐵', descKey: 'prod.kidora',  href: '/' },
@@ -153,7 +154,7 @@ export function Navbar() {
           ) : (
             <>
               <Link href="/login" className="px-3 py-2 rounded-xl font-body-x text-sm text-brand-700">{t('nav.login')}</Link>
-              <Link href="/join" className="px-4 py-2 rounded-xl font-display font-extrabold text-sm text-white bg-gradient-to-br from-brand-600 to-brand-800">{t('nav.signup')}</Link>
+              <SignupButton className="px-4 py-2 rounded-xl font-display font-extrabold text-sm text-white bg-gradient-to-br from-brand-600 to-brand-800 shadow-btn">{t('nav.signup')}</SignupButton>
             </>
           )}
         </nav>
@@ -237,7 +238,7 @@ export function Navbar() {
               ) : (
                 <div className="flex flex-col gap-2 pt-1">
                   <Link href="/login" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl font-display font-extrabold text-brand-700 bg-brand-100">{t('nav.login')}</Link>
-                  <Link href="/join" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl font-display font-extrabold text-white bg-gradient-to-br from-brand-600 to-brand-800">{t('nav.signup')}</Link>
+                  <SignupButton onNavigate={closeMenu} attract={false} className="w-full text-center px-4 py-3 rounded-xl font-display font-extrabold text-white bg-gradient-to-br from-brand-600 to-brand-800">{t('nav.signup')}</SignupButton>
                 </div>
               )}
             </div>

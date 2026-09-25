@@ -11,6 +11,7 @@ import { OAuthService } from './services/oauth.service';
 import { SmsMfaService } from './services/sms-mfa.service';
 import { PhoneAuthService } from './services/phone-auth.service';
 import { OtpStore } from './services/otp.store';
+import { EmailVerificationService } from './services/email-verification.service';
 import { RegistrationService } from './services/registeration.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
@@ -42,6 +43,7 @@ const oauthStrategies = [
     SmsMfaService,
     PhoneAuthService,
     OtpStore,
+    EmailVerificationService,
     RegistrationService,
     JwtStrategy,
     ...oauthStrategies,

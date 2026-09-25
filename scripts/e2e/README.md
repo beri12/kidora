@@ -16,8 +16,13 @@ Start Postgres and Redis, apply migrations, then start the API:
 ```powershell
 cd kidora-api
 npx prisma migrate deploy
-npm run start:dev
+$env:AUTH_TEST_EXPOSE_OTP="true"; npm run start:dev   # bash: AUTH_TEST_EXPOSE_OTP=true npm run start:dev
 ```
+
+Registration emails a verification code before it issues a session. The suites
+read that code from the API response, which the API only includes with
+`AUTH_TEST_EXPOSE_OTP=true`, outside production, when no mail server is
+reachable (`register.js` does the register-then-verify step for every suite).
 
 In a second terminal, from the repo root, run everything:
 

@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthShell, AuthStep } from '@/components/auth/AuthShell';
 import { RolePicker } from '@/components/auth/RolePicker';
 import { OrgVerifyForm } from '@/components/auth/OrgVerifyForm';
 import { PendingApproval } from '@/components/auth/PendingApproval';
 import { NEXT_KEY } from '@/components/auth/SocialButtons';
 import { Button } from '@/components/ui/button';
 import { ROLE_HOME } from '@/constants';
+import { celebrate } from '@/lib/motion';
 import { useAuthStore } from '@/stores/auth.store';
 import type { Role } from '@/types';
 
@@ -29,6 +30,8 @@ export default function OAuthCallbackPage() {
   const setTokens = useAuthStore((s) => s.setTokens);
 
   const [state, setState] = useState<State>('working');
+  // Why the provider round trip failed, from the API's #error=… fragment.
+  const [failure, setFailure] = useState<{ reason: string; provider: string }>({ reason: 'failed', provider: '' });
   const [verifyRole, setVerifyRole] = useState<'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'>('SCHOOL_LEADER');
   const ran = useRef(false);
 
@@ -41,9 +44,16 @@ export default function OAuthCallbackPage() {
     const accessToken = params.get('accessToken');
     const refreshToken = params.get('refreshToken');
     const needsRole = params.get('needsRole') === '1';
+    const oauthError = params.get('error');
 
     // Don't leave tokens sitting in the address bar or in history.
     window.history.replaceState(null, '', window.location.pathname);
+
+    if (oauthError) {
+      setFailure({ reason: oauthError, provider: params.get('provider') ?? '' });
+      setState('error');
+      return;
+    }
 
     if (!accessToken || !refreshToken) {
       setState('error');
@@ -58,7 +68,7 @@ export default function OAuthCallbackPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function finish(role: Role) {
+  async function finish(role: Role) {
     let next: string | null = null;
     try {
       next = sessionStorage.getItem(NEXT_KEY);
@@ -66,6 +76,7 @@ export default function OAuthCallbackPage() {
     } catch {
       // Storage unavailable — fall back to the role's home.
     }
+    await celebrate(500);
     router.replace(next || ROLE_HOME[role] || '/');
   }
 
@@ -91,10 +102,12 @@ export default function OAuthCallbackPage() {
       )}
 
       {state === 'role' && (
-        <RolePicker
-          onDone={finish}
-          onNeedsVerification={(r) => { setVerifyRole(r); setState('verify'); }}
-        />
+        <AuthStep key="role">
+          <RolePicker
+            onDone={finish}
+            onNeedsVerification={(r) => { setVerifyRole(r); setState('verify'); }}
+          />
+        </AuthStep>
       )}
 
       {state === 'verify' && (
@@ -112,10 +125,14 @@ export default function OAuthCallbackPage() {
 
       {state === 'error' && (
         <div className="py-8 text-center animate-slide-up">
-          <div className="text-5xl">😕</div>
-          <h1 className="mt-4 font-display text-2xl font-extrabold text-brand-900">That sign-in didn&apos;t finish</h1>
+          <div className="text-5xl">{failure.reason === 'cancelled' ? '👋' : '😕'}</div>
+          <h1 className="mt-4 font-display text-2xl font-extrabold text-brand-900">
+            {failure.reason === 'cancelled' ? 'Sign-in cancelled' : 'That sign-in didn\'t finish'}
+          </h1>
           <p className="mt-1 font-body font-bold text-brand-500">
-            The link may have expired. Try again — it usually works the second time.
+            {failure.reason === 'cancelled'
+              ? `No problem — nothing was shared with Kidora. You can try ${providerName(failure.provider) || 'another way'} again, or use your phone or email.`
+              : 'The link may have expired. Try again — it usually works the second time.'}
           </p>
           <Button size="lg" className="mt-6 w-full" onClick={() => router.replace('/join')}>
             Back to sign in
@@ -124,4 +141,8 @@ export default function OAuthCallbackPage() {
       )}
     </AuthShell>
   );
+}
+
+function providerName(id: string) {
+  return ({ google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' } as Record<string, string>)[id] ?? '';
 }

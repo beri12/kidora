@@ -13,6 +13,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CacheService } from '../../infrastructure/cache/cache.service';
 import { SmsService } from '../../infrastructure/sms/sms.service';
 import { TokenService } from './token.service';
+import { exposeOtpForTests, newOtpCode } from './otp-code';
 import { E164, PhoneStartDto, PhoneVerifyDto } from '../dto/phone-auth.dto';
 
 const OTP_TTL = 300; // the code is valid for 5 minutes
@@ -69,44 +70,31 @@ export class PhoneAuthService {
   }
 
   /**
-   * Deliver the code, and decide what a failed delivery means.
+   * Text the code to the number, and nothing else.
    *
-   * Outside production a refused send must not be the end of the road. A
-   * Twilio TRIAL account only texts numbers on its verified list, so every
-   * other number answered 503 and phone sign-up could not be exercised at all
-   * on a developer's machine — even though the code had been generated and
-   * stored. The code is handed back instead, exactly as it is when Twilio is
-   * not configured, and the reason is logged.
+   * The code only ever travels by SMS. It is never returned to the browser,
+   * not even in development: a code shown on screen proves nothing about who
+   * holds the phone, and it trains everyone testing the flow to skip the one
+   * step that matters. Without Twilio credentials in development the SMS body
+   * is written to the server log by SmsService instead.
    *
-   * In production the send failing is the whole operation failing: the caller
-   * is told, and the stored code is dropped so the next attempt starts clean.
+   * A refused send is the whole operation failing, in every environment: the
+   * caller is told why (bad number, unsupported country, …), and the stored
+   * code and cooldown are dropped so the next attempt starts clean.
    */
   private async deliver(phone: string, code: string, keysToClear: string[]) {
-    const isProd = process.env.NODE_ENV === 'production';
     try {
       await this.sms.sendOtp(phone, code);
     } catch (err) {
-      if (isProd) {
-        await Promise.all(keysToClear.map((k) => this.cache.del(k)));
-        throw err instanceof HttpException
-          ? err
-          : new ServiceUnavailableException("We couldn't send the code. Check the number and try again.");
-      }
-      this.logger.error(
-        `SMS to ${PhoneAuthService.mask(phone)} was refused, so the code is being returned in the response instead. ` +
-        `The reason is logged above by [SMS].`,
-      );
-      return { devCode: code, smsFailed: true as const };
+      await Promise.all(keysToClear.map((k) => this.cache.del(k)));
+      this.logger.warn(`OTP to ${PhoneAuthService.mask(phone)} was not delivered.`);
+      throw err instanceof HttpException
+        ? err
+        : new ServiceUnavailableException("We couldn't text your code right now. Please try again in a moment.");
     }
 
-    // Without Twilio credentials the SMS is only logged, so hand the code back
-    // to the caller — that keeps the flow usable in local development. Never
-    // in production, whatever the SMS configuration is.
-    if (!this.sms.enabled && !isProd) {
-      this.logger.warn(`Twilio is not configured — OTP for ${PhoneAuthService.mask(phone)} is ${code}`);
-      return { devCode: code, smsFailed: false as const };
-    }
-    return { devCode: undefined, smsFailed: false as const };
+    // See exposeOtpForTests: the automated e2e suite only, never a browser.
+    return !this.sms.enabled && exposeOtpForTests() ? { devCode: code } : {};
   }
 
   // --- step 1: send the code ---------------------------------------------
@@ -136,23 +124,19 @@ export class PhoneAuthService {
       }
     }
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = newOtpCode();
     const record: OtpRecord = { hash: await bcrypt.hash(code, 10), attempts: 0, issuedAt: Date.now() };
     await this.cache.set(this.otpKey(phone), record, OTP_TTL);
     await this.cache.set(this.cooldownKey(phone), 1, RESEND_COOLDOWN);
 
-    const { devCode, smsFailed } = await this.deliver(phone, code, [
-      this.otpKey(phone),
-      this.cooldownKey(phone),
-    ]);
+    const exposed = await this.deliver(phone, code, [this.otpKey(phone), this.cooldownKey(phone)]);
 
     return {
-      sent: !smsFailed,
+      sent: true as const,
       phone: PhoneAuthService.mask(phone),
       expiresIn: OTP_TTL,
       resendIn: RESEND_COOLDOWN,
-      ...(devCode ? { devCode } : {}),
-      ...(smsFailed ? { smsFailed: true as const } : {}),
+      ...exposed,
     };
   }
 
@@ -255,23 +239,22 @@ export class PhoneAuthService {
       throw tooManyRequests(`Please wait ${cooling}s before requesting another code`);
     }
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = newOtpCode();
     const record: OtpRecord = { hash: await bcrypt.hash(code, 10), attempts: 0, issuedAt: Date.now() };
     await this.cache.set(this.attachKey(userId, phone), record, OTP_TTL);
     await this.cache.set(this.attachCooldownKey(userId), 1, RESEND_COOLDOWN);
 
-    const { devCode, smsFailed } = await this.deliver(phone, code, [
+    const exposed = await this.deliver(phone, code, [
       this.attachKey(userId, phone),
       this.attachCooldownKey(userId),
     ]);
 
     return {
-      sent: !smsFailed,
+      sent: true as const,
       phone: PhoneAuthService.mask(phone),
       expiresIn: OTP_TTL,
       resendIn: RESEND_COOLDOWN,
-      ...(devCode ? { devCode } : {}),
-      ...(smsFailed ? { smsFailed: true as const } : {}),
+      ...exposed,
     };
   }
 

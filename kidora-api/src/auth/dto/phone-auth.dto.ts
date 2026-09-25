@@ -63,6 +63,12 @@ export class SelectRoleDto {
   @MaxLength(120)
   name?: string;
 
+  @ApiPropertyOptional({ example: 'Grade 4', description: 'Student grade, used with a school code' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  gradeLevel?: string;
+
   @ApiPropertyOptional({ example: 'K7M2QP', description: 'School invitation / join code' })
   @IsOptional()
   @IsString()

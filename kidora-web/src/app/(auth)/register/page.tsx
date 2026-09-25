@@ -1,13 +1,19 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { registerSchema } from '@/features/auth/schema'
 import { useAuthStore } from '@/stores/auth.store';
 import { ROLE_HOME } from '@/constants';
 import { SIGNUP_ROLES } from '@/constants/roles';
+import { AuthShell, AuthStep } from '@/components/auth/AuthShell';
+import { CodeStep } from '@/components/auth/CodeStep';
+import { SocialButtons } from '@/components/auth/SocialButtons';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
+import { apiErrorMessage } from '@/lib/api-error';
+import { celebrate, shake } from '@/lib/motion';
+import type { EmailPending, Role } from '@/types';
 
 // SIGNUP_ROLES uses short UI-friendly keys (SCHOOL, DISTRICT) that don't
 // match the Prisma Role enum directly (SCHOOL_ADMIN, DISTRICT_ADMIN), so
@@ -24,7 +30,9 @@ const ROLE_TO_BACKEND: Record<string, string> = {
 function RegisterInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const register = useAuthStore((s) => s.register);
+  const { register, verifyEmail, resendEmail } = useAuthStore();
+  const [pending, setPending] = useState<EmailPending | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const initialRole = (params.get('role') || 'PARENT').toUpperCase();
   const validRole = SIGNUP_ROLES.some((r) => r.key === initialRole) ? initialRole : 'PARENT';
@@ -41,34 +49,57 @@ function RegisterInner() {
     e.preventDefault();
     const parsed = registerSchema.safeParse({ ...form, role: roleKey });
     const extra: Record<string, string> = {};
-    role.fields.forEach((f) => { if (!form[f.key]?.trim()) extra[f.key] = 'Required'; });
+    role.fields.forEach((f) => { if (!f.optional && !form[f.key]?.trim()) extra[f.key] = 'Required'; });
     if (!parsed.success || Object.keys(extra).length) {
       setErrors({ ...(parsed.success ? {} : Object.fromEntries(parsed.error.issues.map((i) => [i.path[0], String(i.message)]))), ...extra });
+      shake(formRef.current);
       return;
     }
     setErrors({}); setBusy(true);
     try {
       const backendRole = ROLE_TO_BACKEND[roleKey] ?? roleKey;
-      const user = await register(form.name, form.email, form.password, backendRole);
-
-      // Interactive roles (CHILD/PARENT/TEACHER) run the onboarding wizard first.
-      // Org roles (SCHOOL_ADMIN/DISTRICT_ADMIN) go straight to their dashboard.
-      // Either way, the destination is driven by user.role — the value the
-      // backend actually saved — not the UI's roleKey, so redirect always
-      // matches the real account, even if a mapping mismatch ever recurs.
-      if (['CHILD', 'PARENT', 'TEACHER'].includes(user.role)) {
-        router.replace(`/onboarding?role=${user.role}`);
-      } else {
-        router.replace(ROLE_HOME[user.role] ?? '/');
-      }
-    } catch {
-      setErrors({ email: 'That email is already registered' });
+      // Only the fields this role's form shows are sent; the store drops blanks.
+      const fields = Object.fromEntries(role.fields.map((f) => [f.key, form[f.key]]));
+      setPending(await register({ name: form.name, email: form.email, password: form.password, role: backendRole, ...fields }));
+    } catch (err) {
+      setErrors({ form: apiErrorMessage(err, "We couldn't create your account. Please try again.") });
+      shake(formRef.current);
     } finally { setBusy(false); }
   }
 
+  /**
+   * Interactive roles (CHILD/PARENT/TEACHER) run the onboarding wizard first.
+   * Org roles go straight to their dashboard. Either way the destination is
+   * driven by the role the backend actually saved, not the UI's roleKey.
+   */
+  async function finish(saved: Role) {
+    await celebrate();
+    if (['CHILD', 'PARENT', 'TEACHER'].includes(saved)) router.replace(`/onboarding?role=${saved}`);
+    else router.replace(ROLE_HOME[saved] ?? '/');
+  }
+
+  if (pending) {
+    return (
+      <AuthShell title="Check your inbox ✉️" subtitle="One code and your account is ready.">
+        <AuthStep key="code">
+          <CodeStep
+            channel="email"
+            destination={pending.maskedEmail}
+            resendIn={pending.resendIn}
+            backLabel="Edit my details"
+            onBack={() => setPending(null)}
+            onVerify={async (code) => { finish((await verifyEmail(pending.email, code)).user.role); }}
+            onResend={async () => (await resendEmail(pending.email)).resendIn}
+          />
+        </AuthStep>
+      </AuthShell>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-8 bg-brand-50">
-      <form onSubmit={submit} className="w-full max-w-md bg-white rounded-3xl border-2 border-brand-100 p-8 shadow-card">
+    <AuthShell title={role.headline} subtitle={role.tagline}>
+      <AuthStep key="form">
+      <form ref={formRef} onSubmit={submit} noValidate>
         <div className="flex items-center gap-3 mb-5">
           <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${role.bg} text-3xl`} style={{ boxShadow: `0 8px 16px -6px ${role.shadow}` }}>{role.emoji}</span>
           <div className="flex-1">
@@ -82,7 +113,7 @@ function RegisterInner() {
             <button type="button" key={r.key} onClick={() => { setRoleKey(r.key); setErrors({}); }} title={r.name}
               className={'flex flex-col items-center gap-1 py-2 rounded-xl text-lg transition ' + (roleKey === r.key ? 'bg-brand-700 text-white' : 'bg-brand-100 hover:bg-brand-200')}>
               <span>{r.emoji}</span>
-              <span className={'text-[10px] font-display font-extrabold ' + (roleKey === r.key ? 'text-white' : 'text-brand-600')}>{r.name}</span>
+              <span className={'text-center text-[10px] leading-tight font-display font-extrabold ' + (roleKey === r.key ? 'text-white' : 'text-brand-600')}>{r.name}</span>
             </button>
           ))}
         </div>
@@ -121,10 +152,14 @@ function RegisterInner() {
         <Input type="password" value={form.confirm} onChange={(e) => set('confirm', e.target.value)} placeholder="Repeat password" />
         <FieldError>{errors.confirm}</FieldError>
 
+        {errors.form && <p role="alert" className="mt-3 animate-slide-down font-body-x text-[13px] text-coral-600">{errors.form}</p>}
         <Button type="submit" variant="grass" size="lg" className="w-full mt-6" disabled={busy}>{busy ? 'Creating…' : role.cta}</Button>
-        <p className="font-body font-bold text-brand-600 text-center mt-4">Already have an account? <Link href="/login" className="text-brand-800 underline">Log in</Link></p>
+        <p className="mt-2 text-center font-body-x text-[12px] text-brand-400">We&apos;ll email you a code to confirm it&apos;s you.</p>
       </form>
-    </div>
+      <SocialButtons disabled={busy} next={null} />
+      <p className="font-body font-bold text-brand-600 text-center mt-5">Already have an account? <Link href="/login" className="text-brand-800 underline">Log in</Link></p>
+      </AuthStep>
+    </AuthShell>
   );
 }
 

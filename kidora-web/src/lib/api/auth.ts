@@ -1,5 +1,5 @@
 import { api as http, API_URL } from "@/lib/axios";
-import type { AuthResponse, User } from "@/types";
+import type { AuthResponse, EmailPending, EmailVerifyResponse, User } from "@/types";
 
 /**
  * Auth endpoints.
@@ -26,11 +26,10 @@ export interface RegisterPayload {
   region?: string;
 }
 
+/** The code itself is only ever delivered by SMS, never in this response. */
 export interface OtpRequestResult {
   sent: boolean;
   expiresIn: number;
-  /** Present only when Twilio is unconfigured outside production. */
-  devCode?: string;
 }
 
 export const authApi = {
@@ -41,14 +40,24 @@ export const authApi = {
   loginWithPhone: async (phone: string, password: string) =>
     (await http.post<AuthResponse>("/auth/login", { phone, password })).data,
 
+  /**
+   * Creates the account and emails a 6-digit code. No session yet — finish
+   * with `verifyEmail`.
+   */
   register: async (payload: RegisterPayload) => {
     // Blank optional fields are dropped rather than sent as "", which the
     // API's string validators would reject.
     const body = Object.fromEntries(
       Object.entries(payload).filter(([, v]) => v !== undefined && String(v).trim() !== ""),
     );
-    return (await http.post<AuthResponse>("/auth/register", body)).data;
+    return (await http.post<EmailPending>("/auth/register", body)).data;
   },
+
+  verifyEmail: async (email: string, code: string) =>
+    (await http.post<EmailVerifyResponse>("/auth/email/verify", { email, code })).data,
+
+  resendEmail: async (email: string) =>
+    (await http.post<EmailPending>("/auth/email/resend", { email })).data,
 
   requestOtp: async (phone: string) =>
     (await http.post<OtpRequestResult>("/auth/otp/request", { phone })).data,

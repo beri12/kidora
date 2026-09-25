@@ -8,7 +8,6 @@ import {
 import * as bcrypt from 'bcrypt';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { EmailService } from '../../infrastructure/email/email.service';
 import { SmsService } from '../../infrastructure/sms/sms.service';
 import { CacheService } from '../../infrastructure/cache/cache.service';
 import { TokenService } from './token.service';
@@ -17,6 +16,7 @@ import { RegisterDto, LoginDto, SELF_SIGNUP_ROLES } from '../dto/auth.dto';
 import { SelectRoleDto } from '../dto/phone-auth.dto';
 import { isVerifiedRole } from '../../org/dto/org-request.dto';
 import { RegistrationService } from './registeration.service';
+import { EmailVerificationService } from './email-verification.service';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -27,10 +27,10 @@ export class AuthService {
     private prisma: PrismaService,
     private tokens: TokenService,
     private mfa: MfaService,
-    private email: EmailService,
     private sms: SmsService,
     private cache: CacheService,
     private registration: RegistrationService,
+    private emailVerification: EmailVerificationService,
   ) {}
 
   private sanitize(u: any) {
@@ -53,10 +53,21 @@ export class AuthService {
       : Role.PARENT;
   }
 
+  /**
+   * Creates the account and emails a 6-digit code to the address. No session
+   * is issued here: POST /auth/email/verify returns the tokens once the code
+   * comes back, so an account can never be used from an address nobody owns.
+   */
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
-    if (await this.prisma.user.findUnique({ where: { email } })) {
-      throw new ConflictException('Email already registered');
+    const taken = await this.prisma.user.findUnique({ where: { email } });
+    if (taken) {
+      // Someone who registered, closed the tab and is trying again with the
+      // same details should simply get a new code, not a dead end.
+      if (!taken.emailVerified && taken.passwordHash && (await bcrypt.compare(dto.password, taken.passwordHash))) {
+        return this.emailVerification.send(email, taken.name, { quiet: true });
+      }
+      throw new ConflictException('An account with this email already exists. Sign in instead.');
     }
 
     // Normalised up front so the uniqueness check and the stored value agree,
@@ -78,28 +89,41 @@ export class AuthService {
     const role = this.resolveRole(dto.role);
 
     const user = await this.prisma.user.create({
-      data: { name: dto.name.trim(), email, phone, passwordHash, role },
+      data: {
+        name: dto.name.trim(),
+        email,
+        phone,
+        passwordHash,
+        role,
+        emailVerified: false,
+        // A role picked on the sign-up form is an answer to "How will you use
+        // Kidora?"; without one the question is asked after verification.
+        roleConfirmed: Boolean(dto.role),
+      },
     });
 
     // Role-specific setup: creates the school (with grades and a join code) or
     // district, resolves a school join code, opens a reward wallet for a child.
     // If it fails the half-made account would strand the email address, so it
     // is rolled back and the caller can simply try again.
-    // No initialiser: the try assigns it and the catch always rethrows, so a
-    // default could only ever mask a missing assignment.
-    let profiled: typeof user;
     try {
-      profiled = await this.registration.applyProfile(user, dto);
+      await this.registration.applyProfile(user, dto);
     } catch (err) {
       await this.prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
       throw err;
     }
 
     await this.prisma.subscription.create({ data: { userId: user.id, plan: 'free' } });
-    if (profiled.email) this.email.sendWelcome(profiled.email, profiled.name);
 
-    const t = await this.tokens.issue(profiled);
-    return { user: this.sanitize({ ...profiled, subscriptionPlan: 'free' }), ...t };
+    try {
+      return await this.emailVerification.send(email, user.name);
+    } catch (err) {
+      // The address could not be reached at all, so the account is removed
+      // rather than left holding an email nobody can verify.
+      await this.prisma.subscription.deleteMany({ where: { userId: user.id } }).catch(() => undefined);
+      await this.prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
+      throw err;
+    }
   }
 
   /**
@@ -132,6 +156,18 @@ export class AuthService {
         requestedRole: dto.role,
         user: this.sanitize(named),
       };
+    }
+
+    // A student or teacher can bring a school join code (and a student a
+    // grade). This is the same setup email registration runs — reward wallet,
+    // school membership, class grade — so a student who signed up with a
+    // phone number or Google lands in exactly the same place. It runs first:
+    // a bad school code must leave the account unanswered, not half-made.
+    if (dto.role === Role.CHILD || dto.role === Role.TEACHER) {
+      await this.registration.applyProfile(
+        { id: userId, name: dto.name?.trim() || existing.name, role: dto.role, schoolId: existing.schoolId },
+        dto,
+      );
     }
 
     const user = await this.prisma.user.update({
@@ -186,6 +222,19 @@ export class AuthService {
       });
       await this.prisma.loginHistory.create({ data: { userId: user.id, success: false, ip, userAgent: ua } });
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // The password is right but the address was never confirmed: send a fresh
+    // code and tell the client to show the code step. Checked after the
+    // password so it reveals nothing to someone who doesn't know it.
+    if (user.email && !user.emailVerified) {
+      const pending = await this.emailVerification.send(user.email, user.name, { quiet: true });
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Please verify your email. We sent a new code to your inbox.',
+        ...pending,
+      });
     }
 
     // MFA challenge

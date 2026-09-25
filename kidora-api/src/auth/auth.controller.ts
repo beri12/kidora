@@ -9,14 +9,17 @@ import {
 
 import {
   ApiBearerAuth,
+  ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 
 import { AuthService } from './services/auth.service';
 import { MfaService } from './services/mfa.service';
 import { SmsMfaService } from './services/sms-mfa.service';
 import { PhoneAuthService } from './services/phone-auth.service';
+import { EmailVerificationService } from './services/email-verification.service';
 
 
 import {
@@ -27,6 +30,8 @@ import {
   RequestOtpDto,
   VerifyOtpDto,
   SetPhoneDto,
+  EmailVerifyDto,
+  EmailResendDto,
 } from './dto/auth.dto';
 
 
@@ -55,7 +60,9 @@ constructor(
 
  private smsMfa:SmsMfaService,
 
- private phoneAuth:PhoneAuthService
+ private phoneAuth:PhoneAuthService,
+
+ private emailVerification:EmailVerificationService
 
 ){}
 
@@ -64,9 +71,20 @@ constructor(
 
 
 
+/**
+ * Creates the account and emails a 6-digit code. Returns
+ * `{ needsEmailVerification: true, … }` — no tokens until the code is back.
+ */
+
+// No tighter per-IP limit than the app-wide one: a whole class signing up
+// from one school network shares an address. Each email address is capped at
+// 5 codes an hour by EmailVerificationService instead.
+
 @Public()
 
 @Post('register')
+
+@ApiOperation({ summary: 'Create an email + password account and email a verification code' })
 
 register(
  @Body() dto:RegisterDto
@@ -138,14 +156,18 @@ refresh(
 
 @Public()
 
+@Throttle({ default: { limit: 6, ttl: 60_000 } })
+
 @Post('otp/request')
 
 requestOtp(
- @Body() dto:RequestOtpDto
+ @Body() dto:RequestOtpDto,
+ @Req() req:any
 ){
 
  return this.phoneAuth.requestLoginCode(
-  dto.phone
+  dto.phone,
+  req.ip
  );
 
 }
@@ -158,6 +180,8 @@ requestOtp(
  */
 
 @Public()
+
+@Throttle({ default: { limit: 12, ttl: 60_000 } })
 
 @Post('otp/verify')
 
@@ -177,6 +201,63 @@ verifyOtp(
   req.headers['user-agent'] ?? ''
 
  );
+
+}
+
+
+
+
+/** Confirms the email address with the code it was sent, and signs in. */
+
+@Public()
+
+// Guessing is stopped per code (five wrong tries and it is gone), so this
+// keeps the app-wide per-IP limit rather than blocking a classroom on one network.
+
+@Post('email/verify')
+
+@ApiOperation({ summary: 'Verify the emailed code and sign in' })
+
+verifyEmail(
+ @Body() dto:EmailVerifyDto,
+ @Req() req:any
+){
+
+ return this.emailVerification.verify(
+
+  dto.email,
+
+  dto.code,
+
+  req.ip,
+
+  req.headers['user-agent'] ?? ''
+
+ );
+
+}
+
+
+
+
+/**
+ * Emails a new code. Answers the same way for any address, so it cannot be
+ * used to find out who has an account.
+ */
+
+@Public()
+
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
+
+@Post('email/resend')
+
+@ApiOperation({ summary: 'Email a new verification code' })
+
+resendEmail(
+ @Body() dto:EmailResendDto
+){
+
+ return this.emailVerification.resend(dto.email);
 
 }
 

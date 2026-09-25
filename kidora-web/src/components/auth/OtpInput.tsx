@@ -11,6 +11,12 @@ interface Props {
   disabled?: boolean;
   invalid?: boolean;
   autoFocus?: boolean;
+  /**
+   * Listen for the code arriving by SMS (WebOTP). Supported browsers — Chrome
+   * on Android — offer to fill it in with one tap. Needs the SMS to end with
+   * "@<this site's domain> #<code>", which the API adds on an https deploy.
+   */
+  webOtp?: boolean;
 }
 
 /**
@@ -29,6 +35,7 @@ export function OtpInput({
   disabled,
   invalid,
   autoFocus,
+  webOtp,
 }: Props) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = value.split('');
@@ -36,6 +43,25 @@ export function OtpInput({
   useEffect(() => {
     if (autoFocus) refs.current[0]?.focus();
   }, [autoFocus]);
+
+  // Latest callbacks, so the WebOTP listener below is set up once per mount.
+  const latest = useRef({ onChange, onComplete });
+  latest.current = { onChange, onComplete };
+
+  useEffect(() => {
+    if (!webOtp || typeof window === 'undefined' || !('OTPCredential' in window)) return;
+    const abort = new AbortController();
+    navigator.credentials
+      .get({ otp: { transport: ['sms'] }, signal: abort.signal } as CredentialRequestOptions)
+      .then((cred) => {
+        const code = (cred as unknown as { code?: string } | null)?.code?.replace(/\D/g, '').slice(0, length);
+        if (!code) return;
+        latest.current.onChange(code);
+        if (code.length === length) latest.current.onComplete?.(code);
+      })
+      .catch(() => { /* dismissed, aborted or unsupported — typing still works */ });
+    return () => abort.abort();
+  }, [webOtp, length]);
 
   // Focus the first empty box whenever the code is cleared (wrong code, resend).
   useEffect(() => {

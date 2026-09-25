@@ -11,8 +11,8 @@ const j = async (path, opts = {}) => {
 
 (async () => {
   const s = Date.now();
-  const me = (await j('/auth/register', { method: 'POST', body: JSON.stringify({
-    name: 'Settings User', email: `set.${s}@k.test`, password: 'Password123', role: 'CHILD', gradeLevel: 'Grade 4' }) })).body;
+  const me = await require('./register').register({
+    name: 'Settings User', email: `set.${s}@k.test`, password: 'Password123', role: 'CHILD', gradeLevel: 'Grade 4' });
   const T = me.accessToken;
 
   console.log('\n=== GET /users/me ===');

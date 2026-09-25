@@ -140,67 +140,71 @@ describe('PhoneAuthService.start', () => {
     });
   });
 
-  it('drops the pending code when the SMS cannot be sent, in production', async () => {
-    // Development now keeps the code and returns it instead — see the
-    // "when Twilio refuses the send" block below. Clearing and failing is
-    // production behaviour, so this test has to say which one it is testing.
-    const env = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-      const cache = fakeCache();
-      const sms = { enabled: true, sendOtp: jest.fn(async () => { throw new Error('twilio down'); }) };
-      const svc = new PhoneAuthService(fakePrisma() as any, cache as any, sms as any, fakeTokens() as any);
+  it('drops the pending code when the SMS cannot be sent', async () => {
+    const cache = fakeCache();
+    const sms = { enabled: true, sendOtp: jest.fn(async () => { throw new Error('twilio down'); }) };
+    const svc = new PhoneAuthService(fakePrisma() as any, cache as any, sms as any, fakeTokens() as any);
 
-      await expect(svc.start({ phone: '+251911223344' })).rejects.toThrow();
-      expect(cache.store.has('otp:phone:+251911223344')).toBe(false);
-      // The cooldown is lifted too, so the visitor can retry straight away.
-      expect(cache.store.has('otp:cooldown:+251911223344')).toBe(false);
-    } finally {
-      process.env.NODE_ENV = env;
-    }
+    await expect(svc.start({ phone: '+251911223344' })).rejects.toThrow();
+    expect(cache.store.has('otp:phone:+251911223344')).toBe(false);
+    // The cooldown is lifted too, so the visitor can retry straight away.
+    expect(cache.store.has('otp:cooldown:+251911223344')).toBe(false);
   });
 });
 
-describe('PhoneAuthService.start when Twilio refuses the send', () => {
-  const env = process.env.NODE_ENV;
-  afterEach(() => { process.env.NODE_ENV = env; });
+describe('PhoneAuthService.start never puts the code in the response', () => {
+  const env = { ...process.env };
+  afterEach(() => { process.env = { ...env }; });
 
-  // A Twilio TRIAL account only texts numbers on its verified list. Failing
-  // hard on that made phone sign-up impossible to exercise on a developer's
-  // machine, even though the code had already been generated and stored.
-  it('hands the code back instead of failing, outside production', async () => {
+  // The code proves the person holds the phone. Handing it to the browser —
+  // as the old development fallback did — proves nothing.
+  it('fails with a readable reason when Twilio refuses the send, in development too', async () => {
     process.env.NODE_ENV = 'development';
     const cache = fakeCache();
-    const svc = new PhoneAuthService(fakePrisma() as any, cache as any, refusingSms() as any, fakeTokens() as any);
+    const { SmsDeliveryError } = await import('../../infrastructure/sms/sms.service');
+    const sms = {
+      enabled: true,
+      sendOtp: jest.fn(async () => { throw new SmsDeliveryError("That number can't receive text messages.", 21614); }),
+    };
+    const svc = new PhoneAuthService(fakePrisma() as any, cache as any, sms as any, fakeTokens() as any);
 
-    const res = await svc.start({ phone: '+251911223344' }, '1.2.3.4');
-
-    expect(res.devCode).toMatch(/^\d{6}$/);
-    expect(res.sent).toBe(false);
-    expect(res).toHaveProperty('smsFailed', true);
+    await expect(svc.start({ phone: '+251911223344' }, '1.2.3.4')).rejects.toThrow("can't receive text messages");
+    expect([...cache.store.keys()].filter((k) => k.startsWith('otp:phone:'))).toHaveLength(0);
+    expect([...cache.store.keys()].filter((k) => k.startsWith('otp:cooldown:'))).toHaveLength(0);
   });
 
-  it('keeps the stored code, so the one it returned actually verifies', async () => {
-    process.env.NODE_ENV = 'development';
-    const cache = fakeCache();
-    const svc = new PhoneAuthService(fakePrisma() as any, cache as any, refusingSms() as any, fakeTokens() as any);
-
-    const res = await svc.start({ phone: '+251911223344' }, '1.2.3.4');
-    const out = await svc.verify({ phone: '+251911223344', code: res.devCode! }, '1.2.3.4', 'ua');
-
-    expect(out.isNewUser).toBe(true);
-    expect(out.accessToken).toBeDefined();
-  });
-
-  it('still fails, and never leaks the code, in production', async () => {
+  it('fails in production too, and never leaks the code', async () => {
     process.env.NODE_ENV = 'production';
     const cache = fakeCache();
     const svc = new PhoneAuthService(fakePrisma() as any, cache as any, refusingSms() as any, fakeTokens() as any);
 
     await expect(svc.start({ phone: '+251911223344' }, '1.2.3.4')).rejects.toThrow();
-    // The refused attempt must not leave a code behind or hold the cooldown.
-    expect([...cache.store.keys()].filter((k) => k.startsWith('otp:phone:'))).toHaveLength(0);
-    expect([...cache.store.keys()].filter((k) => k.startsWith('otp:cooldown:'))).toHaveLength(0);
+  });
+
+  it('omits the code when Twilio is not configured in development (it is only logged)', async () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.AUTH_TEST_EXPOSE_OTP;
+    const sms = { enabled: false, sendOtp: jest.fn(async () => ({ sid: 'dev', dev: true })) };
+    const svc = new PhoneAuthService(fakePrisma() as any, fakeCache() as any, sms as any, fakeTokens() as any);
+
+    const res = await svc.start({ phone: '+251911223344' });
+
+    expect(res.sent).toBe(true);
+    expect(res).not.toHaveProperty('devCode');
+    expect(sms.sendOtp).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes it only to the e2e suite, only when opted in, and never in production', async () => {
+    const sms = { enabled: false, sendOtp: jest.fn(async () => ({ sid: 'dev', dev: true })) };
+
+    process.env.NODE_ENV = 'development';
+    process.env.AUTH_TEST_EXPOSE_OTP = 'true';
+    const dev = new PhoneAuthService(fakePrisma() as any, fakeCache() as any, sms as any, fakeTokens() as any);
+    expect((await dev.start({ phone: '+251911223344' })).devCode).toMatch(/^\d{6}$/);
+
+    process.env.NODE_ENV = 'production';
+    const prod = new PhoneAuthService(fakePrisma() as any, fakeCache() as any, sms as any, fakeTokens() as any);
+    expect(await prod.start({ phone: '+251911223355' })).not.toHaveProperty('devCode');
   });
 });
 

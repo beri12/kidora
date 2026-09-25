@@ -30,7 +30,7 @@ const j = async (path, opts = {}) => {
 const post = (p, t, d) => j(p, { method: 'POST', token: t, body: d === undefined ? undefined : JSON.stringify(d) });
 const patch = (p, t, d) => j(p, { method: 'PATCH', token: t, body: JSON.stringify(d) });
 const put = (p, t, d) => j(p, { method: 'PUT', token: t, body: JSON.stringify(d) });
-const reg = async (p) => (await post('/auth/register', null, p)).body;
+const { register: reg } = require('./register');
 
 /** Multipart upload, the way the browser does it. */
 async function upload(token, name, type, bytes) {

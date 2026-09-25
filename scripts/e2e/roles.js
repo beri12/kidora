@@ -17,7 +17,7 @@ const j = async (path, opts = {}) => {
   try { body = await res.json(); } catch {}
   return { status: res.status, body };
 };
-const reg = async (payload) => (await j('/auth/register', { method: 'POST', body: JSON.stringify(payload) })).body;
+const { register: reg } = require('./register');
 const stamp = Date.now();
 
 (async () => {

@@ -155,14 +155,15 @@ ONBOARDING.SCHOOL_LEADER = ONBOARDING.SCHOOL_ADMIN;
 
 // ---- "How will you use Kidora?" ----
 //
-// Shown once, right after a phone or social sign-in, for accounts the API
-// flags with `needsRole`. Keys are the backend Role enum values that
-// self-signup accepts — CHILD and ADMIN are deliberately absent: children
-// join through a parent or a school, admins are created by an admin.
+// Shown once, right after a phone, email or social sign-up, for accounts the
+// API flags with `needsRole`. `role` is the backend Role enum value sent to
+// POST /auth/role. ADMIN is deliberately absent: admins are created by an
+// admin. Students (CHILD) sign up here too, optionally with the school code
+// their teacher gave them.
 export interface UseCase {
   key: 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_LEADER' | 'STUDENT';
-  /** The Role value sent to POST /auth/role, or null when it is not self-serve. */
-  role: 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN' | null;
+  /** The Role value sent to POST /auth/role. */
+  role: 'CHILD' | 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN';
   label: string;
   emoji: string;
   blurb: string;
@@ -198,10 +199,8 @@ export const USE_CASES: UseCase[] = [
     bg: 'from-coral-400 to-coral-600', shadow: 'rgba(225,29,72,.45)', needsVerification: true,
   },
   {
-    // Students never create their own account: a parent adds a child, or a
-    // school imports its roster and hands out a student code.
-    key: 'STUDENT', role: null, label: "I'm a Student", emoji: '🧒',
-    blurb: 'Ask a parent or your school for your Kidora code.',
-    bg: 'from-brand-300 to-brand-500', shadow: 'rgba(139,92,246,.4)',
+    key: 'STUDENT', role: 'CHILD', label: "I'm a Student", emoji: '🎒',
+    blurb: 'Learn, play and earn badges. Got a school code? Add it next.',
+    bg: 'from-sky-400 to-sky-600', shadow: 'rgba(2,132,199,.45)',
   },
 ];

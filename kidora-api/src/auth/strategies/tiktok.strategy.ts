@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
 import { oauthCallbackUrl } from '../../config/oauth-callback';
+import { oauthStateStore } from './oauth-state.store';
 
 // TikTok Login Kit (v2). Set TIKTOK_CLIENT_ID (TikTok calls it the client key)
 // and TIKTOK_CLIENT_SECRET to enable.
@@ -21,6 +22,8 @@ export class TiktokStrategy extends PassportStrategy(Strategy, 'tiktok') {
       callbackURL: oauthCallbackUrl('tiktok'),
       scope: ['user.info.basic'],
       scopeSeparator: ',',
+      // CSRF protection for the round trip; see SignedCookieStateStore.
+      store: oauthStateStore,
     });
   }
 
