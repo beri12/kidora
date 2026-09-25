@@ -4,7 +4,9 @@ import { useEffect, useLayoutEffect, type DependencyList, type RefObject } from 
 import { gsap } from 'gsap';
 
 /**
- * Small GSAP toolkit for the sign-up and sign-in screens.
+ * Small GSAP toolkit for the landing page's Sign up button, plus the
+ * confetti used after sign-in. The auth screens themselves animate with
+ * Framer Motion (components/auth/scene).
  *
  * Every animation goes through `useGsap`, which scopes selectors to one
  * element, reverts everything on unmount (no tweens left running against
@@ -34,12 +36,6 @@ export function useGsap(
     const ctx = gsap.context((self) => setup(self), scope);
     return () => ctx.revert();
   }, deps);
-}
-
-/** Shakes an element, for a wrong code or a rejected form. */
-export function shake(el: Element | null) {
-  if (!el || prefersReducedMotion()) return;
-  gsap.fromTo(el, { x: 0 }, { x: 0, duration: 0.5, ease: 'none', keyframes: { x: [0, -10, 10, -6, 6, -2, 0] } });
 }
 
 const BURST = ['⭐', '✨', '🎈', '📚', '🎨', '🚀', '💜', '🎉'];

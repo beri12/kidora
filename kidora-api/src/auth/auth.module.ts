@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
-import { PhoneAuthController } from './phone-auth.controller';
+import { PhoneAuthController, UsersRoleController } from './phone-auth.controller';
 import { OAuthController } from './oauth.controller';
 import { AuthService } from './services/auth.service';
 import { TokenService } from './services/token.service';
@@ -34,7 +34,7 @@ const oauthStrategies = [
 
 @Module({
   imports: [PassportModule, JwtModule.register({})],
-  controllers: [AuthController, PhoneAuthController, OAuthController],
+  controllers: [AuthController, PhoneAuthController, OAuthController, UsersRoleController],
   providers: [
     AuthService,
     TokenService,

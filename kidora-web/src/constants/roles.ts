@@ -179,28 +179,28 @@ export interface UseCase {
 
 export const USE_CASES: UseCase[] = [
   {
-    key: 'PARENT', role: 'PARENT', label: "I'm a Parent", emoji: '👨‍👩‍👧',
-    blurb: "Follow your child's progress and manage the family plan.",
-    bg: 'from-grass-400 to-grass-700', shadow: 'rgba(21,128,61,.45)',
+    key: 'STUDENT', role: 'CHILD', label: 'Student', emoji: '🧒',
+    blurb: 'Learn through games, courses and activities.',
+    bg: 'from-sky-300 to-sky-500', shadow: 'rgba(2,132,199,.45)',
   },
   {
-    key: 'TEACHER', role: 'TEACHER', label: "I'm a Teacher", emoji: '👩‍🏫',
-    blurb: 'Run your classes, assignments and grades.',
-    bg: 'from-brand-400 to-brand-700', shadow: 'rgba(109,40,217,.45)',
+    key: 'PARENT', role: 'PARENT', label: 'Parent', emoji: '👩',
+    blurb: "Support your child's learning journey.",
+    bg: 'from-emerald-300 to-emerald-500', shadow: 'rgba(21,128,61,.45)',
   },
   {
-    key: 'SCHOOL_LEADER', role: 'SCHOOL_LEADER', label: "I'm a School Leader", emoji: '🏫',
-    blurb: 'Oversee teachers, classes and school-wide results.',
-    bg: 'from-sun-400 to-sun-700', shadow: 'rgba(180,83,9,.45)', needsVerification: true,
+    key: 'TEACHER', role: 'TEACHER', label: 'Teacher', emoji: '👩‍🏫',
+    blurb: 'Create and sell courses.',
+    bg: 'from-violet-300 to-violet-600', shadow: 'rgba(109,40,217,.45)',
   },
   {
-    key: 'DISTRICT_LEADER', role: 'DISTRICT_ADMIN', label: "I'm a District Leader", emoji: '🏢',
-    blurb: 'Bring Kidora to every school in your district.',
-    bg: 'from-coral-400 to-coral-600', shadow: 'rgba(225,29,72,.45)', needsVerification: true,
+    key: 'SCHOOL_LEADER', role: 'SCHOOL_LEADER', label: 'School Leader', emoji: '🏫',
+    blurb: 'Manage your school and students.',
+    bg: 'from-orange-300 to-orange-500', shadow: 'rgba(180,83,9,.45)', needsVerification: true,
   },
   {
-    key: 'STUDENT', role: 'CHILD', label: "I'm a Student", emoji: '🎒',
-    blurb: 'Learn, play and earn badges. Got a school code? Add it next.',
-    bg: 'from-sky-400 to-sky-600', shadow: 'rgba(2,132,199,.45)',
+    key: 'DISTRICT_LEADER', role: 'DISTRICT_ADMIN', label: 'District Leader', emoji: '🏢',
+    blurb: 'Manage schools across your district.',
+    bg: 'from-teal-300 to-teal-600', shadow: 'rgba(13,148,136,.45)', needsVerification: true,
   },
 ];

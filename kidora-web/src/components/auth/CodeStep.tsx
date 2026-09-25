@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { gsap } from 'gsap';
+import { motion } from 'framer-motion';
 import { OtpInput } from './OtpInput';
 import { Button } from '@/components/ui/button';
 import { apiErrorMessage } from '@/lib/api-error';
-import { prefersReducedMotion, useGsap } from '@/lib/motion';
 
 interface Props {
   /** How the code travelled — changes the copy and turns on SMS autofill. */
@@ -36,15 +35,8 @@ export function CodeStep({ channel, destination, resendIn: initialResend, onVeri
   const [resendIn, setResendIn] = useState(initialResend);
   const [notice, setNotice] = useState('');
 
-  const root = useRef<HTMLDivElement>(null);
-  const icon = useRef<HTMLDivElement>(null);
+  const [verified, setVerified] = useState(false);
   const verifying = useRef(false);
-
-  // The envelope / phone icon flies in and then keeps a small wiggle.
-  useGsap(() => {
-    gsap.from(icon.current, { y: -30, scale: 0.4, rotation: -20, autoAlpha: 0, duration: 0.7, ease: 'back.out(2.2)' });
-    gsap.to(icon.current, { rotation: 8, duration: 0.18, repeat: 5, yoyo: true, ease: 'sine.inOut', delay: 0.8, repeatDelay: 0 });
-  }, root);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -59,9 +51,7 @@ export function CodeStep({ channel, destination, resendIn: initialResend, onVeri
     setError('');
     try {
       await onVerify(value);
-      if (!prefersReducedMotion() && icon.current) {
-        gsap.to(icon.current, { scale: 1.3, rotation: 360, duration: 0.6, ease: 'back.out(2)' });
-      }
+      setVerified(true);
     } catch (e) {
       setError(apiErrorMessage(e, 'That code is not right.'));
       setCode('');
@@ -91,7 +81,7 @@ export function CodeStep({ channel, destination, resendIn: initialResend, onVeri
   }
 
   return (
-    <div ref={root}>
+    <div>
       <button
         type="button"
         onClick={onBack}
@@ -100,9 +90,16 @@ export function CodeStep({ channel, destination, resendIn: initialResend, onVeri
         ← {backLabel}
       </button>
 
-      <div ref={icon} className="mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-700 text-3xl shadow-btn">
-        {channel === 'sms' ? '📱' : '✉️'}
-      </div>
+      {/* Flies in, and spins once when the code is accepted. */}
+      <motion.div
+        aria-hidden
+        initial={{ y: -20, scale: 0.5, rotate: -20, opacity: 0 }}
+        animate={verified ? { scale: 1.15, rotate: 360, opacity: 1, y: 0 } : { y: 0, scale: 1, rotate: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 15, duration: 0.45 }}
+        className="mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-700 text-3xl shadow-btn"
+      >
+        {verified ? '✅' : channel === 'sms' ? '📱' : '✉️'}
+      </motion.div>
 
       <h1 data-stagger className="font-display text-3xl font-extrabold text-brand-900">
         {channel === 'sms' ? 'Enter your code' : 'Check your inbox'}

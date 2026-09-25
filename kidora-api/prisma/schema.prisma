@@ -60,9 +60,14 @@ model User {
   points Int @default(0)
   streak Int @default(0)
 
+  // Deprecated: provider identities live in SocialAccount now (one user,
+  // many providers). Kept, and backfilled from, so no data is dropped; nothing
+  // writes to these any more.
   googleId   String? @unique
   facebookId String? @unique
   tiktokId   String? @unique
+
+  socialAccounts SocialAccount[]
 
   mfaEnabled  Boolean  @default(false)
   mfaSecret   String?
@@ -1066,6 +1071,50 @@ model Subscription {
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+/// A price on the public pricing page, editable without a deploy.
+///
+/// ROLE_PLAN rows are the big cards (Student, Parent, Teacher, School Leader,
+/// District Leader); SCHOOL_TIER rows are the school categories under them.
+/// Money is in the currency's minor units (cents, santim) — never a float.
+/// A null price means "custom pricing / contact sales".
+model SubscriptionPlan {
+  id                String       @id @default(cuid())
+  slug              String       @unique
+  kind              PlanKind     @default(ROLE_PLAN)
+  audience          PlanAudience
+  name              String
+  tagline           String       @default("")
+  /// "Per student", "Per school" …
+  unitLabel         String       @default("")
+  currency          String       @default("ETB")
+  monthlyPriceMinor Int?
+  yearlyPriceMinor  Int?
+  features          String[]     @default([])
+  /// The entitlement a completed checkout grants, when this plan is sold
+  /// through checkout. Checkout charges this row's price, not a constant.
+  grantsPlan        PlanKey?
+  maxStudents       Int?
+  sortOrder         Int          @default(0)
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([kind, active, sortOrder])
+}
+
+enum PlanKind {
+  ROLE_PLAN
+  SCHOOL_TIER
+}
+
+enum PlanAudience {
+  STUDENT
+  PARENT
+  TEACHER
+  SCHOOL
+  DISTRICT
+}
+
 model Payment {
   id          String          @id @default(cuid())
   provider    PaymentProvider
@@ -1077,6 +1126,35 @@ model Payment {
   userId      String
   createdAt   DateTime        @default(now())
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// One external identity (a Google, TikTok, Facebook … account) attached to a
+/// Kidora user. A user can hold several; a provider identity belongs to at
+/// most one user. Provider tokens are not stored: Kidora only needs the
+/// identity at sign-in, and an unstored token cannot leak.
+model SocialAccount {
+  id         String       @id @default(cuid())
+  userId     String
+  provider   AuthProvider
+  providerId String
+  /// The address the provider reported, if any, as it was at link time.
+  email      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+enum AuthProvider {
+  GOOGLE
+  TIKTOK
+  FACEBOOK
+  APPLE
+  MICROSOFT
+  GITHUB
 }
 
 model RefreshToken {

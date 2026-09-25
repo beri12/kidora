@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
-import { oauthCallbackUrl } from '../../config/oauth-callback';
+import { oauthCallbackUrl, oauthCredentials } from '../../config/oauth-callback';
 import { oauthStateStore } from './oauth-state.store';
 
 const GRAPH = process.env.FACEBOOK_API_VERSION || 'v19.0';
@@ -15,8 +15,8 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
     super({
       authorizationURL: `https://www.facebook.com/${GRAPH}/dialog/oauth`,
       tokenURL: `https://graph.facebook.com/${GRAPH}/oauth/access_token`,
-      clientID: process.env.FACEBOOK_CLIENT_ID || 'missing',
-      clientSecret: process.env.FACEBOOK_CLIENT_SECRET || 'missing',
+      clientID: oauthCredentials('facebook').id || 'missing',
+      clientSecret: oauthCredentials('facebook').secret || 'missing',
       callbackURL: oauthCallbackUrl('facebook'),
       scope: ['email', 'public_profile'],
       // CSRF protection for the round trip; see SignedCookieStateStore.

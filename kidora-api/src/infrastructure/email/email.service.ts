@@ -38,10 +38,11 @@ export class EmailService {
    * server log instead, so sign-up can be tried offline — it is never sent
    * back to the browser.
    */
-  async sendVerificationCode(to: string, name: string, code: string, minutes: number) {
-    const subject = `${code} is your Kidora verification code`;
+  async sendVerificationCode(to: string, name: string, code: string, minutes: number, purpose: 'verify' | 'reset' = 'verify') {
+    const reset = purpose === 'reset';
+    const subject = reset ? `${code} is your Kidora password reset code` : `${code} is your Kidora verification code`;
     const text =
-      `Hi ${name},\n\nYour Kidora verification code is ${code}. It expires in ${minutes} minutes.\n\n` +
+      `Hi ${name},\n\nYour Kidora ${reset ? 'password reset' : 'verification'} code is ${code}. It expires in ${minutes} minutes.\n\n` +
       "If you didn't ask for it, you can ignore this email. Kidora will never ask you for this code.";
     try {
       await this.transporter.sendMail({
@@ -49,7 +50,7 @@ export class EmailService {
         to,
         subject,
         text,
-        html: verificationCodeTemplate(name, code, minutes),
+        html: verificationCodeTemplate(name, code, minutes, purpose),
       });
       return { dev: false };
     } catch (e) {

@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FieldError, Input, Label } from '@/components/ui/input';
 import { emailSchema, passwordSchema } from '@/features/auth/schema';
 import { apiErrorMessage } from '@/lib/api-error';
-import { shake } from '@/lib/motion';
+import { useShake } from './scene/KidoraAuthScene';
 import { useAuthStore } from '@/stores/auth.store';
 import type { EmailPending } from '@/types';
 
@@ -43,7 +43,7 @@ export function EmailSignupForm({ onPending, disabled }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
-  const ref = useRef<HTMLFormElement>(null);
+  const [ref, shake] = useShake<HTMLFormElement>();
 
   const set = (k: keyof typeof form, v: string) => {
     setForm((f) => ({ ...f, [k]: v }));
@@ -60,7 +60,7 @@ export function EmailSignupForm({ onPending, disabled }: Props) {
     if (!pw.success) next.password = pw.error.issues[0].message;
     if (Object.keys(next).length) {
       setErrors(next);
-      shake(ref.current);
+      shake();
       return;
     }
 
@@ -69,7 +69,7 @@ export function EmailSignupForm({ onPending, disabled }: Props) {
       onPending(await register({ name: form.name.trim(), email: form.email.trim(), password: form.password }));
     } catch (err) {
       setErrors({ form: apiErrorMessage(err, "We couldn't create your account. Please try again.") });
-      shake(ref.current);
+      shake();
     } finally {
       setBusy(false);
     }

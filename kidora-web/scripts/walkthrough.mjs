@@ -53,9 +53,10 @@ const SCHOOL = `Walkthrough School ${Date.now().toString(36)}`;
 
 async function signUp() {
   await page.goto(`${WEB}/join`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: /Continue with Phone/ }).click();
   await page.getByLabel('Phone number').fill(phone());
   const started = page.waitForResponse((r) => r.url().endsWith('/auth/phone/start'));
-  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByRole('button', { name: /Text me a code/ }).click();
   const { devCode: code } = await (await started).json();
   await page.getByLabel('Digit 1').waitFor({ timeout: 20000 });
   is('the code is not shown on screen', await page.getByText(code).count(), 0);
@@ -65,7 +66,7 @@ async function signUp() {
 
 console.log('\n1 · A parent goes straight in');
 await signUp();
-await page.getByRole('button', { name: /I'm a Parent/ }).click();
+await page.getByRole('radio', { name: /Parent/ }).click();
 await page.getByPlaceholder('Your name').fill('Test Parent');
 await page.getByRole('button', { name: /Enter Kidora/ }).click();
 // ROLE_HOME points at the LMS tree, so a parent lands on /parent/dashboard.
@@ -77,18 +78,18 @@ is('lands on the parent dashboard', new URL(page.url()).pathname, '/parent/dashb
 
 console.log('\n2 · A student signs up and lands on the student dashboard');
 await signUp();
-await page.getByRole('button', { name: /I'm a Student/ }).click();
+await page.getByRole('radio', { name: /Student/ }).click();
 await page.waitForTimeout(400);
 is('offers an optional school code', await page.getByPlaceholder('K7M2QP').isVisible(), 'true');
 await page.getByPlaceholder('e.g. Leo').fill('Test Student');
 await page.getByLabel(/Your grade/).selectOption('Grade 3');
-await page.getByRole('button', { name: /start learning/ }).click();
+await page.getByRole('button', { name: /Let's learn/ }).click();
 await page.waitForURL(/\/student\/dashboard/, { timeout: 20000 });
 is('lands on the student dashboard', new URL(page.url()).pathname, '/student/dashboard');
 
 console.log('\n3 · A school leader is verified first');
 await signUp();
-await page.getByRole('button', { name: /I'm a School Leader/ }).click();
+await page.getByRole('radio', { name: /School Leader/ }).click();
 await page.waitForTimeout(300);
 is('warns that this one is checked', await page.getByText(/We verify this one/).isVisible(), 'true');
 await page.getByPlaceholder('Your name').fill('Marta Alemu');

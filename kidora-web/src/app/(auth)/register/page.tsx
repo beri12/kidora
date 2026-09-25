@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useRef, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { registerSchema } from '@/features/auth/schema'
@@ -8,11 +8,11 @@ import { ROLE_HOME } from '@/constants';
 import { SIGNUP_ROLES } from '@/constants/roles';
 import { AuthShell, AuthStep } from '@/components/auth/AuthShell';
 import { CodeStep } from '@/components/auth/CodeStep';
-import { SocialButtons } from '@/components/auth/SocialButtons';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
 import { apiErrorMessage } from '@/lib/api-error';
-import { celebrate, shake } from '@/lib/motion';
+import { celebrate } from '@/lib/motion';
+import { useShake } from '@/components/auth/scene/KidoraAuthScene';
 import type { EmailPending, Role } from '@/types';
 
 // SIGNUP_ROLES uses short UI-friendly keys (SCHOOL, DISTRICT) that don't
@@ -32,7 +32,7 @@ function RegisterInner() {
   const params = useSearchParams();
   const { register, verifyEmail, resendEmail } = useAuthStore();
   const [pending, setPending] = useState<EmailPending | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
+  const [formRef, shake] = useShake<HTMLFormElement>();
 
   const initialRole = (params.get('role') || 'PARENT').toUpperCase();
   const validRole = SIGNUP_ROLES.some((r) => r.key === initialRole) ? initialRole : 'PARENT';
@@ -52,7 +52,7 @@ function RegisterInner() {
     role.fields.forEach((f) => { if (!f.optional && !form[f.key]?.trim()) extra[f.key] = 'Required'; });
     if (!parsed.success || Object.keys(extra).length) {
       setErrors({ ...(parsed.success ? {} : Object.fromEntries(parsed.error.issues.map((i) => [i.path[0], String(i.message)]))), ...extra });
-      shake(formRef.current);
+      shake();
       return;
     }
     setErrors({}); setBusy(true);
@@ -63,7 +63,7 @@ function RegisterInner() {
       setPending(await register({ name: form.name, email: form.email, password: form.password, role: backendRole, ...fields }));
     } catch (err) {
       setErrors({ form: apiErrorMessage(err, "We couldn't create your account. Please try again.") });
-      shake(formRef.current);
+      shake();
     } finally { setBusy(false); }
   }
 
@@ -80,7 +80,7 @@ function RegisterInner() {
 
   if (pending) {
     return (
-      <AuthShell title="Check your inbox ✉️" subtitle="One code and your account is ready.">
+      <AuthShell title="Check your inbox ✉️">
         <AuthStep key="code">
           <CodeStep
             channel="email"
@@ -97,7 +97,7 @@ function RegisterInner() {
   }
 
   return (
-    <AuthShell title={role.headline} subtitle={role.tagline}>
+    <AuthShell title={role.headline}>
       <AuthStep key="form">
       <form ref={formRef} onSubmit={submit} noValidate>
         <div className="flex items-center gap-3 mb-5">
@@ -156,7 +156,6 @@ function RegisterInner() {
         <Button type="submit" variant="grass" size="lg" className="w-full mt-6" disabled={busy}>{busy ? 'Creating…' : role.cta}</Button>
         <p className="mt-2 text-center font-body-x text-[12px] text-brand-400">We&apos;ll email you a code to confirm it&apos;s you.</p>
       </form>
-      <SocialButtons disabled={busy} next={null} />
       <p className="font-body font-bold text-brand-600 text-center mt-5">Already have an account? <Link href="/login" className="text-brand-800 underline">Log in</Link></p>
       </AuthStep>
     </AuthShell>

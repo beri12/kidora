@@ -53,6 +53,12 @@ interface AuthState {
   verifyEmail: (email: string, code: string) => Promise<EmailVerifyResponse>;
   /** Emails a new code. */
   resendEmail: (email: string) => Promise<EmailPending>;
+  /** "Forgot password": emails a reset code. Same answer for any address. */
+  forgotPassword: (email: string) => Promise<{ maskedEmail: string; resendIn: number }>;
+  /** New password with the emailed code; signs in. */
+  resetPassword: (email: string, code: string, password: string) => Promise<EmailVerifyResponse>;
+  /** Trades the one-time code from a social sign-in redirect for a session. */
+  exchangeOAuthCode: (code: string) => Promise<EmailVerifyResponse>;
   /** Texts a one-time code to `phone` (E.164). */
   startPhone: (phone: string) => Promise<PhoneStartResponse>;
   /** Verifies the code, signing in or creating the account. */
@@ -172,6 +178,23 @@ export const useAuthStore = create<AuthState>()(
         return data;
       },
 
+      forgotPassword: async (email) => {
+        const { data } = await api.post<{ maskedEmail: string; resendIn: number }>('/auth/password/forgot', { email });
+        return data;
+      },
+
+      resetPassword: async (email, code, password) => {
+        const { data } = await api.post<EmailVerifyResponse>('/auth/password/reset', { email, code, password });
+        get().setSession(data);
+        return data;
+      },
+
+      exchangeOAuthCode: async (code) => {
+        const { data } = await api.post<EmailVerifyResponse>('/auth/oauth/exchange', { code });
+        get().setSession(data);
+        return data;
+      },
+
       startPhone: async (phone) => {
         const { data } = await api.post<PhoneStartResponse>('/auth/phone/start', { phone });
         return data;
@@ -222,32 +245,13 @@ export const useAuthStore = create<AuthState>()(
         return data;
       },
 
-      // Never goes through the main axios instance: a 401 on the refresh call
-      // would re-enter the interceptor that triggered it.
-      refresh: async (client) => {
-        const rt = get().refreshToken;
-        if (!rt) return null;
-        try {
-          let data: any;
-          if (client) {
-            data = (await client.post('/auth/refresh', { refreshToken: rt })).data;
-          } else {
-            const res = await fetch(`${API_URL}/auth/refresh`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken: rt }),
-            });
-            if (!res.ok) throw new Error('refresh failed');
-            data = await res.json();
-          }
-          const accessToken = data.accessToken ?? data.access_token ?? null;
-          const refreshToken = data.refreshToken ?? data.refresh_token ?? null;
-          set({ accessToken, refreshToken });
-          return accessToken as string | null;
-        } catch {
-          set({ user: null, accessToken: null, refreshToken: null });
-          return null;
-        }
+      // Single-flight: the API rotates refresh tokens and treats a second use
+      // of the same one as theft (every session is revoked). Callers that
+      // arrive while a refresh is in flight share its result.
+      refresh: (client) => {
+        if (inflightRefresh) return inflightRefresh;
+        inflightRefresh = doRefresh(client).finally(() => { inflightRefresh = null; });
+        return inflightRefresh;
       },
 
       logout: () => set({ user: null, accessToken: null, refreshToken: null }),
@@ -271,8 +275,52 @@ export const useAuthStore = create<AuthState>()(
   ),
 );
 
+let inflightRefresh: Promise<string | null> | null = null;
+
+/**
+ * Never goes through the main axios instance: a 401 on the refresh call would
+ * re-enter the interceptor that triggered it.
+ */
+async function doRefresh(client?: AxiosInstance): Promise<string | null> {
+  const get = useAuthStore.getState;
+  const set = useAuthStore.setState;
+  // Another tab may have rotated the token since this one loaded it.
+  await useAuthStore.persist.rehydrate();
+  const rt = get().refreshToken;
+  if (!rt) return null;
+  try {
+    let data: any;
+    if (client) {
+      data = (await client.post('/auth/refresh', { refreshToken: rt })).data;
+    } else {
+      const res = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: rt }),
+      });
+      if (!res.ok) throw new Error('refresh failed');
+      data = await res.json();
+    }
+    const accessToken = data.accessToken ?? data.access_token ?? null;
+    const refreshToken = data.refreshToken ?? data.refresh_token ?? null;
+    set({ accessToken, refreshToken });
+    return accessToken as string | null;
+  } catch {
+    set({ user: null, accessToken: null, refreshToken: null });
+    return null;
+  }
+}
+
 // Every path that touches `user` — sign-in, role selection, an approved org
 // request, refresh failure, logout — goes through the store, so subscribing
 // once here is what keeps the cookie honest, rather than a call bolted onto
 // each of them that the next one will forget.
 useAuthStore.subscribe((s) => syncRoleCookie(s.user?.role ?? null));
+
+// Keep tabs in step: when another tab signs in, out, or rotates the refresh
+// token, reload the persisted session instead of holding a stale copy.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'cl.auth') void useAuthStore.persist.rehydrate();
+  });
+}

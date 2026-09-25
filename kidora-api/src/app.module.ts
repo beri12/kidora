@@ -19,6 +19,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { OrgModule } from './org/org.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { PaymentsModule } from './payments/payments.module';
+import { PricingModule } from './pricing/pricing.module';
 import { GamesModule } from './games/games.module';
 import { RewardsModule } from './rewards/rewards.module';
 import { ProgressModule } from './progress/progress.module';
@@ -74,6 +75,7 @@ import { RedisModule } from './redis/redis.module';
     OrgModule,
     TeachersModule,
     PaymentsModule,
+    PricingModule,
     GamesModule,
     RewardsModule,
     ProgressModule,

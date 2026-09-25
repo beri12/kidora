@@ -2,31 +2,37 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../database/prisma.service';
-import { EmailService } from '../infrastructure/email/email.service';
-import { PLAN_CATALOG } from './plans';
-import { PlanKey, PaymentProvider, PaymentStatus } from '@prisma/client';
+import { PaymentProvider, PaymentStatus, PlanKey } from '@prisma/client';
+import { PricingService } from '../pricing/pricing.service';
+import { PaymentSettlementService } from './payment-settlement.service';
 
 @Injectable()
 export class StripeService {
   private logger = new Logger('Stripe');
   private stripe: Stripe;
-  constructor(private config: ConfigService, private prisma: PrismaService, private email: EmailService) {
+  constructor(
+    private config: ConfigService,
+    private prisma: PrismaService,
+    private pricing: PricingService,
+    private settlement: PaymentSettlementService,
+  ) {
     this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? 'sk_test_x', { apiVersion: '2024-06-20' });
   }
 
   // Create a hosted Checkout Session for the chosen plan.
   async createCheckout(userId: string, plan: 'family' | 'school') {
-    const item = PLAN_CATALOG[plan];
+    // The price the pricing page showed, read from the same row.
+    const item = await this.pricing.checkoutPrice(plan);
     const web = this.config.get<string>('app.webUrl');
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price_data: { currency: 'usd', product_data: { name: 'Kidora ' + item.name }, unit_amount: item.amountCents, recurring: { interval: 'month' } }, quantity: 1 }],
+      line_items: [{ price_data: { currency: item.currency.toLowerCase(), product_data: { name: 'Kidora ' + item.name }, unit_amount: item.amountMinor, recurring: { interval: 'month' } }, quantity: 1 }],
       success_url: web + '/dashboard?checkout=success',
       cancel_url: web + '/pricing?checkout=cancelled',
       client_reference_id: userId,
       metadata: { userId, plan },
     });
-    await this.prisma.payment.create({ data: { userId, provider: PaymentProvider.stripe, plan: plan as PlanKey, amountCents: item.amountCents, status: PaymentStatus.pending, externalId: session.id } });
+    await this.prisma.payment.create({ data: { userId, provider: PaymentProvider.stripe, plan: plan as PlanKey, amountCents: item.amountMinor, currency: item.currency, status: PaymentStatus.pending, externalId: session.id } });
     return { url: session.url };
   }
 
@@ -41,20 +47,17 @@ export class StripeService {
     }
     if (event.type === 'checkout.session.completed') {
       const s = event.data.object as Stripe.Checkout.Session;
-      await this.activate(s.metadata?.userId, s.metadata?.plan as PlanKey, s.id);
+      // A completed session can still be unpaid (delayed payment methods).
+      if (s.payment_status === 'paid' || s.payment_status === 'no_payment_required') {
+        await this.settlement.settle({
+          provider: PaymentProvider.stripe,
+          externalId: s.id,
+          amountMinor: s.amount_total ?? -1,
+          currency: s.currency ?? '',
+          userId: s.client_reference_id ?? undefined,
+        });
+      }
     }
     return { received: true };
-  }
-
-  private async activate(userId?: string, plan?: PlanKey, externalId?: string) {
-    if (!userId || !plan) return;
-    await this.prisma.payment.updateMany({ where: { externalId }, data: { status: PaymentStatus.succeeded } });
-    await this.prisma.subscription.upsert({
-      where: { userId },
-      update: { plan, status: 'active', provider: PaymentProvider.stripe, renewsAt: new Date(Date.now() + 30 * 864e5) },
-      create: { userId, plan, status: 'active', provider: PaymentProvider.stripe, renewsAt: new Date(Date.now() + 30 * 864e5) },
-    });
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (user?.email) this.email.sendSubscriptionSuccess(user.email, user.name, PLAN_CATALOG[plan as 'family' | 'school']?.name ?? plan);
   }
 }

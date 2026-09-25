@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PlanKey } from '@prisma/client';
 
@@ -12,9 +12,17 @@ export class SubscriptionsService {
     return sub;
   }
 
-  // Change plan (upgrade/downgrade). Payment activation happens via the
-  // Stripe/PayPal webhooks in PaymentsModule; this is the internal sync point.
+  /**
+   * Moving to the free plan is the only change a user can make directly.
+   *
+   * This used to accept any plan, so `POST /subscriptions {"plan":"school"}`
+   * gave anyone a paid plan without paying. Paid plans are only ever granted
+   * by PaymentsModule, after the provider's webhook has been verified.
+   */
   async setPlan(userId: string, plan: PlanKey) {
+    if (plan !== 'free') {
+      throw new BadRequestException('Paid plans are activated by completing checkout, not by this endpoint.');
+    }
     await this.mine(userId);
     return this.prisma.subscription.update({
       where: { userId },

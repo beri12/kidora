@@ -24,6 +24,25 @@ export function apiBaseUrl(): string {
  * wins — some providers require an exact string that differs from ours.
  */
 export function oauthCallbackUrl(provider: string): string {
-  const explicit = process.env[`${provider.toUpperCase()}_CALLBACK_URL`]?.trim();
+  const P = provider.toUpperCase();
+  const explicit = (process.env[`${P}_CALLBACK_URL`] || process.env[`${P}_REDIRECT_URI`])?.trim();
   return explicit || `${apiBaseUrl()}/auth/${provider}/callback`;
+}
+
+/**
+ * Each provider's own name for its credentials is accepted alongside ours:
+ * TikTok's "client key", Facebook's "app id / app secret".
+ */
+const CREDENTIAL_NAMES: Record<string, { id: string[]; secret: string[] }> = {
+  tiktok: { id: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_ID'], secret: ['TIKTOK_CLIENT_SECRET'] },
+  facebook: { id: ['FACEBOOK_APP_ID', 'FACEBOOK_CLIENT_ID'], secret: ['FACEBOOK_APP_SECRET', 'FACEBOOK_CLIENT_SECRET'] },
+};
+
+export function oauthCredentials(provider: string) {
+  const names = CREDENTIAL_NAMES[provider] ?? {
+    id: [`${provider.toUpperCase()}_CLIENT_ID`],
+    secret: [`${provider.toUpperCase()}_CLIENT_SECRET`],
+  };
+  const pick = (keys: string[]) => keys.map((k) => process.env[k]?.trim()).find(Boolean) ?? '';
+  return { id: pick(names.id), secret: pick(names.secret), idVar: names.id[0], secretVar: names.secret[0] };
 }

@@ -11,7 +11,7 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { redisUrl } from './config/redis.config';
-import { oauthCallbackUrl } from './config/oauth-callback';
+import { oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
 // sync across every API instance (horizontal scaling / sticky sessions).
@@ -113,13 +113,12 @@ function reportSignInSetup() {
 
   const lines: string[] = [];
   for (const name of providers) {
-    const idKey = `${name.toUpperCase()}_CLIENT_ID`;
-    const secretKey = `${name.toUpperCase()}_CLIENT_SECRET`;
-    if (!on(process.env[idKey])) continue;
+    const c = oauthCredentials(name);
+    if (!c.id) continue;
     lines.push(`  ${name}: on — register this redirect URI with the provider, exactly:`);
     lines.push(`      ${oauthCallbackUrl(name)}`);
-    if (!on(process.env[secretKey])) {
-      lines.push(`    WARNING: ${idKey} is set but ${secretKey} is not, so ${name} sign-in will be rejected.`);
+    if (!c.secret) {
+      lines.push(`    WARNING: ${c.idVar} is set but ${c.secretVar} is not, so ${name} sign-in will be rejected.`);
     }
   }
 

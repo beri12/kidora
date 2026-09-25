@@ -32,6 +32,8 @@ import {
   SetPhoneDto,
   EmailVerifyDto,
   EmailResendDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
 } from './dto/auth.dto';
 
 
@@ -82,7 +84,7 @@ constructor(
 
 @Public()
 
-@Post('register')
+@Post(['register', 'email/register'])
 
 @ApiOperation({ summary: 'Create an email + password account and email a verification code' })
 
@@ -101,9 +103,11 @@ register(
 
 
 
+/** Password sign-in. `email/login` is the same handler under the name the web app uses. */
+
 @Public()
 
-@Post('login')
+@Post(['login', 'email/login'])
 
 login(
  @Body() dto:LoginDto,
@@ -258,6 +262,62 @@ resendEmail(
 ){
 
  return this.emailVerification.resend(dto.email);
+
+}
+
+
+
+
+/**
+ * Forgot password. Always answers `{ sent: true }`: whether the address has
+ * an account is never revealed.
+ */
+
+@Public()
+
+@Throttle({ default: { limit: 5, ttl: 60_000 } })
+
+@Post('password/forgot')
+
+@ApiOperation({ summary: 'Email a password reset code' })
+
+forgotPassword(
+ @Body() dto:ForgotPasswordDto
+){
+
+ return this.emailVerification.forgotPassword(dto.email);
+
+}
+
+
+
+
+/** Sets the new password with the emailed code, ends every other session, signs in. */
+
+@Public()
+
+@Post('password/reset')
+
+@ApiOperation({ summary: 'Reset the password with the emailed code' })
+
+resetPassword(
+ @Body() dto:ResetPasswordDto,
+ @Req() req:any
+){
+
+ return this.emailVerification.resetPassword(
+
+  dto.email,
+
+  dto.code,
+
+  dto.password,
+
+  req.ip,
+
+  req.headers['user-agent'] ?? ''
+
+ );
 
 }
 

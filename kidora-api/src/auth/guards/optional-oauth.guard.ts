@@ -1,4 +1,5 @@
 import { AuthGuard } from '@nestjs/passport';
+import { oauthCredentials } from '../../config/oauth-callback';
 import { ExecutionContext, Injectable, NotImplementedException } from '@nestjs/common';
 
 /**
@@ -16,10 +17,10 @@ export function ProviderGuard(name: string) {
   @Injectable()
   class G extends AuthGuard(name) {
     canActivate(ctx: ExecutionContext) {
-      const key = `${name.toUpperCase()}_CLIENT_ID`;
-      if (!process.env[key]) {
+      const c = oauthCredentials(name);
+      if (!c.id) {
         throw new NotImplementedException(
-          `${name} sign-in is not configured on this server. Set ${key} (and ${name.toUpperCase()}_CLIENT_SECRET) and restart.`,
+          `${name} sign-in is not configured on this server. Set ${c.idVar} (and ${c.secretVar}) and restart.`,
         );
       }
       return super.canActivate(ctx) as any;

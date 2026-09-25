@@ -1,8 +1,11 @@
-import { Controller, Get, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { IsString, Length } from 'class-validator';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { ProviderGuard } from './guards/optional-oauth.guard';
+import { oauthCredentials } from '../config/oauth-callback';
 import { OAuthService, OAuthProfile } from './services/oauth.service';
 
 const GoogleGuard = ProviderGuard('google');
@@ -11,6 +14,12 @@ const TiktokGuard = ProviderGuard('tiktok');
 const GithubGuard = ProviderGuard('github');
 const MicrosoftGuard = ProviderGuard('microsoft');
 const AppleGuard = ProviderGuard('apple');
+
+class OAuthExchangeDto {
+  @IsString()
+  @Length(16, 64)
+  code!: string;
+}
 
 // Social login. Each provider has a start route (redirects to the provider)
 // and a callback route (validates, issues our JWTs, redirects back to the web app).
@@ -30,17 +39,22 @@ export class OAuthController {
 
     let session;
     try {
-      session = await this.oauth.validateOAuthLogin(req.user as OAuthProfile);
+      session = await this.oauth.createExchangeCode(req.user as OAuthProfile);
     } catch {
       return res.redirect(`${web}/auth/callback#error=failed&provider=${encodeURIComponent(req.user?.provider ?? '')}`);
     }
-    // Hand tokens to the SPA via URL fragment; the client stores them.
-    // `needsRole` tells the callback page whether to run the "How will you use
-    // Kidora?" step or go straight to the dashboard.
-    const frag =
-      `#accessToken=${session.accessToken}&refreshToken=${session.refreshToken}` +
-      `&needsRole=${session.needsRole ? '1' : '0'}`;
-    return res.redirect(`${web}/auth/callback${frag}`);
+    // No tokens in the URL: the web app trades this one-time, 60-second code
+    // for them at POST /auth/oauth/exchange. `needsRole` only picks the next
+    // screen; the exchange response is what the client trusts.
+    return res.redirect(`${web}/auth/callback#code=${session.code}&needsRole=${session.needsRole ? '1' : '0'}`);
+  }
+
+  /** Trades the one-time code from the provider redirect for a token pair. */
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('oauth/exchange')
+  exchange(@Body() body: OAuthExchangeDto) {
+    return this.oauth.redeemExchangeCode(body.code);
   }
 
   /**
@@ -51,17 +65,8 @@ export class OAuthController {
   @Public()
   @Get('providers')
   providers() {
-    const enabled = (name: string, key: string) => (process.env[key] ? [name] : []);
-    return {
-      providers: [
-        ...enabled('google', 'GOOGLE_CLIENT_ID'),
-        ...enabled('facebook', 'FACEBOOK_CLIENT_ID'),
-        ...enabled('tiktok', 'TIKTOK_CLIENT_ID'),
-        ...enabled('github', 'GITHUB_CLIENT_ID'),
-        ...enabled('microsoft', 'MICROSOFT_CLIENT_ID'),
-        ...enabled('apple', 'APPLE_CLIENT_ID'),
-      ],
-    };
+    const all = ['google', 'tiktok', 'facebook', 'github', 'microsoft', 'apple'];
+    return { providers: all.filter((p) => Boolean(oauthCredentials(p).id)) };
   }
 
   @Public() @UseGuards(GoogleGuard) @Get('google') google() { /* redirects */ }

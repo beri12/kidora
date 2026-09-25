@@ -100,13 +100,36 @@ unverified account gets `403 { code: "EMAIL_NOT_VERIFIED", … }` and a fresh co
 web app goes straight to the code step. Same limits as SMS codes, with a 10-minute expiry.
 Accounts that existed before this change are marked verified by migration.
 
+## Pricing
+Every plan on `/pricing` lives in the `SubscriptionPlan` table and is served by
+`GET /pricing` — no price is hard-coded in the web app. Prices are integers in the
+currency's minor units, with the currency stored per plan; a null price means "custom".
+Stripe and PayPal checkout charge the price read from the same row, and a payment
+turns into a plan only through `PaymentSettlementService`. That service checks the
+provider's amount, currency and payer against the `Payment` row written at checkout,
+and it is idempotent, so a webhook delivered twice grants once. The first rows come
+from the migration `20260926100000_subscription_plans`; change a price by updating
+its row (an admin pricing screen is planned).
+
 ## Social sign-in (Google, Facebook, TikTok)
-Set `<PROVIDER>_CLIENT_ID` and `_CLIENT_SECRET`; the redirect URI to register is printed at
-startup. The OAuth `state` is HMAC-signed and bound to the browser by a short-lived
+Set `<PROVIDER>_CLIENT_ID` and `_CLIENT_SECRET` (TikTok: `TIKTOK_CLIENT_KEY`; Facebook:
+`FACEBOOK_APP_ID` / `_APP_SECRET` also work); the redirect URI to register is printed at
+startup. Linked identities are rows in `SocialAccount` (unique per provider + provider id),
+so one Kidora user can hold Google, TikTok and a phone number at once. The callback never
+puts tokens in the URL: it redirects with a one-time code (60 s, single use) that the web
+app trades at `POST /auth/oauth/exchange`. The OAuth `state` is HMAC-signed and bound to the browser by a short-lived
 httpOnly cookie (login-CSRF protection). A cancelled or failed round trip lands on
 `/auth/callback#error=cancelled|failed` with a readable message instead of a JSON 401.
 When a provider's verified email matches an account whose address was never verified,
 the address is marked verified and that account's unproven password is removed.
+
+## Passwords and sessions
+`POST /auth/password/forgot` emails a reset code (identical answer for unknown addresses);
+`POST /auth/password/reset` sets the new password, ends every other session and signs in.
+Refresh tokens rotate: each one works once, and presenting a used one revokes all of that
+user's sessions. The spec's endpoint names are aliases of the existing handlers:
+`/auth/phone/request-otp`, `/auth/phone/verify-otp`, `/auth/email/login`,
+`/auth/email/register`, `/users/role`.
 
 ## Students
 Students sign up like everyone else — phone, email or social — and pick **I'm a Student**.

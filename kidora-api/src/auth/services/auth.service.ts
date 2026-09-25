@@ -259,9 +259,8 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
-    const stored = await this.prisma.refreshToken.findMany({ where: { userId: payload.sub } });
-    const matches = await Promise.all(stored.map((s) => bcrypt.compare(refreshToken, s.tokenHash)));
-    if (!matches.some(Boolean)) throw new UnauthorizedException('Refresh token revoked');
+    const userId = await this.tokens.consumeRefresh(refreshToken, payload);
+    if (!userId) throw new UnauthorizedException('Refresh token revoked');
 
     // Read the account rather than trusting the token being replaced. Copying
     // the old payload forward meant a role could never change in practice: an
@@ -269,7 +268,7 @@ export class AuthService {
     // long as they stayed signed in, and a disabled account would have kept
     // minting new tokens indefinitely.
     const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
+      where: { id: userId },
       select: { id: true, email: true, role: true, active: true },
     });
     if (!user) throw new UnauthorizedException('Account not found');

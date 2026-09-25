@@ -20,6 +20,7 @@ function fakeCache() {
 function fakePrisma(user: any) {
   let current = user;
   return {
+    refreshToken: { deleteMany: jest.fn(async () => ({ count: 2 })) },
     user: {
       findUnique: jest.fn(async ({ where }: any) => (current && where.email === current.email ? current : null)),
       update: jest.fn(async ({ data }: any) => { current = { ...current, ...data }; return current; }),
@@ -29,7 +30,7 @@ function fakePrisma(user: any) {
 }
 
 const fakeEmail = () => ({
-  sendVerificationCode: jest.fn(async (_to: string, _name: string, _code: string, _m: number) => ({ dev: false })),
+  sendVerificationCode: jest.fn(async (_to: string, _name: string, _code: string, _m: number, _purpose?: string) => ({ dev: false })),
   sendWelcome: jest.fn(),
 });
 const fakeTokens = () => ({ issue: jest.fn(async () => ({ accessToken: 'a', refreshToken: 'r' })) });
@@ -53,7 +54,7 @@ describe('EmailVerificationService', () => {
     const { svc, email, sentCode } = setup();
     const res = await svc.send('Abebe@Example.com ', 'Abebe');
 
-    expect(email.sendVerificationCode).toHaveBeenCalledWith('abebe@example.com', 'Abebe', expect.any(String), 10);
+    expect(email.sendVerificationCode).toHaveBeenCalledWith('abebe@example.com', 'Abebe', expect.any(String), 10, 'verify');
     expect(sentCode()).toMatch(/^\d{6}$/);
     expect(res).toMatchObject({ needsEmailVerification: true, email: 'abebe@example.com', maskedEmail: 'ab***@example.com' });
     expect(JSON.stringify(res)).not.toContain(sentCode());
@@ -114,5 +115,39 @@ describe('EmailVerificationService', () => {
 
     expect(res).toMatchObject({ needsEmailVerification: true, email: 'nobody@example.com' });
     expect(email.sendVerificationCode).not.toHaveBeenCalled();
+  });
+});
+
+describe('EmailVerificationService password reset', () => {
+  const VERIFIED = { ...USER, emailVerified: true, active: true, passwordHash: 'old-hash' };
+
+  it('emails a reset code for a real account, and answers the same for an unknown one', async () => {
+    const { svc, email } = setup(VERIFIED);
+    const known = await svc.forgotPassword('abebe@example.com');
+    const unknown = await svc.forgotPassword('nobody@example.com');
+
+    expect(email.sendVerificationCode).toHaveBeenCalledTimes(1);
+    expect(email.sendVerificationCode.mock.calls[0][4]).toBe('reset');
+    expect(Object.keys(known).sort()).toEqual(Object.keys(unknown).sort());
+    expect(known.sent && unknown.sent).toBe(true);
+  });
+
+  it('sets the new password, ends other sessions and signs in', async () => {
+    const { svc, prisma, sentCode } = setup(VERIFIED);
+    await svc.forgotPassword('abebe@example.com');
+
+    const res = await svc.resetPassword('abebe@example.com', sentCode(), 'NewPassword123');
+
+    expect(res.accessToken).toBe('a');
+    expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+    const data = prisma.user.update.mock.calls[0][0].data;
+    expect(data.passwordHash).not.toBe('old-hash');
+    expect(data.passwordHash.startsWith('$2')).toBe(true);
+  });
+
+  it('never accepts a verification code as a reset code', async () => {
+    const { svc, sentCode } = setup({ ...USER, active: true });
+    await svc.send('abebe@example.com', 'Abebe');
+    await expect(svc.resetPassword('abebe@example.com', sentCode(), 'NewPassword123')).rejects.toThrow(BadRequestException);
   });
 });

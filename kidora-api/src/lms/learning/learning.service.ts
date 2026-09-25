@@ -165,8 +165,18 @@ export class LearningService {
       return { allowed: false, reason: 'INVITE_ONLY', message: 'This course is invite only. Ask your teacher to add you.' };
     }
     if (course.access === 'PREMIUM') {
+      // Subscriptions are stored as 'active' (lowercase), so the old 'ACTIVE'
+      // lookup never matched and premium courses were closed to paying users.
+      // Every account also holds an 'active' *free* subscription, so the plan
+      // must be a paid one, and not past its renewal date.
       const sub = await this.prisma.subscription.findFirst({
-        where: { userId: u.id, status: 'ACTIVE' }, select: { id: true },
+        where: {
+          userId: u.id,
+          status: { equals: 'active', mode: 'insensitive' },
+          plan: { not: 'free' },
+          OR: [{ renewsAt: null }, { renewsAt: { gt: new Date() } }],
+        },
+        select: { id: true },
       });
       if (!sub) return { allowed: false, reason: 'PREMIUM', message: 'This course is part of Kidora Plus.' };
     }

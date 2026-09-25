@@ -291,6 +291,31 @@ export class EmailVerifyDto {
   code!: string;
 }
 
+/** "Forgot password": emails a reset code (identical answer for any address). */
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
+}
+
+/** Sets a new password with the emailed reset code. */
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: '482913' })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code.' })
+  code!: string;
+
+  @ApiProperty({ example: 'NewPassword123', minLength: 8, maxLength: 72 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  password!: string;
+}
+
 /** "Resend code" on the email verification step. */
 export class EmailResendDto {
   @ApiProperty({ example: 'abebe@example.com' })
