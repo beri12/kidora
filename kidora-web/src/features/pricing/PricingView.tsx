@@ -100,13 +100,13 @@ export function PricingView() {
     const role = STYLE[plan.audience].role;
     if (!user) {
       const back = plan.checkoutPlan ? `/pricing?checkout=${plan.slug}` : '/pricing';
-      router.push(`/join?role=${role}&next=${encodeURIComponent(back)}`);
+      router.push(`/auth/signup?role=${role}&next=${encodeURIComponent(back)}`);
       return;
     }
     if (plan.checkoutPlan) setCheckout(plan);
     // Signed in, and this plan is not sold through checkout (Teacher): take
     // them to their own dashboard, or to the role step if they have none yet.
-    else router.push(user.roleConfirmed === false ? `/onboarding/role?role=${role}` : ROLE_HOME[user.role] ?? '/');
+    else router.push(user.roleConfirmed === false ? `/auth/signup/role?role=${role}` : ROLE_HOME[user.role] ?? '/');
   }
 
   return (
@@ -305,7 +305,7 @@ function SchoolStrip({ tiers, billing }: { tiers: PublicPlan[]; billing: Billing
           <p className="mt-1 font-body text-sm font-semibold text-slate-600">
             Schools can choose from flexible pricing tiers based on their size and needs.
           </p>
-          <Link href="/join?role=SCHOOL_LEADER" className="mt-2 inline-block font-body text-sm font-extrabold text-blue-600 hover:underline">
+          <Link href="/auth/signup?role=SCHOOL_LEADER" className="mt-2 inline-block font-body text-sm font-extrabold text-blue-600 hover:underline">
             View School Plans →
           </Link>
         </div>
@@ -338,7 +338,7 @@ function SchoolStrip({ tiers, billing }: { tiers: PublicPlan[]; billing: Billing
           <p className="font-body text-sm font-semibold text-slate-600">
             Special pricing available for large districts and multi-school organizations.
           </p>
-          <Link href="/join?role=DISTRICT_ADMIN" className="mt-1 inline-block font-body text-sm font-extrabold text-blue-600 hover:underline">
+          <Link href="/auth/signup?role=DISTRICT_ADMIN" className="mt-1 inline-block font-body text-sm font-extrabold text-blue-600 hover:underline">
             Contact Sales →
           </Link>
         </div>

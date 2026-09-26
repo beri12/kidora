@@ -62,34 +62,13 @@ refresh — `POST /auth/refresh` reads the role from the database rather than co
 of the token it is replacing, which is also what stops a disabled account from refreshing
 its way back in.
 
-## Phone sign-in (Twilio)
-One number, one code, no password. `POST /auth/phone/start` texts a 6-digit code;
-`POST /auth/phone/verify` checks it and signs the user in, creating the account on first use.
-
-```bash
-TWILIO_SID=ACxxxxxxxx
-TWILIO_TOKEN=xxxxxxxx
-# a Messaging Service, which is what you want for international OTP traffic...
-TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxx
-# ...or a branded alphanumeric sender (not every country accepts one)...
-TWILIO_SENDER_ID=KIDORA
-# ...or a purchased number
-TWILIO_FROM=+15551234567
-```
-
-The text reads `Kidora: 482913 is your verification code. It expires in 5 minutes.` and,
-on an https deploy, ends with the `@domain #code` line that lets Chrome on Android fill it in.
-
-The code only ever travels by SMS — it is **never** returned to the browser. With Twilio
-unset in development the SMS is printed in the API log instead; in production an unset
-Twilio makes phone sign-in answer 503 rather than pretending to send. A refused send (a
-trial account texting an unverified number, an unreachable country, a landline) fails the
-request with a reason the person can act on, and the log names Twilio's error and its fix.
-
-Codes are stored **hashed** in Redis for 5 minutes, are single-use, and are protected by
-four limits: a 45-second resend cooldown, 5 wrong guesses per code, 5 codes per number per
-hour, and 20 per source IP per hour. `/auth/phone/start` answers identically whether or not
-the number already has an account, so it cannot be used to test who is on Kidora.
+## Sign-in methods
+Email + password (with an emailed 6-digit code to confirm the address), Google, Facebook
+and TikTok. **Phone-number sign-in has been removed**: the `/auth/phone/*`, `/auth/otp/*`
+and SMS-MFA routes no longer exist and `/auth/login` takes an email only. The `User.phone`
+column is kept (nothing is deleted), but it is no longer a way in — an older account that
+only ever had a phone number needs an email added by support, or can sign in with Google.
+Twilio is now only used for optional organisation-request notices.
 
 ## Email verification
 `POST /auth/register` creates the account unverified and emails a 6-digit code; it returns
@@ -156,9 +135,35 @@ user's sessions. The spec's endpoint names are aliases of the existing handlers:
 `/auth/email/register`, `/users/role`.
 
 ## Students
-Students sign up like everyone else — phone, email or social — and pick **I'm a Student**.
-An optional school join code links them to their school (a wrong code is refused and
-nothing is saved) and an optional grade places them in it.
+Students create their own account (email or social), pick **Student**, then give their date
+of birth (ages 3–18) and grade, both required by `POST /auth/role`. A school is optional:
+- with the school's **join code** they join it at once;
+- picked from `GET /schools/search` without a code, it is only a request
+  (`User.requestedSchoolId`) — no school courses or school plan until a school leader
+  approves it at `POST /school/join-requests/:userId/approve`.
+
+## Course access codes and assignments
+Every course can have a code like `CPP-7K4M9X` (title prefix + 6 random characters from an
+alphabet without 0/O/1/I/L; never derived from ids). Teachers, co-instructors, the course's
+school leaders and admins manage it: `GET /courses/:id/access-code`,
+`POST /courses/:id/access-code/rotate` (create/replace — the old code dies at once),
+`PATCH /courses/:id/access-code {enabled}`.
+
+A student joins with `POST /courses/access-code/join {code}` (case and dash insensitive).
+The code opens invite-only courses but never overrides the other rules: school-only still
+needs the school, premium still needs a plan (or the student's own school), prerequisites
+still apply. Ten wrong codes in an hour locks a student out for the hour, on top of a per-IP
+throttle.
+
+`POST /courses/:id/assign {studentIds}` lets a parent (linked children), teacher (students
+in their classes), school leader (their school) or admin enrol students; the assigner must be
+responsible for every student. Teachers and school leaders may assign their own courses
+whatever the access mode; anyone else only what the student could open anyway.
+
+Each `CourseEnrollment` records `source` (SELF, ACCESS_CODE, PARENT, TEACHER, SCHOOL,
+SCHOOL_LEADER, CLASS, ADMIN) and `assignedById`. The public catalogue (`GET /courses`,
+`GET /courses/:id`) only shows published FREE/PREMIUM courses, and `POST /courses/:id/enroll`
+now applies the same access rules as `/learning`.
 
 ## Run (dev)
 ```bash

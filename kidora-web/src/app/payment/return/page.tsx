@@ -81,7 +81,7 @@ function PaymentReturn() {
           {state === 'failed' && <Link href="/pricing" className="flex min-h-14 items-center justify-center rounded-2xl bg-brand-700 font-display text-lg font-extrabold text-white">Back to pricing</Link>}
           {state === 'pending' && <Link href={home} className="flex min-h-14 items-center justify-center rounded-2xl bg-brand-700 font-display text-lg font-extrabold text-white">Go to my dashboard</Link>}
           {state === 'signin' && (
-            <Link href={`/login?next=${encodeURIComponent(`/payment/return?provider=chapa&tx_ref=${txRef ?? ''}`)}`} className="flex min-h-14 items-center justify-center rounded-2xl bg-brand-700 font-display text-lg font-extrabold text-white">
+            <Link href={`/auth/login?next=${encodeURIComponent(`/payment/return?provider=chapa&tx_ref=${txRef ?? ''}`)}`} className="flex min-h-14 items-center justify-center rounded-2xl bg-brand-700 font-display text-lg font-extrabold text-white">
               Sign in
             </Link>
           )}

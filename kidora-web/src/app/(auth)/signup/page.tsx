@@ -1,7 +1,11 @@
 import { redirect } from 'next/navigation';
 
-/** /signup is the same flow as /join; query params (role, next) carry over. */
-export default async function SignupPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
-  const qs = new URLSearchParams(await searchParams).toString();
-  redirect(qs ? `/join?${qs}` : '/join');
+/** Old sign-up URL. Query params (next, role) carry over. */
+export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[]>> }) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(await searchParams)) {
+    if (k !== 'method' && typeof v === 'string') q.set(k === 'redirect' ? 'next' : k, v);
+  }
+  const qs = q.toString();
+  redirect(qs ? `/auth/signup?${qs}` : '/auth/signup');
 }

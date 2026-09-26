@@ -259,7 +259,7 @@ export class LearningService {
       where: { studentId: u.id, ...(status === 'COMPLETED' ? { status: 'COMPLETED' as const } : {}) },
       orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
       select: {
-        status: true, progressPercent: true, lessonsCompleted: true, lastActivityAt: true, completedAt: true,
+        status: true, progressPercent: true, lessonsCompleted: true, lastActivityAt: true, completedAt: true, source: true,
         lastLesson: { select: { id: true, title: true, order: true } },
         course: {
           select: {
@@ -280,7 +280,7 @@ export class LearningService {
       grade: e.course.grade?.name ?? null, teacher: e.course.teacher?.name ?? null,
       progressPercent: e.progressPercent, lessonsCompleted: e.lessonsCompleted,
       totalLessons: e.course._count.lessons, issuesCertificate: e.course.issuesCertificate,
-      currentLesson: e.lastLesson, lastActivityAt: e.lastActivityAt, completedAt: e.completedAt,
+      currentLesson: e.lastLesson, lastActivityAt: e.lastActivityAt, completedAt: e.completedAt, source: e.source,
       status: e.status === 'COMPLETED' ? 'COMPLETED' : e.lessonsCompleted > 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
     }));
     return status && status !== 'COMPLETED' ? list.filter((c) => c.status === status) : list;

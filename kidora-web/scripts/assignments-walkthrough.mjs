@@ -11,9 +11,10 @@ const post = (p, b, t) => fetch(`${API}${p}`, { method: 'POST', headers: { 'Cont
 let pass = 0, fail = 0;
 const is = (w, g, x) => { if (String(g) === String(x)) { pass++; console.log('  ✓', w); } else { fail++; console.log('  ✗', w, `— got ${g}, wanted ${x}`); } };
 
-const phone = '+25191' + Math.floor(1000000 + Math.random() * 8999999);
-const s = await post('/auth/phone/start', { phone });
-const v = await post('/auth/phone/verify', { phone, code: s.devCode });
+// The API must run with AUTH_TEST_EXPOSE_OTP=true so the emailed code comes back.
+const email = `probe.teacher.${Date.now()}@example.com`;
+const s = await post('/auth/register', { name: 'Probe Teacher', email, password: 'Kidora2026!' });
+const v = await post('/auth/email/verify', { email, code: s.devCode });
 const r = await post('/auth/role', { role: 'TEACHER', name: 'Probe Teacher' }, v.accessToken);
 const tok = r.accessToken;
 // A course to attach an assignment to.

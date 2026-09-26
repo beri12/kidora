@@ -6,7 +6,25 @@ import { RegisterDto } from '../dto/auth.dto';
 
 export type ProfileInput = Partial<
   Pick<RegisterDto, 'schoolName' | 'country' | 'districtName' | 'region' | 'schoolCode' | 'gradeLevel'>
->;
+> & {
+  /** YYYY-MM-DD, students only. */
+  dateOfBirth?: string;
+  /** A school picked from search without its code: recorded as a request only. */
+  schoolId?: string;
+};
+
+/** Kidora is for ages 3–18; a date outside that is a typo, not a learner. */
+export function parseDateOfBirth(raw: string, now = new Date()): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw ?? '');
+  const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null;
+  if (!d || d.getUTCMonth() !== +m![2] - 1 || d.getUTCDate() !== +m![3]) {
+    throw new BadRequestException('Enter a valid date of birth.');
+  }
+  let age = now.getUTCFullYear() - d.getUTCFullYear();
+  if (now.getUTCMonth() < d.getUTCMonth() || (now.getUTCMonth() === d.getUTCMonth() && now.getUTCDate() < d.getUTCDate())) age--;
+  if (age < 3 || age > 18) throw new BadRequestException('Students on Kidora are between 3 and 18 years old. Please check the date of birth.');
+  return d;
+}
 
 @Injectable()
 export class RegistrationService {
@@ -53,6 +71,8 @@ export class RegistrationService {
     return this.prisma.$transaction(async (tx) => {
       let schoolId = user.schoolId ?? null;
       let districtId: string | null = null;
+      let requestedSchoolId: string | null = null;
+      let dateOfBirth: Date | null = null;
 
       switch (user.role) {
         case Role.SCHOOL_ADMIN:
@@ -88,11 +108,14 @@ export class RegistrationService {
 
         case Role.TEACHER: {
           if (dto.schoolCode?.trim()) schoolId = await this.resolveSchoolCode(tx, dto.schoolCode);
+          else if (dto.schoolId) requestedSchoolId = await this.requestableSchool(tx, dto.schoolId);
           break;
         }
 
         case Role.CHILD: {
           if (dto.schoolCode?.trim()) schoolId = await this.resolveSchoolCode(tx, dto.schoolCode);
+          else if (dto.schoolId) requestedSchoolId = await this.requestableSchool(tx, dto.schoolId);
+          if (dto.dateOfBirth) dateOfBirth = parseDateOfBirth(dto.dateOfBirth);
           await tx.rewardWallet.upsert({ where: { userId: user.id }, create: { userId: user.id }, update: {} });
           break;
         }
@@ -119,7 +142,13 @@ export class RegistrationService {
 
       const updated = await tx.user.update({
         where: { id: user.id },
-        data: { schoolId, districtId, gradeId, displayName: user.name.split(' ')[0], lastActiveAt: new Date() },
+        data: {
+          schoolId, districtId, gradeId, displayName: user.name.split(' ')[0], lastActiveAt: new Date(),
+          // A school joined by code replaces any earlier request.
+          requestedSchoolId: schoolId ? null : requestedSchoolId,
+          ...(dateOfBirth ? { dateOfBirth } : {}),
+          ...(user.role === Role.CHILD && dto.gradeLevel?.trim() ? { gradeLevel: dto.gradeLevel.trim().slice(0, 40) } : {}),
+        },
       });
 
       if (user.role === Role.CHILD && schoolId) {
@@ -128,6 +157,13 @@ export class RegistrationService {
 
       return updated;
     });
+  }
+
+  /** A school picked from search must exist and be active; it is only a request. */
+  private async requestableSchool(tx: Prisma.TransactionClient, id: string) {
+    const school = await tx.school.findFirst({ where: { id, active: true }, select: { id: true } });
+    if (!school) throw new BadRequestException('We couldn’t find that school. Search again or leave it blank.');
+    return school.id;
   }
 
   private async resolveSchoolCode(tx: Prisma.TransactionClient, code: string) {

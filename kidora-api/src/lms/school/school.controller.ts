@@ -22,5 +22,8 @@ export class SchoolController {
   @Get('courses') courses(@CurrentUser() u: AuthUser, @Query() q: PaginationDto, @Query('status') status?: string, @Query('subjectId') subjectId?: string, @Query('gradeId') gradeId?: string) { return this.svc.courses(u, { ...q, status, subjectId, gradeId }); }
   @Patch('courses/:id/review') review(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ReviewCourseDto, @Ip() ip: string) { return this.svc.approveCourse(u, id, dto.approve, dto.note, ip); }
   @Get('analytics') analytics(@CurrentUser() u: AuthUser, @Query('from') from?: string, @Query('to') to?: string) { return this.svc.analyticsView(u, { from, to }); }
+  @Get('join-requests') joinRequests(@CurrentUser() u: AuthUser) { return this.svc.joinRequests(u); }
+  @Post('join-requests/:userId/approve') approveJoin(@CurrentUser() u: AuthUser, @Param('userId') id: string, @Ip() ip: string) { return this.svc.reviewJoinRequest(u, id, true, ip); }
+  @Post('join-requests/:userId/decline') declineJoin(@CurrentUser() u: AuthUser, @Param('userId') id: string, @Ip() ip: string) { return this.svc.reviewJoinRequest(u, id, false, ip); }
   @Get('billing') billing(@CurrentUser() u: AuthUser) { return this.svc.billing(u); }
 }

@@ -87,7 +87,7 @@ export function PendingApproval({ initial }: { initial?: OrgRequest | null }) {
         <p className="mt-1 font-body font-bold text-brand-500">
           You have not applied for school or district access on this account.
         </p>
-        <Button size="lg" className="mt-6 w-full" onClick={() => router.replace('/join')}>
+        <Button size="lg" className="mt-6 w-full" onClick={() => router.replace('/auth/signup')}>
           Choose how you use Kidora
         </Button>
       </div>
@@ -111,7 +111,7 @@ export function PendingApproval({ initial }: { initial?: OrgRequest | null }) {
           administers {request.organizationName} for an organisation code — a code gets you in
           straight away.
         </p>
-        <Button size="lg" className="mt-6 w-full" onClick={() => router.replace('/join?role=SCHOOL_LEADER')}>
+        <Button size="lg" className="mt-6 w-full" onClick={() => router.replace('/auth/signup?role=SCHOOL_LEADER')}>
           Try again with a code
         </Button>
         <button

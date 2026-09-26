@@ -76,7 +76,7 @@ export function GameShell({ slug, level }: { slug: string; level: number }) {
   // Load (and reload on "Try again" / "Restart").
   useEffect(() => {
     if (!hydrated) return;
-    if (!user) { router.replace(`/login?next=${encodeURIComponent(`/games/${slug}/play?level=${level}`)}`); return; }
+    if (!user) { router.replace(`/auth/login?next=${encodeURIComponent(`/games/${slug}/play?level=${level}`)}`); return; }
     let alive = true;
     setLoadPct(30);
     gamesApi.start(slug, level)

@@ -102,10 +102,22 @@ model User {
   // LMS
   // ============================================================
 
-  displayName  String?
-  gradeId      String?
-  lastActiveAt DateTime?
-  active       Boolean   @default(true)
+  displayName String?
+  gradeId     String?
+
+  // What a student told us at sign-up. Grade is kept as text because a
+  // learner at home has no school Grade row to point to; dateOfBirth drives
+  // age-appropriate content. Neither grants access to anything.
+  dateOfBirth DateTime? @db.Date
+  gradeLevel  String?
+
+  // A school the student or teacher picked from search without its join
+  // code. It grants nothing: the school's admin approves it (or the code is
+  // entered later), and only then is schoolId set.
+  requestedSchoolId String?
+  requestedSchool   School?   @relation("SchoolJoinRequests", fields: [requestedSchoolId], references: [id], onDelete: SetNull)
+  lastActiveAt      DateTime?
+  active            Boolean   @default(true)
 
   grade Grade? @relation(fields: [gradeId], references: [id])
 
@@ -235,6 +247,7 @@ model User {
   uploadSessions  UploadSession[]    @relation("Uploader")
   contentProgress ContentProgress[]  @relation("ContentProgressStudent")
 
+  @@index([requestedSchoolId])
   @@index([schoolId, role])
   @@index([schoolId, gradeId])
   @@index([districtId, role])
@@ -258,12 +271,13 @@ model District {
 }
 
 model School {
-  id         String    @id @default(cuid())
-  name       String
-  districtId String?
-  createdAt  DateTime  @default(now())
-  district   District? @relation(fields: [districtId], references: [id])
-  members    User[]
+  id           String    @id @default(cuid())
+  name         String
+  districtId   String?
+  createdAt    DateTime  @default(now())
+  district     District? @relation(fields: [districtId], references: [id])
+  members      User[]
+  joinRequests User[]    @relation("SchoolJoinRequests")
 
   // --- LMS additions ---
   slug           String?         @unique
@@ -544,6 +558,12 @@ model Course {
   access           CourseAccess @default(FREE)
   estimatedMinutes Int?
   archivedAt       DateTime?
+
+  // Course access code (e.g. CPP-7K4M9X): stored upper case, compared case
+  // insensitively by normalising input. Random, never derived from the id.
+  accessCode          String?   @unique
+  accessCodeEnabled   Boolean   @default(false)
+  accessCodeRotatedAt DateTime?
 
   // Completion rules. What a student must finish before the course counts as
   // done — read by the completion check, not by the UI.
@@ -964,6 +984,9 @@ model CourseEnrollment {
   lastActivityAt   DateTime?
   completedAt      DateTime?
   enrolledAt       DateTime         @default(now())
+  /// How the student got this course, and who gave it to them.
+  source           EnrollmentSource @default(SELF)
+  assignedById     String?
   course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   student          User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
   class            SchoolClass?     @relation(fields: [classId], references: [id])
@@ -1906,6 +1929,17 @@ enum SupportPriority {
 
 /// How a student may reach a course. Enforced server-side in the course
 /// access check, never by the browser.
+enum EnrollmentSource {
+  SELF
+  ACCESS_CODE
+  PARENT
+  TEACHER
+  SCHOOL
+  SCHOOL_LEADER
+  CLASS
+  ADMIN
+}
+
 enum CourseAccess {
   FREE
   PREMIUM

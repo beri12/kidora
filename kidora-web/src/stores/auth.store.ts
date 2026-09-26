@@ -1,14 +1,12 @@
 import type { AxiosInstance } from 'axios';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import { api, API_URL } from '@/lib/axios';
 import type {
   AuthResponse,
   EmailPending,
   EmailVerifyResponse,
   OrgRequest,
-  PhoneStartResponse,
-  PhoneVerifyResponse,
   Role,
   SignupRoleKey,
   SubmitOrgRequestResponse,
@@ -43,7 +41,9 @@ interface AuthState {
   hydrated: boolean;
   setSession: (r: AuthResponse) => void;
   setTokens: (accessToken: string, refreshToken: string) => Promise<User | null>;
-  login: (email: string, password: string) => Promise<User>;
+  /** False after a sign-in without "Remember me": the session ends with the browser. */
+  remember: boolean;
+  login: (email: string, password: string, opts?: { remember?: boolean; mfaCode?: string }) => Promise<User>;
   /**
    * Creates an email + password account. The API emails a 6-digit code and
    * issues no session until `verifyEmail` sends it back.
@@ -59,10 +59,6 @@ interface AuthState {
   resetPassword: (email: string, code: string, password: string) => Promise<EmailVerifyResponse>;
   /** Trades the one-time code from a social sign-in redirect for a session. */
   exchangeOAuthCode: (code: string) => Promise<EmailVerifyResponse>;
-  /** Texts a one-time code to `phone` (E.164). */
-  startPhone: (phone: string) => Promise<PhoneStartResponse>;
-  /** Verifies the code, signing in or creating the account. */
-  verifyPhone: (phone: string, code: string, name?: string) => Promise<PhoneVerifyResponse>;
   /**
    * Answers "How will you use Kidora?".
    *
@@ -104,15 +100,41 @@ interface AuthState {
 const ROLE_COOKIE = 'kidora_role';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days, same order as the refresh token
 
-function syncRoleCookie(role: Role | null | undefined) {
+function syncRoleCookie(role: Role | null | undefined, remember = true) {
   if (typeof document === 'undefined') return; // SSR / tests
   const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+  // Without "Remember me" the cookie has no Max-Age, so it ends with the browser too.
+  const age = remember ? `; Max-Age=${COOKIE_MAX_AGE}` : '';
   document.cookie = role
-    ? `${ROLE_COOKIE}=${role}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax${secure}`
+    ? `${ROLE_COOKIE}=${role}; Path=/${age}; SameSite=Lax${secure}`
     : `${ROLE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
 }
 
-// Auth store — persisted to localStorage. The axios interceptor reads
+/**
+ * "Remember me" decides where the session lives: localStorage survives the
+ * browser closing, sessionStorage does not. Reads check both, so a session
+ * is found wherever it was written.
+ */
+const sessionAwareStorage: StateStorage = {
+  getItem: (name) => {
+    if (typeof window === 'undefined') return null;
+    try { return localStorage.getItem(name) ?? sessionStorage.getItem(name); } catch { return null; }
+  },
+  setItem: (name, value) => {
+    try {
+      const remember = (JSON.parse(value) as { state?: { remember?: boolean } }).state?.remember !== false;
+      (remember ? localStorage : sessionStorage).setItem(name, value);
+      (remember ? sessionStorage : localStorage).removeItem(name);
+    } catch {
+      // Storage disabled (private mode): the session lives in memory only.
+    }
+  },
+  removeItem: (name) => {
+    try { localStorage.removeItem(name); sessionStorage.removeItem(name); } catch { /* ignore */ }
+  },
+};
+
+// Auth store — persisted to localStorage (or sessionStorage without "Remember me"). The axios interceptor reads
 // accessToken/refresh() from here, so keep it framework-agnostic.
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -121,6 +143,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       hydrated: false,
+      remember: true,
 
       // Accepts either camelCase (accessToken/refreshToken) or snake_case
       // (access_token/refresh_token) from the backend response, so a mismatch
@@ -153,8 +176,11 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      login: async (email, password) => {
-        const { data } = await api.post<AuthResponse>('/auth/login', { email, password });
+      login: async (email, password, opts = {}) => {
+        const { data } = await api.post<AuthResponse>('/auth/login', {
+          email, password, ...(opts.mfaCode ? { mfaCode: opts.mfaCode } : {}),
+        });
+        set({ remember: opts.remember !== false });
         get().setSession(data);
         return data.user;
       },
@@ -191,21 +217,6 @@ export const useAuthStore = create<AuthState>()(
 
       exchangeOAuthCode: async (code) => {
         const { data } = await api.post<EmailVerifyResponse>('/auth/oauth/exchange', { code });
-        get().setSession(data);
-        return data;
-      },
-
-      startPhone: async (phone) => {
-        const { data } = await api.post<PhoneStartResponse>('/auth/phone/start', { phone });
-        return data;
-      },
-
-      verifyPhone: async (phone, code, name) => {
-        const { data } = await api.post<PhoneVerifyResponse>('/auth/phone/verify', {
-          phone,
-          code,
-          ...(name ? { name } : {}),
-        });
         get().setSession(data);
         return data;
       },
@@ -254,7 +265,7 @@ export const useAuthStore = create<AuthState>()(
         return inflightRefresh;
       },
 
-      logout: () => set({ user: null, accessToken: null, refreshToken: null }),
+      logout: () => set({ user: null, accessToken: null, refreshToken: null, remember: true }),
 
       hasPlan: () => {
         const p = get().user?.subscriptionPlan;
@@ -263,13 +274,15 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'cl.auth',
+      storage: createJSONStorage(() => sessionAwareStorage),
+      partialize: (s) => ({ user: s.user, accessToken: s.accessToken, refreshToken: s.refreshToken, remember: s.remember }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         state.hydrated = true;
         // A returning visitor has the session in localStorage but no cookie
         // (it may have expired, or been dropped). Put it back before the next
         // navigation asks the middleware about it.
-        syncRoleCookie(state.user?.role ?? null);
+        syncRoleCookie(state.user?.role ?? null, state.remember);
       },
     },
   ),
@@ -315,7 +328,7 @@ async function doRefresh(client?: AxiosInstance): Promise<string | null> {
 // request, refresh failure, logout — goes through the store, so subscribing
 // once here is what keeps the cookie honest, rather than a call bolted onto
 // each of them that the next one will forget.
-useAuthStore.subscribe((s) => syncRoleCookie(s.user?.role ?? null));
+useAuthStore.subscribe((s) => syncRoleCookie(s.user?.role ?? null, s.remember));
 
 // Keep tabs in step: when another tab signs in, out, or rotates the refresh
 // token, reload the persisted session instead of holding a stale copy.

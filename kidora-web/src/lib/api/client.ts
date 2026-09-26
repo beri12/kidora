@@ -169,6 +169,18 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
   return (env && typeof env === "object" && "data" in env ? env.data : data) as T;
 }
 
+/**
+ * The server's own message for a 4xx, for endpoints whose refusals are
+ * written for people ("That code didn't work…", "This is a premium
+ * course…"). Null for 5xx and network errors, which keep the generic wording.
+ */
+export function serverMessage(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.status >= 500 || err.status === 0) return null;
+  const body = err.payload as { error?: { message?: unknown }; message?: unknown } | undefined;
+  const msg = (typeof body?.error === "object" ? body.error?.message : undefined) ?? body?.message;
+  return typeof msg === "string" && msg.trim() ? msg : err.message;
+}
+
 export const api = {
   get: <T>(path: string, query?: Query) => request<T>("GET", path, undefined, query),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),

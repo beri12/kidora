@@ -15,7 +15,7 @@ export default function GameLanding({ params }: { params: Promise<{ slug: string
   const { slug } = use(params);
   const router = useRouter();
   const { user, hydrated } = useAuthStore();
-  useEffect(() => { if (hydrated && !user) router.replace(`/login?next=/games/${slug}`); }, [hydrated, user, router, slug]);
+  useEffect(() => { if (hydrated && !user) router.replace(`/auth/login?next=/games/${slug}`); }, [hydrated, user, router, slug]);
 
   const q = useQuery({ queryKey: ['games', slug], queryFn: () => gamesApi.detail(slug), enabled: Boolean(user) });
   const g = q.data;

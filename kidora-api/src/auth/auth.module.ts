@@ -2,15 +2,12 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
-import { PhoneAuthController, UsersRoleController } from './phone-auth.controller';
+import { RoleController, UsersRoleController } from './role.controller';
 import { OAuthController } from './oauth.controller';
 import { AuthService } from './services/auth.service';
 import { TokenService } from './services/token.service';
 import { MfaService } from './services/mfa.service';
 import { OAuthService } from './services/oauth.service';
-import { SmsMfaService } from './services/sms-mfa.service';
-import { PhoneAuthService } from './services/phone-auth.service';
-import { OtpStore } from './services/otp.store';
 import { EmailVerificationService } from './services/email-verification.service';
 import { RegistrationService } from './services/registeration.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -34,15 +31,12 @@ const oauthStrategies = [
 
 @Module({
   imports: [PassportModule, JwtModule.register({})],
-  controllers: [AuthController, PhoneAuthController, OAuthController, UsersRoleController],
+  controllers: [AuthController, RoleController, OAuthController, UsersRoleController],
   providers: [
     AuthService,
     TokenService,
     MfaService,
     OAuthService,
-    SmsMfaService,
-    PhoneAuthService,
-    OtpStore,
     EmailVerificationService,
     RegistrationService,
     JwtStrategy,

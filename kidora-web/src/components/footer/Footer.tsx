@@ -1,16 +1,19 @@
 'use client';
 import Link from 'next/link';
 
+// Only pages that exist: a footer full of dead links reads as abandoned.
 const COLUMNS: [string, string[]][] = [
-  ['Company', ['About', 'Careers', 'Press', 'Blog']],
-  ['Product', ['Courses', 'Games', 'Kidora Plus', 'AI Tutor']],
+  ['Learn', ['Courses', 'Games', 'AI Tutor', 'Pricing']],
   ['For', ['Teachers', 'Families', 'Schools', 'Districts']],
-  ['Support', ['Help Center', 'Contact', 'Privacy', 'Terms']],
+  ['Account', ['Log in', 'Sign up', 'Forgot password']],
+  ['Legal', ['Privacy', 'Terms']],
 ];
 
 const LINK_HREF: Record<string, string> = {
-  Teachers: '/for-teachers', Families: '/for-families', Schools: '/for-schools', Districts: '/for-schools',
-  'Kidora Plus': '/plus', 'AI Tutor': '/ai-tutor', Games: '/games', Courses: '/courses',
+  Courses: '/courses', Games: '/games', 'AI Tutor': '/ai-tutor', Pricing: '/pricing',
+  Teachers: '/for-teachers', Families: '/for-families', Schools: '/pricing', Districts: '/pricing',
+  'Log in': '/auth/login', 'Sign up': '/auth/signup', 'Forgot password': '/auth/forgot-password',
+  Privacy: '/privacy', Terms: '/terms',
 };
 
 export function Footer() {
@@ -23,18 +26,13 @@ export function Footer() {
             <span className="font-display font-extrabold text-lg text-brand-900">Kidora</span>
           </div>
           <p className="font-bold text-brand-500 text-sm">Our mission is to give every child an education they love.</p>
-          <div className="flex gap-2 mt-4">
-            {['📘', '🐦', '📸'].map((s) => (
-              <span key={s} className="w-9 h-9 grid place-items-center rounded-xl bg-brand-100 text-lg">{s}</span>
-            ))}
-          </div>
         </div>
         {COLUMNS.map((col) => (
           <div key={col[0]}>
             <div className="font-display font-extrabold text-brand-900 mb-3">{col[0]}</div>
             <div className="flex flex-col gap-2">
               {col[1].map((l) => (
-                <Link key={l} href={LINK_HREF[l] ?? '/'} className="font-bold text-brand-500 text-sm hover:text-brand-800 transition-colors">{l}</Link>
+                <Link key={l} href={LINK_HREF[l]} className="font-bold text-brand-500 text-sm hover:text-brand-800 transition-colors">{l}</Link>
               ))}
             </div>
           </div>

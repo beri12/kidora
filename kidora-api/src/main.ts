@@ -11,7 +11,6 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { redisUrl } from './config/redis.config';
-import { TwilioSmsProvider } from './infrastructure/sms/providers/sms-provider';
 import { callbackUrlProblems, oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
@@ -102,24 +101,17 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Kidora API running on http://localhost:${port}/api  (docs: /api/docs)`);
   reportSignInSetup();
-  // Checked after listening so a slow Twilio never delays startup.
-  void new TwilioSmsProvider().diagnose().then((notes) => {
-    for (const n of notes) console.log(`  SMS check: ${n}`);
-  });
 }
 
 /**
  * What sign-in can actually do on this machine, printed once at boot.
  *
- * "I put it in .env and it still doesn't work" is nearly always one of two
- * things, and neither is visible from the code: a social provider whose
- * redirect URI is not the one registered with the provider, or Twilio on a
- * trial account. Both are printed here with the exact value to copy, so the
- * mismatch is obvious before anyone opens a browser.
+ * "I put it in .env and it still doesn't work" is nearly always a social
+ * provider whose redirect URI is not the one registered with it. The exact
+ * value to copy is printed here, so the mismatch is obvious before anyone
+ * opens a browser.
  */
 function reportSignInSetup() {
-  const on = (v?: string) => Boolean(v && v.trim());
-
   // Read through the same helper the strategies use, so this can never print
   // a URL different from the one actually sent to the provider.
   const providers = ['google', 'facebook', 'tiktok', 'github', 'microsoft', 'apple'];
@@ -139,20 +131,7 @@ function reportSignInSetup() {
   console.log('\nSign-in:');
   console.log(lines.length ? lines.join('\n') : '  Social sign-in: off (no provider client ids set)');
 
-  const twilio = on(process.env.TWILIO_ACCOUNT_SID ?? process.env.TWILIO_SID)
-    && on(process.env.TWILIO_AUTH_TOKEN ?? process.env.TWILIO_TOKEN)
-    && on(process.env.TWILIO_PHONE_NUMBER ?? process.env.TWILIO_FROM
-      ?? process.env.TWILIO_SENDER_ID ?? process.env.TWILIO_MESSAGING_SERVICE_SID);
-
   const prod = process.env.NODE_ENV === 'production';
-  console.log(
-    twilio
-      ? '  SMS: Twilio configured — codes are texted to the number entered. On a TRIAL account only\n'
-        + '       verified numbers receive texts; any other number gets a clear "couldn\'t send" error.'
-      : prod
-        ? '  SMS: Twilio NOT configured — phone sign-in will answer 503 until it is.'
-        : '  SMS: Twilio not configured — one-time codes are printed in this log (never sent to the browser).',
-  );
   console.log(
     '  Email codes: sent through ' + (process.env.SMTP_HOST ?? 'localhost') + ':' + (process.env.SMTP_PORT ?? '1025')
       + (prod ? '' : ' — if unreachable, the code is printed in this log instead.'),

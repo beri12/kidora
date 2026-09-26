@@ -8,12 +8,11 @@ import {
 import * as bcrypt from 'bcrypt';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { SmsService } from '../../infrastructure/sms/sms.service';
 import { CacheService } from '../../infrastructure/cache/cache.service';
 import { TokenService } from './token.service';
 import { MfaService } from './mfa.service';
 import { RegisterDto, LoginDto, SELF_SIGNUP_ROLES } from '../dto/auth.dto';
-import { SelectRoleDto } from '../dto/phone-auth.dto';
+import { SelectRoleDto } from '../dto/role.dto';
 import { isVerifiedRole } from '../../org/dto/org-request.dto';
 import { RegistrationService } from './registeration.service';
 import { EmailVerificationService } from './email-verification.service';
@@ -27,7 +26,6 @@ export class AuthService {
     private prisma: PrismaService,
     private tokens: TokenService,
     private mfa: MfaService,
-    private sms: SmsService,
     private cache: CacheService,
     private registration: RegistrationService,
     private emailVerification: EmailVerificationService,
@@ -70,21 +68,6 @@ export class AuthService {
       throw new ConflictException('An account with this email already exists. Sign in instead.');
     }
 
-    // Normalised up front so the uniqueness check and the stored value agree,
-    // and so SMS login later finds the account by the same string Twilio uses.
-    let phone: string | null = null;
-    if (dto.phone?.trim()) {
-      phone = this.sms.normalize(dto.phone);
-      if (!phone) {
-        throw new BadRequestException(
-          'Enter a valid mobile number, including the country code (for example +251912345678).',
-        );
-      }
-      if (await this.prisma.user.findUnique({ where: { phone } })) {
-        throw new ConflictException('That mobile number is already registered');
-      }
-    }
-
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const role = this.resolveRole(dto.role);
 
@@ -92,7 +75,6 @@ export class AuthService {
       data: {
         name: dto.name.trim(),
         email,
-        phone,
         passwordHash,
         role,
         emailVerified: false,
@@ -161,8 +143,11 @@ export class AuthService {
     // A student or teacher can bring a school join code (and a student a
     // grade). This is the same setup email registration runs — reward wallet,
     // school membership, class grade — so a student who signed up with a
-    // phone number or Google lands in exactly the same place. It runs first:
+    // social account lands in exactly the same place. It runs first:
     // a bad school code must leave the account unanswered, not half-made.
+    if (dto.role === Role.CHILD && (!dto.dateOfBirth || !dto.gradeLevel?.trim())) {
+      throw new BadRequestException('Please add your date of birth and grade.');
+    }
     if (dto.role === Role.CHILD || dto.role === Role.TEACHER) {
       await this.registration.applyProfile(
         { id: userId, name: dto.name?.trim() || existing.name, role: dto.role, schoolId: existing.schoolId },
@@ -193,19 +178,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ip = '', ua = '') {
-    // The login form accepts either identifier; whichever arrived is what we
-    // look the account up by.
-    let where: Prisma.UserWhereUniqueInput;
-    if (dto.email) {
-      where = { email: dto.email.trim().toLowerCase() };
-    } else if (dto.phone) {
-      const phone = this.sms.normalize(dto.phone);
-      if (!phone) throw new UnauthorizedException('Invalid credentials');
-      where = { phone };
-    } else {
-      throw new BadRequestException('Enter your email address or mobile number.');
-    }
-
+    const where: Prisma.UserWhereUniqueInput = { email: dto.email.trim().toLowerCase() };
     const user = await this.prisma.user.findUnique({ where, include: { subscription: true } });
     if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
     if (user.lockedUntil && user.lockedUntil > new Date()) throw new ForbiddenException('Account locked. Try again later.');

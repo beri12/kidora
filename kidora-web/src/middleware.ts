@@ -26,7 +26,7 @@ export function middleware(req: NextRequest) {
 
   if (!role) {
     const url = req.nextUrl.clone();
-    url.pathname = '/login';
+    url.pathname = '/auth/login';
     url.searchParams.set('next', pathname);
     return NextResponse.redirect(url);
   }

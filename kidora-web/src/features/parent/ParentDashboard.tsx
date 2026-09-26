@@ -5,6 +5,7 @@ import { Star, BookOpen, Target, Trophy, Coins, CheckCircle2, AlertCircle, Light
 import { ParentShell } from "./ParentShell";
 import { useSelectedChild } from "./useSelectedChild";
 import { ChildGameProgress } from "@/features/games/ChildGameProgress";
+import { AssignCourseCard } from "./AssignCourseCard";
 import { useParentDashboard } from "@/lib/hooks/queries";
 import { TopHeader, StatCard, Card, CardHeader, CardBody, ProgressBar, MinutesBarChart, Avatar, Pill, EmptyState, ErrorState, DashboardSkeleton, RangePicker, cn } from "@/components/dashboard";
 import { dueLabel, fmtDate, fmtMinutes, timeAgo } from "@/lib/format";
@@ -24,7 +25,8 @@ export function ParentDashboardPage() {
         notifications={d?.unreadNotifications} notificationsHref="/parent/notifications"
         user={sel.child ? { name: sel.child.name, avatarUrl: sel.child.avatarUrl, avatarColor: sel.child.avatarColor, href: "/parent/overview" } : undefined} />
     )}>
-      {sel.children.isSuccess && !sel.children.data.length
+      {/* The dashboard can answer before the children list does; with no child it has no KPIs to show. */}
+      {(sel.children.isSuccess && !sel.children.data.length) || (d && !d.kpis)
         ? <EmptyState icon={<Users2 size={22} />} title="No children linked yet" body="Ask your child's school for a link code, or add a child to get started." action={{ label: "Link a child", href: "/parent/children/link" }} />
         : q.isPending ? <DashboardSkeleton /> : q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : d && <Body d={d} childName={sel.child ? first(sel.child.name) : "your child"} />}
     </ParentShell>
@@ -121,6 +123,7 @@ function Body({ d, childName }: { d: Data; childName: string }) {
       </div>
 
       {d.selectedChildId && <ChildGameProgress childId={d.selectedChildId} childName={childName} />}
+      {d.selectedChildId && <AssignCourseCard childId={d.selectedChildId} childName={childName} />}
 
       <section className="grid gap-3 rounded-3xl bg-gradient-to-r from-brand-600 to-brand-400 p-5 text-white lg:grid-cols-[minmax(0,1fr)_2fr] lg:items-center" aria-labelledby="tips">
         <div className="flex items-center gap-3"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/15" aria-hidden><Heart size={22} /></span><div><p id="tips" className="text-lg font-bold">You're doing great, {childName}! 💜</p><p className="text-sm text-white/85">Learning a little every day leads to big achievements tomorrow.</p></div></div>

@@ -1,13 +1,11 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { Suspense } from 'react';
-import { AuthFlow } from '@/components/auth/AuthFlow';
-
-/** Sign in — Google, Phone or TikTok first; email is the secondary option. */
-export default function Page() {
-  return (
-    <Suspense fallback={null}>
-      <AuthFlow mode="signin" />
-    </Suspense>
-  );
+/** Old sign-in URL, kept so bookmarks and emails still work. Query params (next, role) carry over. */
+export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[]>> }) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(await searchParams)) {
+    if (k !== 'method' && typeof v === 'string') q.set(k === 'redirect' ? 'next' : k, v);
+  }
+  const qs = q.toString();
+  redirect(qs ? `/auth/login?${qs}` : '/auth/login');
 }

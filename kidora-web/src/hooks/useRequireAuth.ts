@@ -12,7 +12,7 @@ export function useRequireAuth(allow?: Role[]) {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!user) { router.replace('/login'); return; }
+    if (!user) { router.replace('/auth/login'); return; }
     if (allow && !allow.includes(user.role)) router.replace('/dashboard');
   }, [user, hydrated, allow, router]);
 

@@ -28,7 +28,7 @@ interface Props {
  * It is a real link underneath (middle-click, ctrl-click and keyboard all
  * work), and under prefers-reduced-motion it simply navigates.
  */
-export function SignupButton({ href = '/join', children, className, onNavigate, attract = true }: Props) {
+export function SignupButton({ href = '/auth/signup', children, className, onNavigate, attract = true }: Props) {
   const router = useRouter();
   const ref = useRef<HTMLAnchorElement>(null);
   const [going, setGoing] = useState(false);

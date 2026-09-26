@@ -22,7 +22,7 @@ export default function SchoolsLanding() {
           <h1 className="font-display font-extrabold text-5xl leading-[1.05]">Give your whole school superpowers</h1>
           <p className="font-bold text-brand-600 text-lg mt-4">Manage classes, teachers and student analytics from one dashboard — with the reports leaders need and the safety families trust.</p>
           <div className="flex gap-3 mt-6 flex-wrap">
-            <Link href="/join?role=SCHOOL"><Button size="lg" variant="grass">Request school setup →</Button></Link>
+            <Link href="/auth/signup?role=SCHOOL"><Button size="lg" variant="grass">Request school setup →</Button></Link>
             <Link href="/dashboard/admin"><Button size="lg" variant="outline">View demo dashboard</Button></Link>
           </div>
         </div>
@@ -57,7 +57,7 @@ export default function SchoolsLanding() {
           <div className="grid sm:grid-cols-2 gap-2 text-left my-6">
             {PLAN_FEATS.map((ft) => <div key={ft} className="flex gap-2 font-bold text-brand-800"><span className="text-grass-600">✓</span>{ft}</div>)}
           </div>
-          <Link href="/join?role=SCHOOL"><Button size="lg" variant="grass" className="w-full">Get started</Button></Link>
+          <Link href="/auth/signup?role=SCHOOL"><Button size="lg" variant="grass" className="w-full">Get started</Button></Link>
         </div>
       </section>
       <Footer />

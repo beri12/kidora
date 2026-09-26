@@ -115,6 +115,8 @@ export interface MyCourse {
   currentLesson: { id: string; title: string; order: number } | null;
   lastActivityAt: string | null; completedAt: string | null;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+  /** How the course reached the student. */
+  source?: "SELF" | "ACCESS_CODE" | "PARENT" | "TEACHER" | "SCHOOL" | "SCHOOL_LEADER" | "CLASS" | "ADMIN";
 }
 
 export interface BrowseQuery {
@@ -157,4 +159,31 @@ export const learningApi = {
   /** Readings and documents: there is no watch time to measure. */
   markContentComplete: (contentItemId: string) =>
     api.post<{ ok: true; lessonCompleted: boolean }>(`/learning/content/${contentItemId}/complete`, {}),
+};
+
+/* ------------------------------------------------------ course access codes */
+
+export interface JoinByCodeResult {
+  enrolled: true; alreadyEnrolled: boolean;
+  course: { id: string; slug: string; title: string; shortDescription: string; thumbnailUrl: string | null; accent: string };
+}
+export interface CourseCodeState { code: string | null; enabled: boolean; rotatedAt: string | null }
+export interface AssignableStudent {
+  id: string; name: string; avatarColor: string; grade: string | null; enrolled: boolean; source: string | null;
+}
+export interface AssignResult {
+  enrolled: number; alreadyEnrolled: number; notAllowed: number;
+  results: { studentId: string; status: "ENROLLED" | "ALREADY_ENROLLED" | "NOT_ALLOWED"; message?: string }[];
+}
+
+export const courseAccessApi = {
+  /** Student: join with a code such as CPP-7K4M9X. The server decides everything. */
+  join: (code: string) => api.post<JoinByCodeResult>("/courses/access-code/join", { code }),
+  /** Teacher / school: see, create or replace, and switch off a course's code. */
+  get: (courseId: string) => api.get<CourseCodeState>(`/courses/${courseId}/access-code`),
+  rotate: (courseId: string) => api.post<CourseCodeState>(`/courses/${courseId}/access-code/rotate`, {}),
+  setEnabled: (courseId: string, enabled: boolean) => api.patch<CourseCodeState>(`/courses/${courseId}/access-code`, { enabled }),
+  /** Parent / teacher / school: whom they can enrol, and enrolling them. */
+  assignable: (courseId: string) => api.get<AssignableStudent[]>(`/courses/${courseId}/assignable-students`),
+  assign: (courseId: string, studentIds: string[]) => api.post<AssignResult>(`/courses/${courseId}/assign`, { studentIds }),
 };

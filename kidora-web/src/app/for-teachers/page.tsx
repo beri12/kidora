@@ -27,7 +27,7 @@ export default function TeachersLanding() {
           <h1 className="font-display font-extrabold text-5xl leading-[1.05]">Build the best classroom yet</h1>
           <p className="font-bold text-brand-600 text-lg mt-4">From attendance to timers and everything in between, the Teacher Toolkit saves time and energy for what really matters — helping kids grow. Free for teachers, forever.</p>
           <div className="flex gap-3 mt-6 flex-wrap">
-            <Link href="/join?role=TEACHER"><Button size="lg">Get started free 🍎</Button></Link>
+            <Link href="/auth/signup?role=TEACHER"><Button size="lg">Get started free 🍎</Button></Link>
             <Link href="/plus"><Button size="lg" variant="outline">See Kidora Plus</Button></Link>
           </div>
         </div>
@@ -62,7 +62,7 @@ export default function TeachersLanding() {
         <div className="rounded-[32px] bg-gradient-to-br from-brand-600 to-brand-800 text-white p-10 text-center">
           <h2 className="font-display font-extrabold text-3xl">Ready to bring your classroom to life?</h2>
           <p className="font-bold opacity-90 mt-2 mb-6">Join millions of teachers already using Kidora.</p>
-          <Link href="/join?role=TEACHER"><Button size="lg" variant="grass">Create teacher account 🍎</Button></Link>
+          <Link href="/auth/signup?role=TEACHER"><Button size="lg" variant="grass">Create teacher account 🍎</Button></Link>
         </div>
       </section>
       <Footer />

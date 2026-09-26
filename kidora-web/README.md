@@ -16,11 +16,15 @@ Point `NEXT_PUBLIC_API_URL` at the Kidora API (default `http://localhost:4000/ap
 ## Folder structure (`src/`)
 ```
 app/
-  (auth)/join                       # THE entry point: phone → code → role
-  (auth)/login                      # sign in (phone first, email/password behind a tap)
-  (auth)/auth/callback              # social login lands here with the tokens
+  (auth)/auth/signup                # create account (email or Google / Facebook / TikTok)
+  (auth)/auth/signup/role           # "How will you use Kidora?"
+  (auth)/auth/signup/profile        # student info / school / leader verification
+  (auth)/auth/signup/complete       # done → dashboard
+  (auth)/auth/login                 # welcome back (email + password, remember me)
+  (auth)/auth/forgot-password, reset-password
+  (auth)/auth/callback              # social login lands here with a one-time code
   (auth)/pending                    # waiting on school / district approval
-  (auth)/register                   # legacy email + password signup
+  (auth)/login, join, signup, register  # old URLs, redirect to /auth/*
   dashboard/                        # role router + per-role dashboards
     admin, teacher, teacher/upload, parent, child
   courses/                          # catalog (premium-gated)
@@ -32,64 +36,45 @@ app/
   account/                          # subscription + usage + invoices
   pricing/                          # Stripe + PayPal checkout
   layout.tsx, page.tsx, globals.css
-components/  ui · auth (PhoneField · CountryPicker · OtpInput · RolePicker · AuthShell) ·
+components/  ui · auth (kidora/ layouts · ui · illustrations, SignupForm, LoginForm, CodeStep, SchoolSearch) ·
              navbar · sidebar · shared
 features/    auth · courses · teachers · payments · avatar · rewards ·
              ai-tutor · subscription · students · games   (typed React Query hooks)
 hooks/       useRequireAuth · useLiveGame
 lib/         axios.ts · query-client.ts · utils.ts
 stores/      auth.store.ts · ui.store.ts   (Zustand, persisted)
-types/  constants/  providers/     # constants/countries.ts = 238 dial codes + flags
+types/  constants/  providers/
 ```
 
 ## Signing in
-There is one door: **`/join`**. A visitor types a phone number, gets a 6-digit code by SMS,
-and is in — no password, and no "are you a parent / teacher / school?" question before the
-account even exists. That question (`How will you use Kidora?`) is asked once, *after*
-sign-in, and only for accounts the API flags with `needsRole`.
+Email + password or Google / Facebook / TikTok — phone sign-in has been removed.
+`/auth/signup` creates the account and emails a 6-digit code; after it comes
+**How will you use Kidora?** (`/auth/signup/role`), then the profile step: students give
+date of birth and grade and may pick their school (a request the school approves, or joined
+at once with the school code), teachers may pick a school, and School / District Leaders go
+to `OrgVerifyForm` — an organisation code admits them at once, otherwise their details are
+reviewed and they wait on `/pending`. Nothing administrative is granted by choosing a card.
 
-Parent and teacher are granted immediately. **School Leader and District Leader are not**:
-picking one leads to `OrgVerifyForm`, where an organisation code admits them at once or
-their details go for review, and then to `PendingApproval` — which polls every 30 seconds
-and on window focus, so an approval that lands while the tab is open just opens the door.
-The account keeps its existing role for the whole wait; nothing is granted until a reviewer
-says so.
+"Remember me" keeps the session in localStorage; without it the session lives in
+sessionStorage and ends with the browser. `?next=` is only followed for same-site paths.
 
-The country picker in `constants/countries.ts` covers every dial code. Flags are not
-shipped as images: `flagEmoji('ET')` maps the ISO code onto regional indicator symbols, so
-a flag can never go missing or drift out of sync with its country. Search matches a
-country name, an ISO code or a dial code (`eth`, `ET`, `+251` all find Ethiopia), and the
-list is fully keyboard-driven.
-
-`toE164(dial, national)` drops leading zeros before building the number sent to the API:
-people write `0911 22 33 44` for a number that is `+251911223344` internationally, and
-typing that trunk prefix is the most common way to have an OTP delivered nowhere.
+Students join courses with a teacher's code on their dashboard ("Have a course code?"),
+teachers manage the code on the course's Publish step, and parents add courses for their
+child from the parent dashboard. The server decides every one of these.
 
 ## Testing the sign-up chain in a browser
 
-`scripts/walkthrough.mjs` clicks the whole chain the way a person would — phone, code,
-role, verification, pending, approval, dashboard — asserting on each step and writing
-screenshots as it goes:
+`scripts/walkthrough.mjs` signs up as each role through the real pages — form, emailed code,
+role, profile, complete, dashboard — asserting each step and writing screenshots:
 
 ```bash
 npm run dev                  # this app
-# ...and the API, in another terminal, with Twilio unset and AUTH_TEST_EXPOSE_OTP=true
-npx playwright install chromium   # once — it drives a real browser
-npm run walkthrough
+# ...and the API with AUTH_TEST_EXPOSE_OTP=true (development only)
+npm run walkthrough          # CHROME=/path/to/chromium if Playwright can't find one
 ```
 
-`WEB`, `API`, `SHOTS` and `CHROME` override the defaults if your ports differ or
-Playwright cannot find a browser.
-
-It needs an account that is already `SUPER_ADMIN` to play the reviewer; point
-`ADMIN_PHONE` at one and promote it once:
-
-```sql
-UPDATE "User" SET role = 'SUPER_ADMIN', "roleConfirmed" = true WHERE phone = '+2519...';
-```
-
-The API side has its own end-to-end script covering the same chain plus the rate limits
-and upload rules — `kidora-api/scripts/e2e-auth-flow.sh`.
+The API has its own end-to-end script for the same chain plus course codes, assignment
+rules and access checks — `kidora-api/scripts/e2e-auth-flow.sh`.
 
 ## Backend integration
 `lib/axios.ts` creates one client pointed at `NEXT_PUBLIC_API_URL`, attaches the JWT from

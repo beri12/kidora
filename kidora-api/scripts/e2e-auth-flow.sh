@@ -2,33 +2,32 @@
 #
 # End-to-end check of the whole sign-up chain, against a running API:
 #
-#   phone + OTP  →  choose role  →  (school/district) verification
-#                →  pending  →  approved  →  permissions active
+#   email + password  →  emailed code  →  choose role (+ student profile)
+#                     →  (school/district) verification → pending → approved
 #
-# plus the OTP rate limits, the upload rules and the role guards.
+# plus course access codes, course assignment, the role guards, uploads, and
+# that the retired phone sign-in routes are really gone.
 #
 # Usage:
 #   AUTH_TEST_EXPOSE_OTP=true npm run start:dev   # in another terminal
 #   ./scripts/e2e-auth-flow.sh        # or: API=http://host:4000/api ./scripts/...
 #
-# Requires Twilio to be UNCONFIGURED and the API started with
-# AUTH_TEST_EXPOSE_OTP=true, so it returns the code as `devCode` for this
-# script. Nothing else ever gets the code back: real users only receive it by
-# SMS, and the web app never shows it.
-# Each run uses a fresh block of numbers (+2519<run><n>), so runs never collide
-# and nothing has to be cleaned up between them. To remove them all later:
-#   DELETE FROM "OrgAccessRequest" WHERE "userId" IN (SELECT id FROM "User" WHERE phone LIKE '+2519%');
-#   DELETE FROM "AuditLog"         WHERE "actorId" IN (SELECT id FROM "User" WHERE phone LIKE '+2519%');
-#   DELETE FROM "User"             WHERE phone LIKE '+2519%';
+# The API must be started with AUTH_TEST_EXPOSE_OTP=true (never in
+# production): it then returns the emailed code as `devCode` for this script.
+# Real users only ever receive the code by email.
+#
+# Each run uses fresh addresses (e2e.<run>.<n>@example.com). To remove them later:
+#   DELETE FROM "Course" WHERE id LIKE 'e2e-course-%';
+#   DELETE FROM "User" WHERE email LIKE 'e2e.%@example.com';
 #
 set -uo pipefail
 
 API="${API:-http://localhost:4000/api}"
 PASS=0; FAIL=0
 
-# A block of numbers unique to this run: +2519<4-digit run><4-digit index>.
-RUN=$(printf '%04d' $(( $(date +%s) % 10000 )))
-num() { printf '+2519%s%04d' "$RUN" "$1"; }
+# Addresses unique to this run.
+RUN="$(date +%s)"
+mail() { printf 'e2e.%s.%s@example.com' "$RUN" "$1"; }
 BOLD=$'\e[1m'; GREEN=$'\e[32m'; RED=$'\e[31m'; DIM=$'\e[2m'; OFF=$'\e[0m'
 
 step()  { printf "\n${BOLD}%s${OFF}\n" "$*"; }
@@ -58,59 +57,22 @@ except Exception:
 
 sql() { printf '%s' "$1" | npx --no-install prisma db execute --stdin --schema prisma/schema.prisma >/dev/null 2>&1; }
 
-# Asks for a code and echoes the response body.
-#
-# /auth/phone/start is throttled to 6 requests a minute per IP, because each
-# one costs a real SMS. This script needs about ten of them, so it paces
-# itself just under that limit rather than hammering and backing off — the
-# throttle is a thing being tested, not an obstacle to route around.
-OTP_MIN_GAP="${OTP_MIN_GAP:-12}"
-# Kept in a file, not a variable: start_otp is called inside $(...), which is
-# a subshell, so anything it assigns is lost the moment it returns.
-LAST_OTP_FILE="$(mktemp)"; echo 0 > "$LAST_OTP_FILE"
-trap 'rm -f "$LAST_OTP_FILE"' EXIT
+PW='Kidora2026!'
 
-start_otp() {
-  local phone="$1" attempt=0 body http now wait
-  while : ; do
-    now=$(date +%s)
-    wait=$(( $(cat "$LAST_OTP_FILE") + OTP_MIN_GAP - now ))
-    [ "$wait" -gt 0 ] && sleep "$wait"
-    date +%s > "$LAST_OTP_FILE"
-
-    body=$(C -w '\n%{http_code}' -X POST "$API/auth/phone/start" \
-      -H 'Content-Type: application/json' -d "{\"phone\":\"$phone\"}")
-    http=$(printf '%s' "$body" | tail -n1)
-    body=$(printf '%s' "$body" | sed '$d')
-
-    case "$http" in
-      200|201) printf '%s' "$body"; return 0 ;;
-      429)
-        attempt=$((attempt+1))
-        [ "$attempt" -gt 6 ] && { printf '%s' "$body"; return 1; }
-        note "throttled — waiting for the window to clear"
-        sleep 62
-        ;;
-      *) printf '%s' "$body"; return 1 ;;
-    esac
-  done
-}
-
-# Sign in, creating the account on first use, and echo the whole response.
+# Register, confirm the emailed code, and echo the verify response (tokens).
 signin() {
-  local phone="$1" start otp out
-  start=$(start_otp "$phone") || { echo '{"error":"could not get a code"}'; return; }
-  otp=$(get "$start" '["devCode"]')
+  local email="$1" reg otp out
+  reg=$(C -X POST "$API/auth/register" -H 'Content-Type: application/json' \
+    -d "{\"name\":\"E2E $2\",\"email\":\"$email\",\"password\":\"$PW\"}")
+  otp=$(get "$reg" '["devCode"]')
   if ! printf '%s' "$otp" | grep -Eq '^[0-9]{6}$'; then
-    echo "{\"error\":\"no usable code for $phone\",\"got\":\"$(printf '%s' "$otp" | head -c 60)\"}"
-    return
+    bad "no usable code for $email — $(printf '%s' "$reg" | head -c 160)" >&2
+    echo '{}'; return
   fi
-  out=$(C -X POST "$API/auth/phone/verify" -H 'Content-Type: application/json' \
-    -d "{\"phone\":\"$phone\",\"code\":\"$otp\"}")
-  # Without this, a failed sign-in shows up later as a row of confusing 401s
-  # on assertions that have nothing to do with the real problem.
+  out=$(C -X POST "$API/auth/email/verify" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$email\",\"code\":\"$otp\"}")
   if [ "$(get "$out" '["accessToken"]')" = "<missing>" ]; then
-    bad "could not sign in $phone — $(printf '%s' "$out" | head -c 160)" >&2
+    bad "could not sign in $email — $(printf '%s' "$out" | head -c 160)" >&2
   fi
   printf '%s' "$out"
 }
@@ -126,53 +88,35 @@ if [ "$HEALTH" != "200" ]; then
 fi
 ok "API is up at $API"
 
-PROBE=$(start_otp "$(num 0)")
+PROBE=$(C -X POST "$API/auth/register" -H 'Content-Type: application/json' -d "{\"name\":\"Probe\",\"email\":\"$(mail 0)\",\"password\":\"$PW\"}")
 if [ "$(get "$PROBE" '["devCode"]')" = "<missing>" ]; then
-  printf "${RED}No devCode in the response.${OFF} Twilio looks configured.\n"
-  printf "This script needs the test hook: unset the TWILIO_* variables and start the API with AUTH_TEST_EXPOSE_OTP=true.\n"
+  printf "${RED}No devCode in the response.${OFF} Start the API with AUTH_TEST_EXPOSE_OTP=true (development only).\n"
   exit 1
 fi
-ok "dev SMS fallback is on (codes come back in the response)"
-note "this run sends many codes quickly and will pause on the rate limit — allow a few minutes"
+ok "test hook is on (email codes come back in the response)"
 
-# ------------------------------------------------------- 1. phone sign-up
+# ------------------------------------------------------- 1. email sign-up
 
-step "1 · Create account — phone + one-time code"
-P1=$(num 1)
-R1=$(signin "$P1")
+step "1 · Create account — email + emailed code"
+REG=$(C -X POST "$API/auth/register" -H 'Content-Type: application/json' -d "{\"name\":\"E2E Parent\",\"email\":\"$(mail 1)\",\"password\":\"$PW\"}")
+is "registering issues no tokens"           "$(get "$REG" '["accessToken"]')" "<missing>"
+is "it asks for the emailed code"           "$(get "$REG" '["needsEmailVerification"]')" "True"
+is "signing in before verifying is refused" "$(code -X POST "$API/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$(mail 1)\",\"password\":\"$PW\"}")" "403"
+is "a wrong code is refused"                "$(code -X POST "$API/auth/email/verify" -H 'Content-Type: application/json' -d "{\"email\":\"$(mail 1)\",\"code\":\"000000\"}")" "400"
+R1=$(C -X POST "$API/auth/email/verify" -H 'Content-Type: application/json' -d "{\"email\":\"$(mail 1)\",\"code\":\"$(get "$REG" '["devCode"]')\"}")
 TOK1=$(get "$R1" '["accessToken"]')
-is "a new number creates an account"        "$(get "$R1" '["isNewUser"]')"  "True"
-is "the account is asked to pick a role"    "$(get "$R1" '["needsRole"]')"  "True"
-is "it starts on the default role"          "$(get "$R1" '["user"]["role"]')" "PARENT"
-is "the number is recorded as verified"     "$(get "$R1" '["user"]["phoneVerified"]')" "True"
+is "the right code signs in"                "$(printf '%s' "$TOK1" | awk -F. '{print (NF==3)?"jwt":"no"}')" "jwt"
+is "the account is asked to pick a role"    "$(get "$R1" '["needsRole"]')" "True"
 is "no password hash is ever returned"      "$(get "$R1" '["user"]["passwordHash"]')" "<missing>"
+is "the same code cannot be used twice"     "$(code -X POST "$API/auth/email/verify" -H 'Content-Type: application/json' -d "{\"email\":\"$(mail 1)\",\"code\":\"$(get "$REG" '["devCode"]')\"}")" "400"
+is "password login works once verified"     "$(code -X POST "$API/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$(mail 1)\",\"password\":\"$PW\"}")" "201"
+is "a wrong password is refused"            "$(code -X POST "$API/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$(mail 1)\",\"password\":\"nope-nope-1\"}")" "401"
 
-step "1b · The code is single use, guessing is capped"
-P2=$(num 2)
-S2=$(start_otp "$P2")
-OTP2=$(get "$S2" '["devCode"]')
-if [ "$OTP2" = "<missing>" ]; then
-  bad "could not get a code for the single-use checks"
-else
-  # Asked again immediately. Two limits can answer here — the per-number
-  # cooldown and the per-IP throttle — and which one gets there first depends
-  # on how much traffic the run has already made. Either is a correct refusal,
-  # so assert on the refusal and report which one spoke.
-  COOL=$(C -w '\n%{http_code}' -X POST "$API/auth/phone/start" \
-    -H 'Content-Type: application/json' -d "{\"phone\":\"$P2\"}")
-  COOL_CODE=$(printf '%s' "$COOL" | tail -n1)
-  is "a second code straight away is refused" "$COOL_CODE" "429"
-  if printf '%s' "$COOL" | grep -qi 'wait'; then
-    note "refused by the per-number cooldown"
-  else
-    note "refused by the per-IP throttle (the run is ahead of the cooldown)"
-  fi
-  is "a wrong code is refused" \
-     "$(code -X POST "$API/auth/phone/verify" -H 'Content-Type: application/json' -d "{\"phone\":\"$P2\",\"code\":\"000000\"}")" "400"
-  C -X POST "$API/auth/phone/verify" -H 'Content-Type: application/json' -d "{\"phone\":\"$P2\",\"code\":\"$OTP2\"}" >/dev/null
-  is "the same code cannot be used twice" \
-     "$(code -X POST "$API/auth/phone/verify" -H 'Content-Type: application/json' -d "{\"phone\":\"$P2\",\"code\":\"$OTP2\"}")" "400"
-fi
+step "1b · Phone sign-in is gone"
+for r in phone/start phone/verify phone/request-otp otp/request otp/verify phone/request phone/confirm mfa/sms/send; do
+  is "POST /auth/$r no longer exists" "$(code -X POST "$API/auth/$r" -H 'Content-Type: application/json' -d '{"phone":"+251911223344","code":"123456"}')" "404"
+done
+is "login by phone number is refused" "$(code -X POST "$API/auth/login" -H 'Content-Type: application/json' -d '{"phone":"+251911223344","password":"x"}')" "400"
 
 # ------------------------------------------------------------ 2. role step
 
@@ -186,8 +130,7 @@ is "answering twice is refused"          "$(code -X POST "$API/auth/role" -H "Au
 is "ADMIN cannot be self-assigned"       "$(code -X POST "$API/auth/role" -H "Authorization: Bearer $TOK1" -H 'Content-Type: application/json' -d '{"role":"ADMIN"}')" "400"
 
 step "3 · Choose role — School Leader is NOT granted"
-PS=$(num 3)
-RS=$(signin "$PS")
+RS=$(signin "$(mail 3)" Leader)
 TOKS=$(get "$RS" '["accessToken"]')
 SEL=$(C -X POST "$API/auth/role" -H "Authorization: Bearer $TOKS" -H 'Content-Type: application/json' \
   -d '{"role":"SCHOOL_LEADER","name":"Marta Alemu"}')
@@ -218,8 +161,7 @@ is "they cannot approve themselves"      "$(code -X POST "$API/admin/org-request
 step "6 · Approved — by Kidora staff"
 # A reviewer. Promoted directly in the database, because nothing in the API
 # can hand out SUPER_ADMIN — which is the point.
-PA=$(num 9)
-RA=$(signin "$PA")
+RA=$(signin "$(mail 9)" Admin)
 AID=$(get "$RA" '["user"]["id"]')
 sql "UPDATE \"User\" SET role = 'SUPER_ADMIN', \"roleConfirmed\" = true WHERE id = '$AID';"
 
@@ -266,8 +208,7 @@ SCHOOL_CODE=$(get "$(C "$API/auth/me" -H "Authorization: Bearer $TOKS")" '["scho
 is "the approved leader can see their join code" \
    "$(printf '%s' "$SCHOOL_CODE" | grep -Eq '^[A-Z2-9]{6}$' && echo yes || echo no)" "yes"
 
-PI=$(num 4)
-TOKI=$(get "$(signin "$PI")" '["accessToken"]')
+TOKI=$(get "$(signin "$(mail 4)" Deputy)" '["accessToken"]')
 INV=$(C -X POST "$API/org/requests" -H "Authorization: Bearer $TOKI" -H 'Content-Type: application/json' \
   -d "{\"requestedRole\":\"SCHOOL_LEADER\",\"organizationName\":\"E2E Academy\",\"jobTitle\":\"Deputy\",\"joinCode\":\"$SCHOOL_CODE\"}")
 is "a valid code approves on the spot"     "$(get "$INV" '["status"]')" "APPROVED"
@@ -275,8 +216,7 @@ is "and grants the role immediately"       "$(get "$INV" '["roleGranted"]')" "Tr
 is "marked auto-approved for the audit"    "$(get "$INV" '["request"]["autoApproved"]')" "True"
 is "they join the existing school"         "$(get "$(C "$API/auth/me" -H "Authorization: Bearer $TOKI")" '["school"]["name"]')" "E2E Academy"
 
-PW=$(num 5)
-TOKW=$(get "$(signin "$PW")" '["accessToken"]')
+TOKW=$(get "$(signin "$(mail 5)" Wrong)" '["accessToken"]')
 is "a wrong code is refused, not queued" \
    "$(code -X POST "$API/org/requests" -H "Authorization: Bearer $TOKW" -H 'Content-Type: application/json' -d '{"requestedRole":"SCHOOL_LEADER","organizationName":"Nowhere School","jobTitle":"Head","joinCode":"BADCOD"}')" "400"
 is "a school code cannot buy district access" \
@@ -287,8 +227,7 @@ is "a parent cannot see a join code" \
 # ---------------------------------------------------------- 9. the refusal
 
 step "9 · Refused — with a reason, and another go"
-PR=$(num 6)
-RR=$(signin "$PR")
+RR=$(signin "$(mail 6)" Refused)
 TOKR=$(get "$RR" '["accessToken"]')
 RREQ=$(C -X POST "$API/org/requests" -H "Authorization: Bearer $TOKR" -H 'Content-Type: application/json' \
   -d '{"requestedRole":"DISTRICT_ADMIN","organizationName":"Ghost District","jobTitle":"Superintendent"}')
@@ -317,6 +256,100 @@ rm -f /tmp/e2e.png /tmp/e2e-disguised.html /tmp/e2e-big.vtt
 step "11 · Social providers"
 is "the app can ask which are configured" "$(code "$API/auth/providers")" "200"
 note "configured right now: $(get "$(C "$API/auth/providers")" '["providers"]')"
+
+# -------------------------------------------------- 12. student profile step
+
+step "12 · Student sign-up — date of birth, grade, school request"
+RST=$(signin "$(mail 10)" Student)
+TOKST=$(get "$RST" '["accessToken"]')
+STID=$(get "$RST" '["user"]["id"]')
+LEADER_SCHOOL=$(get "$(C "$API/auth/me" -H "Authorization: Bearer $TOKS")" '["schoolId"]')
+is "school search needs a signed-in user" "$(code "$API/schools/search?q=E2E")" "401"
+FOUND=$(C "$API/schools/search?q=E2E%20Academy" -H "Authorization: Bearer $TOKST")
+is "school search finds the school" "$(printf '%s' "$FOUND" | grep -c "$LEADER_SCHOOL")" "1"
+is "search never returns join codes" "$(printf '%s' "$FOUND" | grep -c joinCode)" "0"
+is "a student must give date of birth and grade" \
+   "$(code -X POST "$API/auth/role" -H "Authorization: Bearer $TOKST" -H 'Content-Type: application/json' -d '{"role":"CHILD"}')" "400"
+is "an impossible age is refused" \
+   "$(code -X POST "$API/auth/role" -H "Authorization: Bearer $TOKST" -H 'Content-Type: application/json' -d '{"role":"CHILD","dateOfBirth":"2025-01-01","gradeLevel":"Grade 5"}')" "400"
+SROLE=$(C -X POST "$API/auth/role" -H "Authorization: Bearer $TOKST" -H 'Content-Type: application/json' \
+  -d "{\"role\":\"CHILD\",\"dateOfBirth\":\"2015-05-20\",\"gradeLevel\":\"Grade 5\",\"schoolId\":\"$LEADER_SCHOOL\"}")
+TOKST=$(get "$SROLE" '["accessToken"]')
+is "the student role is saved"            "$(get "$SROLE" '["user"]["role"]')" "CHILD"
+is "the grade is kept"                    "$(get "$SROLE" '["user"]["gradeLevel"]')" "Grade 5"
+is "picking a school only requests it"    "$(get "$SROLE" '["user"]["requestedSchoolId"]')" "$LEADER_SCHOOL"
+is "…and grants no membership"            "$(get "$SROLE" '["user"]["schoolId"]')" "None"
+JR=$(C "$API/school/join-requests" -H "Authorization: Bearer $TOKS")
+is "the school leader sees the request"   "$(printf '%s' "$JR" | grep -c "$STID")" "1"
+is "a parent cannot see join requests"    "$(code "$API/school/join-requests" -H "Authorization: Bearer $TOK1")" "403"
+is "the leader approves it"               "$(get "$(C -X POST "$API/school/join-requests/$STID/approve" -H "Authorization: Bearer $TOKS")" '["approved"]')" "True"
+ME3=$(C "$API/auth/me" -H "Authorization: Bearer $TOKST")
+is "the student is now in the school"     "$(get "$ME3" '["schoolId"]')" "$LEADER_SCHOOL"
+is "the request is cleared"               "$(get "$ME3" '["requestedSchoolId"]')" "None"
+
+# ------------------------------------------------------ 13. course access codes
+
+step "13 · Course codes — teacher creates, student joins"
+RT=$(signin "$(mail 11)" Teacher)
+TOKT=$(get "$(C -X POST "$API/auth/role" -H "Authorization: Bearer $(get "$RT" '["accessToken"]')" -H 'Content-Type: application/json' -d '{"role":"TEACHER"}')" '["accessToken"]')
+TID=$(get "$RT" '["user"]["id"]')
+CID="e2e-course-$RUN"
+sql "INSERT INTO \"Course\" (id, slug, title, published, status, access, \"teacherId\", \"publishedAt\", \"updatedAt\") VALUES ('$CID', '$CID', 'C++ Programming for Beginners', true, 'PUBLISHED', 'INVITE_ONLY', '$TID', now(), now());"
+is "a new course has no code"             "$(get "$(C "$API/courses/$CID/access-code" -H "Authorization: Bearer $TOKT")" '["code"]')" "None"
+CC=$(get "$(C -X POST "$API/courses/$CID/access-code/rotate" -H "Authorization: Bearer $TOKT")" '["code"]')
+is "the teacher creates a readable code"  "$(printf '%s' "$CC" | grep -Eq '^CPP-[2-9A-HJKMNP-Z]{6}$' && echo yes || echo no)" "yes"
+note "code: $CC"
+is "another account cannot read the code" "$(code "$API/courses/$CID/access-code" -H "Authorization: Bearer $TOK1")" "403"
+is "a parent cannot join with a code"     "$(code -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOK1" -H 'Content-Type: application/json' -d "{\"code\":\"$CC\"}")" "403"
+is "a wrong code is refused"              "$(code -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOKST" -H 'Content-Type: application/json' -d '{"code":"CPP-222222"}')" "404"
+LOW=$(printf '%s' "$CC" | tr 'A-Z' 'a-z' | tr -d '-')
+J=$(C -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOKST" -H 'Content-Type: application/json' -d "{\"code\":\"$LOW\"}")
+is "lower case, no dash still joins"      "$(get "$J" '["enrolled"]')" "True"
+is "…and names the course"                "$(get "$J" '["course"]["title"]')" "C++ Programming for Beginners"
+is "joining again is harmless"            "$(get "$(C -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOKST" -H 'Content-Type: application/json' -d "{\"code\":\"$CC\"}")" '["alreadyEnrolled"]')" "True"
+is "the enrolment records its source"     "$(C "$API/learning/my-courses" -H "Authorization: Bearer $TOKST" | python3 -c "import sys,json; print([c['source'] for c in json.load(sys.stdin) if c['id']=='$CID'][0])" 2>/dev/null)" "ACCESS_CODE"
+is "the student can open the course"      "$(get "$(C "$API/learning/courses/$CID/access" -H "Authorization: Bearer $TOKST")" '["allowed"]')" "True"
+
+step "13b · Codes can be switched off; private courses stay private"
+RS2=$(signin "$(mail 12)" Student2)
+TOKS2=$(get "$(C -X POST "$API/auth/role" -H "Authorization: Bearer $(get "$RS2" '["accessToken"]')" -H 'Content-Type: application/json' -d '{"role":"CHILD","dateOfBirth":"2014-02-02","gradeLevel":"Grade 6"}')" '["accessToken"]')
+S2ID=$(get "$RS2" '["user"]["id"]')
+is "switching the code off"               "$(get "$(C -X PATCH "$API/courses/$CID/access-code" -H "Authorization: Bearer $TOKT" -H 'Content-Type: application/json' -d '{"enabled":false}')" '["enabled"]')" "False"
+is "a switched-off code no longer joins"  "$(code -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOKS2" -H 'Content-Type: application/json' -d "{\"code\":\"$CC\"}")" "404"
+is "the old /courses/:id/enroll can't skip the invitation" "$(code -X POST "$API/courses/$CID/enroll" -H "Authorization: Bearer $TOKS2")" "403"
+is "the public catalogue hides private courses" "$(C "$API/courses" | grep -c "$CID")" "0"
+is "…and its detail page"                 "$(code "$API/courses/$CID")" "404"
+NEWC=$(get "$(C -X POST "$API/courses/$CID/access-code/rotate" -H "Authorization: Bearer $TOKT")" '["code"]')
+is "replacing the code retires the old one" "$(code -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOKS2" -H 'Content-Type: application/json' -d "{\"code\":\"$CC\"}")" "404"
+is "…and the new one works"               "$(get "$(C -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOKS2" -H 'Content-Type: application/json' -d "{\"code\":\"$NEWC\"}")" '["enrolled"]')" "True"
+
+step "13c · Guessing codes is stopped"
+RS3=$(signin "$(mail 13)" Guesser)
+TOKS3=$(get "$(C -X POST "$API/auth/role" -H "Authorization: Bearer $(get "$RS3" '["accessToken"]')" -H 'Content-Type: application/json' -d '{"role":"CHILD","dateOfBirth":"2013-03-03","gradeLevel":"Grade 7"}')" '["accessToken"]')
+LAST=""
+for i in $(seq 1 11); do
+  LAST=$(code -X POST "$API/courses/access-code/join" -H "Authorization: Bearer $TOKS3" -H 'Content-Type: application/json' -d "{\"code\":\"ZZZ-$(printf '%06d' $i | tr 0-9 A-J)\"}")
+done
+is "the 11th wrong code in a row is refused" "$LAST" "429"
+
+# ------------------------------------------------------------ 14. assigning
+
+step "14 · Assigning courses — only to your own students"
+RS4=$(signin "$(mail 14)" Child)
+TOKS4=$(get "$(C -X POST "$API/auth/role" -H "Authorization: Bearer $(get "$RS4" '["accessToken"]')" -H 'Content-Type: application/json' -d '{"role":"CHILD","dateOfBirth":"2016-06-06","gradeLevel":"Grade 4"}')" '["accessToken"]')
+S4ID=$(get "$RS4" '["user"]["id"]')
+PID=$(get "$R1" '["user"]["id"]')
+sql "INSERT INTO \"ParentStudent\" (id, \"parentId\", \"studentId\") VALUES ('e2e-ps-$RUN', '$PID', '$S4ID');"
+is "a parent cannot assign to someone else's child" \
+   "$(code -X POST "$API/courses/$CID/assign" -H "Authorization: Bearer $TOK1" -H 'Content-Type: application/json' -d "{\"studentIds\":[\"$S2ID\"]}")" "403"
+PA=$(C -X POST "$API/courses/$CID/assign" -H "Authorization: Bearer $TOK1" -H 'Content-Type: application/json' -d "{\"studentIds\":[\"$S4ID\"]}")
+is "a parent cannot use assigning to skip an invitation" "$(get "$PA" '["notAllowed"]')" "1"
+is "a teacher cannot assign to students outside their classes" \
+   "$(code -X POST "$API/courses/$CID/assign" -H "Authorization: Bearer $TOKT" -H 'Content-Type: application/json' -d "{\"studentIds\":[\"$S4ID\"]}")" "403"
+is "a student cannot assign courses"      "$(code -X POST "$API/courses/$CID/assign" -H "Authorization: Bearer $TOKST" -H 'Content-Type: application/json' -d "{\"studentIds\":[\"$S4ID\"]}")" "403"
+AA=$(C -X POST "$API/courses/$CID/assign" -H "Authorization: Bearer $ATOK" -H 'Content-Type: application/json' -d "{\"studentIds\":[\"$S4ID\"]}")
+is "staff can assign it"                  "$(get "$AA" '["enrolled"]')" "1"
+is "…recorded as assigned by staff"       "$(C "$API/learning/my-courses" -H "Authorization: Bearer $TOKS4" | python3 -c "import sys,json; print([c['source'] for c in json.load(sys.stdin) if c['id']=='$CID'][0])" 2>/dev/null)" "ADMIN"
 
 # ----------------------------------------------------------------- summary
 

@@ -30,7 +30,7 @@ export function RequireRole({ allow, children }: { allow: Role[]; children: Reac
     if (!hydrated) return;
 
     if (!signedIn) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
       return;
     }
     if (!permitted) {

@@ -17,7 +17,7 @@ import { useAuthStore } from '@/stores/auth.store';
 export default function GamesPage() {
   const router = useRouter();
   const { user, hydrated } = useAuthStore();
-  useEffect(() => { if (hydrated && !user) router.replace('/login?next=/games'); }, [hydrated, user, router]);
+  useEffect(() => { if (hydrated && !user) router.replace('/auth/login?next=/games'); }, [hydrated, user, router]);
 
   const games = useQuery({ queryKey: ['games'], queryFn: gamesApi.list, enabled: Boolean(user) });
   const recs = useQuery({ queryKey: ['games', 'recommendations'], queryFn: gamesApi.recommendations, enabled: Boolean(user) });
