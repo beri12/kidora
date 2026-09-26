@@ -123,6 +123,30 @@ httpOnly cookie (login-CSRF protection). A cancelled or failed round trip lands 
 When a provider's verified email matches an account whose address was never verified,
 the address is marked verified and that account's unproven password is removed.
 
+**Google "invalid_request"** almost always means the redirect URI is http or not
+registered. Set `API_URL=https://<your api host>/api` (behind a proxy, `TRUST_PROXY=1`),
+restart, and register exactly the `…/auth/google/callback` URI the boot banner prints in
+Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs. TikTok needs
+the same for `…/auth/tiktok/callback` in the TikTok developer portal (and, while the app
+is in sandbox, the testers added as target users).
+
+## Chapa payments
+`POST /payments/chapa/checkout { plan }` prices the plan from `SubscriptionPlan`, writes a
+pending `Payment` (`externalId` = `tx_ref`) and returns Chapa's `checkout_url`. After paying,
+Chapa sends the child's grown-up to `/payment/return`, which calls
+`GET /payments/chapa/verify/:txRef`; Chapa's own callback and the signed webhook
+(`x-chapa-signature`, HMAC of `CHAPA_WEBHOOK_SECRET`) do the same. Every path re-verifies
+with Chapa and settles through `PaymentSettlementService`, so the amount, currency and
+payer must match and a payment grants its plan once. Plan prices are USD; your Chapa
+account must accept USD, or change the plan rows to ETB.
+
+## Learning games
+Five games (Math Treasure Rush, Word Safari, Science Lab, Code City, Africa History
+Quest), 3 levels × 6 challenges each, synced into the `Game*` tables at boot. Answers are
+judged by the server (`solution` is never sent), so XP, stars, streaks, badges and mastery
+(`StudentSkill`) can't be forged; implausibly fast levels earn no XP. Parents and teachers
+read progress at `GET /games/students/:id/progress` and `GET /games/classes/:id/mastery`.
+
 ## Passwords and sessions
 `POST /auth/password/forgot` emails a reset code (identical answer for unknown addresses);
 `POST /auth/password/reset` sets the new password, ends every other session and signs in.

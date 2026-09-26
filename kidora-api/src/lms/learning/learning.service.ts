@@ -134,6 +134,48 @@ export class LearningService {
   /* ------------------------------------------------------- access control */
 
   /**
+   * Whether a paid plan covers this learner. Any of these counts, as the
+   * pricing page promises:
+   *   - their own Student (or any paid) plan
+   *   - a parent's Family plan (ParentStudent link or a parent's child profile)
+   *   - their school's School plan, held by a leader of the same school
+   *   - their district's District plan, held by a leader of the same district
+   *
+   * Subscriptions store 'active' in lower case; every account also holds an
+   * 'active' free plan, so only paid plans within their period count.
+   */
+  async hasPremiumAccess(userId: string): Promise<boolean> {
+    const me = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        schoolId: true,
+        districtId: true,
+        school: { select: { districtId: true } },
+        studentLinks: { select: { parentId: true } },
+        childProfileAccount: { select: { parentId: true } },
+      },
+    });
+    if (!me) return false;
+
+    const parentIds = [...me.studentLinks.map((l) => l.parentId), ...(me.childProfileAccount ? [me.childProfileAccount.parentId] : [])];
+    const districtId = me.districtId ?? me.school?.districtId ?? null;
+    const hit = await this.prisma.subscription.findFirst({
+      where: {
+        status: { equals: 'active', mode: 'insensitive' },
+        AND: [{ OR: [{ renewsAt: null }, { renewsAt: { gt: new Date() } }] }],
+        OR: [
+          { userId, plan: { not: 'free' } },
+          ...(parentIds.length ? [{ userId: { in: parentIds }, plan: 'family' as const }] : []),
+          ...(me.schoolId ? [{ plan: 'school' as const, user: { schoolId: me.schoolId } }] : []),
+          ...(districtId ? [{ plan: 'district' as const, user: { districtId } }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+    return Boolean(hit);
+  }
+
+  /**
    * Decides whether this student may open this course. The rules live here so
    * that browse, detail, enrol and the player cannot disagree.
    */
@@ -165,20 +207,8 @@ export class LearningService {
       return { allowed: false, reason: 'INVITE_ONLY', message: 'This course is invite only. Ask your teacher to add you.' };
     }
     if (course.access === 'PREMIUM') {
-      // Subscriptions are stored as 'active' (lowercase), so the old 'ACTIVE'
-      // lookup never matched and premium courses were closed to paying users.
-      // Every account also holds an 'active' *free* subscription, so the plan
-      // must be a paid one, and not past its renewal date.
-      const sub = await this.prisma.subscription.findFirst({
-        where: {
-          userId: u.id,
-          status: { equals: 'active', mode: 'insensitive' },
-          plan: { not: 'free' },
-          OR: [{ renewsAt: null }, { renewsAt: { gt: new Date() } }],
-        },
-        select: { id: true },
-      });
-      if (!sub) return { allowed: false, reason: 'PREMIUM', message: 'This course is part of Kidora Plus.' };
+      const sub = await this.hasPremiumAccess(u.id);
+      if (!sub) return { allowed: false, reason: 'PREMIUM', message: 'This is a premium course.' };
     }
 
     if (course.prerequisites.length) {

@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { Navbar } from '@/components/navbar/Navbar';
 import { PricingView } from '@/features/pricing/PricingView';
 
@@ -12,7 +13,9 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-sky-50">
       <Navbar />
-      <PricingView />
+      <Suspense fallback={null}>
+        <PricingView />
+      </Suspense>
     </div>
   );
 }

@@ -70,6 +70,27 @@ export class RewardsService {
   }
 
   /** Claim a completed quest once. Throws if already claimed or not complete. */
+  /**
+   * A learning-game level finished. XP is computed by GamesService from the
+   * attempts the server judged, never taken from the client. Idempotent per
+   * session via the sourceKey.
+   */
+  async onGameLevelCompleted(studentId: string, p: { sessionId: string; title: string; xp: number; coins: number; minutes: number; subject: string }) {
+    return this.prisma.$transaction(async (tx) => {
+      const out = await this.grant(tx, studentId, { xp: p.xp, coins: p.coins, sourceKey: `game:${p.sessionId}`, description: p.title });
+      if (out.xp === 0 && p.xp > 0) return out; // already granted for this session
+      await this.touchStreak(tx, studentId, { minutes: p.minutes });
+      out.completedQuests = await this.advanceQuests(tx, studentId, [
+        { metric: 'GAME_LEVELS_COMPLETED', by: 1 },
+        { metric: 'MINUTES_STUDIED', by: p.minutes },
+      ]);
+      out.unlockedAchievements = await this.checkAchievements(tx, studentId);
+      await this.activity.log({ userId: studentId, type: 'LESSON_COMPLETED', title: p.title, entityType: 'game', entityId: p.sessionId, xpDelta: p.xp }, tx);
+      await this.invalidate(studentId);
+      return out;
+    });
+  }
+
   async claimQuest(studentId: string, missionId: string) {
     return this.prisma.$transaction(async (tx) => {
       const m = await tx.mission.findUniqueOrThrow({ where: { id: missionId } });

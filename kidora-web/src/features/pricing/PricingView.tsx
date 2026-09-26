@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, MotionConfig, motion, type Variants } from 'framer-motion';
@@ -9,6 +9,8 @@ import { PayPalButtons, PayPalScriptProvider } from '@paypal/react-paypal-js';
 
 import { formatMoney, pricingApi, type PublicPlan } from '@/lib/api/pricing';
 import { usePaypalOrder, useStripeCheckout } from '@/features/payments/hooks';
+import { paymentsApi } from '@/lib/api/payments';
+import { ROLE_HOME } from '@/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import { apiErrorMessage } from '@/lib/api-error';
 
@@ -70,6 +72,7 @@ export function PricingView() {
   const [checkout, setCheckout] = useState<PublicPlan | null>(null);
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
+  const params = useSearchParams();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['pricing'],
@@ -79,6 +82,15 @@ export function PricingView() {
 
   const hasYearly = Boolean(data?.plans.some((p) => p.yearlyPriceMinor != null));
 
+  // Back from sign-up with ?checkout=<plan>: pick up where the visitor left off.
+  const resume = params.get('checkout');
+  useEffect(() => {
+    if (!resume || !user || !data) return;
+    const plan = data.plans.find((p) => p.slug === resume && p.checkoutPlan);
+    if (plan) setCheckout(plan);
+    router.replace('/pricing', { scroll: false });
+  }, [resume, user, data, router]);
+
   /**
    * Signed out → create an account for that role, then come back.
    * Signed in and the plan sells through checkout → pick a way to pay.
@@ -87,11 +99,14 @@ export function PricingView() {
   function start(plan: PublicPlan) {
     const role = STYLE[plan.audience].role;
     if (!user) {
-      router.push(`/join?role=${role}&next=${encodeURIComponent('/pricing')}`);
+      const back = plan.checkoutPlan ? `/pricing?checkout=${plan.slug}` : '/pricing';
+      router.push(`/join?role=${role}&next=${encodeURIComponent(back)}`);
       return;
     }
     if (plan.checkoutPlan) setCheckout(plan);
-    else router.push(`/join?role=${role}`);
+    // Signed in, and this plan is not sold through checkout (Teacher): take
+    // them to their own dashboard, or to the role step if they have none yet.
+    else router.push(user.roleConfirmed === false ? `/onboarding/role?role=${role}` : ROLE_HOME[user.role] ?? '/');
   }
 
   return (
@@ -437,9 +452,25 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
   const stripe = useStripeCheckout();
   const paypal = usePaypalOrder();
   const [error, setError] = useState('');
+  const [chapaBusy, setChapaBusy] = useState(false);
   const key = plan.checkoutPlan!;
   const price = priceFor(plan, 'monthly');
   const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
+  const providers = useQuery({ queryKey: ['payment-providers'], queryFn: paymentsApi.providers, staleTime: 10 * 60_000 });
+  const p = providers.data;
+  const none = p && !p.chapa && !p.stripe && !(p.paypal && paypalClientId);
+
+  async function payWithChapa() {
+    setChapaBusy(true);
+    setError('');
+    try {
+      const { url } = await paymentsApi.chapaCheckout(key);
+      window.location.href = url;
+    } catch (e) {
+      setError(apiErrorMessage(e, "We couldn't start Chapa checkout."));
+      setChapaBusy(false);
+    }
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -473,16 +504,32 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
           </p>
         )}
 
-        <button
-          type="button"
-          onClick={() => stripe.mutate(key, { onError: (e) => setError(apiErrorMessage(e, "We couldn't start checkout.")) })}
-          disabled={stripe.isPending}
-          className="mt-5 min-h-12 w-full rounded-full bg-brand-700 font-display text-lg font-extrabold text-white disabled:opacity-60"
-        >
-          {stripe.isPending ? 'Opening secure checkout…' : '💳 Pay with card'}
-        </button>
+        {providers.isLoading && <div className="mt-5 h-12 animate-pulse rounded-full bg-slate-100" aria-label="Loading payment options" />}
 
-        {paypalClientId && (
+        {p?.chapa && (
+          <button
+            type="button"
+            onClick={payWithChapa}
+            disabled={chapaBusy}
+            className="mt-5 min-h-12 w-full rounded-full bg-emerald-600 font-display text-lg font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {chapaBusy ? 'Opening Chapa…' : 'Pay with Chapa'}
+            <span className="block font-body text-[11px] font-bold opacity-90">Telebirr · CBE Birr · M-Pesa · Card</span>
+          </button>
+        )}
+
+        {p?.stripe && (
+          <button
+            type="button"
+            onClick={() => stripe.mutate(key, { onError: (e) => setError(apiErrorMessage(e, "We couldn't start checkout.")) })}
+            disabled={stripe.isPending}
+            className="mt-3 min-h-12 w-full rounded-full bg-brand-700 font-display text-lg font-extrabold text-white disabled:opacity-60"
+          >
+            {stripe.isPending ? 'Opening secure checkout…' : '💳 Pay with card'}
+          </button>
+        )}
+
+        {p?.paypal && paypalClientId && (
           <div className="mt-3">
             <PayPalScriptProvider options={{ clientId: paypalClientId, currency: plan.currency }}>
               <PayPalButtons
@@ -491,12 +538,18 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
                 onApprove={async (data) => {
                   const res = await paypal.capture(data.orderID);
                   if ((res as { granted?: boolean }).granted === false) setError('The payment did not complete. You have not been charged for the plan.');
-                  else window.location.href = '/dashboard?checkout=success';
+                  else window.location.href = '/payment/return?provider=paypal&status=paid';
                 }}
                 onError={() => setError('PayPal could not complete the payment.')}
               />
             </PayPalScriptProvider>
           </div>
+        )}
+
+        {none && (
+          <p className="mt-5 rounded-2xl bg-sun-300/40 p-3 font-body-x text-[13px] text-sun-700">
+            Online payment isn&apos;t available right now. Please try again later or contact us.
+          </p>
         )}
 
         {error && <p role="alert" className="mt-3 font-body-x text-[13px] text-coral-600">{error}</p>}

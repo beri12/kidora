@@ -13,7 +13,7 @@ export interface PublicPlan {
   yearlyPriceMinor: number | null;
   features: string[];
   /** Set when "Get Started" can go straight to checkout for a signed-in visitor. */
-  checkoutPlan: "family" | "school" | null;
+  checkoutPlan: "student" | "family" | "school" | "district" | null;
 }
 
 export interface PricingCatalog {

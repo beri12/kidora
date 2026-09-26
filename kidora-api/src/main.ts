@@ -11,7 +11,8 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { redisUrl } from './config/redis.config';
-import { oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
+import { TwilioSmsProvider } from './infrastructure/sms/providers/sms-provider';
+import { callbackUrlProblems, oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
 // sync across every API instance (horizontal scaling / sticky sessions).
@@ -58,6 +59,14 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
+  // Behind Nginx / Cloudflare every request arrives from the proxy. Without
+  // this, req.ip is the proxy's address — so the per-IP rate limits on OTP
+  // and sign-in were shared by every visitor at once — and req.secure is
+  // false even for https visitors. TRUST_PROXY is the number of proxy hops
+  // (Cloudflare → Nginx = 2); it defaults to 1 in production, off otherwise.
+  const hops = process.env.TRUST_PROXY ?? (process.env.NODE_ENV === 'production' ? '1' : '');
+  if (hops) app.set('trust proxy', /^\d+$/.test(hops) ? Number(hops) : hops);
+
   // If CORS_ORIGIN is set (comma-separated), use that explicit allow-list.
   // Otherwise fall back to `true`, which reflects whatever origin made the
   // request. This matters because `origin: '*'.split(',')` (the old code)
@@ -93,6 +102,10 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Kidora API running on http://localhost:${port}/api  (docs: /api/docs)`);
   reportSignInSetup();
+  // Checked after listening so a slow Twilio never delays startup.
+  void new TwilioSmsProvider().diagnose().then((notes) => {
+    for (const n of notes) console.log(`  SMS check: ${n}`);
+  });
 }
 
 /**
@@ -117,6 +130,7 @@ function reportSignInSetup() {
     if (!c.id) continue;
     lines.push(`  ${name}: on — register this redirect URI with the provider, exactly:`);
     lines.push(`      ${oauthCallbackUrl(name)}`);
+    for (const p of callbackUrlProblems(name)) lines.push(`    ERROR: ${p}`);
     if (!c.secret) {
       lines.push(`    WARNING: ${c.idVar} is set but ${c.secretVar} is not, so ${name} sign-in will be rejected.`);
     }

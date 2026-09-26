@@ -2,6 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PlanKind, PlanKey } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
+/** Entitlements checkout sells. Teacher waits until teacher plan benefits exist. */
+const SELLABLE: PlanKey[] = ['student', 'family', 'school', 'district'];
+
 /** What the public pricing page shows for one plan. */
 export interface PublicPlan {
   slug: string;
@@ -18,7 +21,7 @@ export interface PublicPlan {
    * The plan "Get Started" can check out directly, for a signed-in visitor.
    * Null when this plan is sold another way (sign-up, contact sales).
    */
-  checkoutPlan: 'family' | 'school' | null;
+  checkoutPlan: 'student' | 'family' | 'school' | 'district' | null;
 }
 
 /**
@@ -46,8 +49,8 @@ export class PricingService {
       yearlyPriceMinor: r.yearlyPriceMinor,
       features: r.features,
       checkoutPlan:
-        r.kind === PlanKind.ROLE_PLAN && r.monthlyPriceMinor && (r.grantsPlan === 'family' || r.grantsPlan === 'school')
-          ? r.grantsPlan
+        r.kind === PlanKind.ROLE_PLAN && r.monthlyPriceMinor && r.grantsPlan && SELLABLE.includes(r.grantsPlan)
+          ? (r.grantsPlan as PublicPlan['checkoutPlan'])
           : null,
     });
     return {

@@ -88,6 +88,39 @@ export class TwilioSmsProvider implements SmsProvider {
     return Boolean(sid && token && (from || senderId || messagingServiceSid));
   }
 
+  /**
+   * Checks the credentials against Twilio without sending anything, and says
+   * what will stop texts from arriving. Run once at boot.
+   */
+  async diagnose(): Promise<string[]> {
+    const { sid, token, from, senderId, messagingServiceSid } = this.config;
+    if (!this.configured) return [];
+    const notes: string[] = [];
+    if (!sid!.startsWith('AC')) notes.push('TWILIO_ACCOUNT_SID should start with "AC" — check you did not paste an API key SID (SK…).');
+    if (from && !/^\+[1-9]\d{7,14}$/.test(from)) notes.push(`TWILIO_PHONE_NUMBER "${from}" is not in +E.164 form (for example +15551234567).`);
+    if (senderId && !/^(?=.*[A-Za-z])[A-Za-z0-9 ]{1,11}$/.test(senderId)) notes.push('TWILIO_SENDER_ID must be 1–11 letters/digits with at least one letter.');
+    if (messagingServiceSid && !messagingServiceSid.startsWith('MG')) notes.push('TWILIO_MESSAGING_SERVICE_SID should start with "MG".');
+    try {
+      if (!this.client) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        this.client = require('twilio')(sid, token);
+      }
+      const account = await (this.client as unknown as { api: { accounts(id: string): { fetch(): Promise<{ status: string; type: string }> } } })
+        .api.accounts(sid!).fetch();
+      if (account.status !== 'active') notes.push(`The Twilio account is ${account.status}, so it cannot send.`);
+      if (account.type === 'Trial') {
+        notes.push('This is a TRIAL account: it only texts numbers verified in the Twilio console, and adds a "Sent from your Twilio trial account" prefix. Upgrade it before launch.');
+      }
+    } catch (e) {
+      const code = Number((e as { status?: number; code?: number }).code ?? (e as { status?: number }).status);
+      notes.push(code === 20003 || code === 401
+        ? 'Twilio rejected TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (authentication failed). Copy both again from console.twilio.com.'
+        : `Could not reach Twilio to check the account: ${(e as Error).message}`);
+    }
+    notes.push('To text Ethiopian (+251) numbers, enable Ethiopia under Messaging → Settings → Geo permissions.');
+    return notes;
+  }
+
   async send(to: string, body: string) {
     const { sid, token, from, senderId, messagingServiceSid } = this.config;
     // Lazy require so the app still boots if the optional dependency is missing.

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Star, BookOpen, Target, Trophy, Coins, CheckCircle2, AlertCircle, Lightbulb, Heart, Calendar, Users2, Sparkles, Home } from "lucide-react";
 import { ParentShell } from "./ParentShell";
 import { useSelectedChild } from "./useSelectedChild";
+import { ChildGameProgress } from "@/features/games/ChildGameProgress";
 import { useParentDashboard } from "@/lib/hooks/queries";
 import { TopHeader, StatCard, Card, CardHeader, CardBody, ProgressBar, MinutesBarChart, Avatar, Pill, EmptyState, ErrorState, DashboardSkeleton, RangePicker, cn } from "@/components/dashboard";
 import { dueLabel, fmtDate, fmtMinutes, timeAgo } from "@/lib/format";
@@ -118,6 +119,8 @@ function Body({ d, childName }: { d: Data; childName: string }) {
           </CardBody>
         </Card>
       </div>
+
+      {d.selectedChildId && <ChildGameProgress childId={d.selectedChildId} childName={childName} />}
 
       <section className="grid gap-3 rounded-3xl bg-gradient-to-r from-brand-600 to-brand-400 p-5 text-white lg:grid-cols-[minmax(0,1fr)_2fr] lg:items-center" aria-labelledby="tips">
         <div className="flex items-center gap-3"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/15" aria-hidden><Heart size={22} /></span><div><p id="tips" className="text-lg font-bold">You're doing great, {childName}! 💜</p><p className="text-sm text-white/85">Learning a little every day leads to big achievements tomorrow.</p></div></div>

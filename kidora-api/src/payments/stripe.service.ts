@@ -5,6 +5,7 @@ import { PrismaService } from '../database/prisma.service';
 import { PaymentProvider, PaymentStatus, PlanKey } from '@prisma/client';
 import { PricingService } from '../pricing/pricing.service';
 import { PaymentSettlementService } from './payment-settlement.service';
+import type { CheckoutPlan } from './dto/payment.dto';
 
 @Injectable()
 export class StripeService {
@@ -20,7 +21,7 @@ export class StripeService {
   }
 
   // Create a hosted Checkout Session for the chosen plan.
-  async createCheckout(userId: string, plan: 'family' | 'school') {
+  async createCheckout(userId: string, plan: CheckoutPlan) {
     // The price the pricing page showed, read from the same row.
     const item = await this.pricing.checkoutPrice(plan);
     const web = this.config.get<string>('app.webUrl');

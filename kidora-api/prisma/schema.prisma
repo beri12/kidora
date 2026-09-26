@@ -68,6 +68,8 @@ model User {
   tiktokId   String? @unique
 
   socialAccounts SocialAccount[]
+  gameSessions   GameSession[]
+  skills         StudentSkill[]
 
   mfaEnabled  Boolean  @default(false)
   mfaSecret   String?
@@ -1535,6 +1537,7 @@ enum World {
   SCIENCE_PLANET
   CODING_CITY
   ART_VALLEY
+  HISTORY_WORLD
 }
 
 enum Rarity {
@@ -1590,11 +1593,14 @@ enum PlanKey {
   family
   school
   district
+  student
+  teacher
 }
 
 enum PaymentProvider {
   stripe
   paypal
+  chapa
 }
 
 enum PaymentStatus {
@@ -1723,6 +1729,7 @@ enum MissionMetric {
   SUBJECT_LESSONS
   COURSES_COMPLETED
   XP_EARNED
+  GAME_LEVELS_COMPLETED
 }
 
 enum NotificationType {
@@ -2174,4 +2181,146 @@ model ContentProgress {
 
   @@unique([studentId, contentItemId])
   @@index([contentItemId])
+}
+
+// ---------------------------------------------------------------------------
+// LEARNING GAMES
+//
+// Content (games, levels, challenges) lives here so it can change without a
+// deploy. Challenge answers stay on the server: the web app receives prompts
+// and options only, sends an answer, and the API decides whether it is right.
+// XP, coins, streaks and quests go through the existing reward pipeline
+// (Transaction.sourceKey keeps every grant idempotent).
+// ---------------------------------------------------------------------------
+
+model Game {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  tagline     String        @default("")
+  description String        @default("")
+  world       World
+  subject     String
+  minGrade    Int           @default(1)
+  maxGrade    Int           @default(8)
+  /// Badge slug awarded for finishing every level.
+  badgeSlug   String?
+  order       Int           @default(0)
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  levels      GameLevel[]
+  sessions    GameSession[]
+}
+
+model GameLevel {
+  id                String          @id @default(cuid())
+  gameId            String
+  order             Int
+  name              String
+  /// Shown before play: the story beat / what this level teaches.
+  intro             String          @default("")
+  learningObjective String          @default("")
+  /// 1 (counting) … 7 (word problems); drives recommendations.
+  difficulty        Int             @default(1)
+  /// XP for each challenge answered correctly on the first try.
+  xpPerCorrect      Int             @default(10)
+  /// XP for finishing the level.
+  xpReward          Int             @default(50)
+  game              Game            @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  challenges        GameChallenge[]
+  sessions          GameSession[]
+
+  @@unique([gameId, order])
+}
+
+model GameChallenge {
+  id          String            @id @default(cuid())
+  levelId     String
+  order       Int
+  kind        GameChallengeKind @default(MULTIPLE_CHOICE)
+  /// The skill this practises, e.g. "math.multiplication", "bio.cell".
+  skill       String
+  prompt      String
+  /// Speaker for story-style prompts ("Elephant", "Kai"). Optional.
+  speaker     String?
+  /// Multiple choice options, or kind-specific setup (grid, target …). Sent to the client.
+  setup       Json              @default("{}")
+  /// The answer and anything needed to check it. NEVER sent to the client.
+  solution    Json
+  hints       String[]          @default([])
+  explanation String            @default("")
+  language    String            @default("en")
+  level       GameLevel         @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  attempts    GameAttempt[]
+
+  @@unique([levelId, order])
+}
+
+enum GameChallengeKind {
+  /// Pick one option. setup: { options: string[], scene?: string }
+  MULTIPLE_CHOICE
+  /// Program a robot across a grid. setup: { size, start, dir, goal, walls, items?, maxBlocks }
+  CODE_PATH
+  /// Set angle and power to hit a target. setup: { gravity, target: [min,max], mass }
+  PHYSICS_LAUNCH
+}
+
+model GameSession {
+  id           String        @id @default(cuid())
+  userId       String
+  gameId       String
+  levelId      String
+  startedAt    DateTime      @default(now())
+  endedAt      DateTime?
+  completed    Boolean       @default(false)
+  correctCount Int           @default(0)
+  attemptCount Int           @default(0)
+  hintsUsed    Int           @default(0)
+  bestStreak   Int           @default(0)
+  score        Int           @default(0)
+  xpEarned     Int           @default(0)
+  accuracy     Int           @default(0)
+  /// Bonus challenge wheel outcome, decided by the server at completion.
+  bonus        Json?
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  level        GameLevel     @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  attempts     GameAttempt[]
+
+  @@index([userId, gameId])
+  @@index([userId, completed])
+}
+
+model GameAttempt {
+  id          String        @id @default(cuid())
+  sessionId   String
+  challengeId String
+  correct     Boolean
+  /// Measured by the server between hand-out and answer, not reported by the client.
+  responseMs  Int
+  hintsUsed   Int           @default(0)
+  answer      Json
+  createdAt   DateTime      @default(now())
+  session     GameSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  challenge   GameChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, challengeId])
+}
+
+/// Per-skill mastery (0–100), updated from game attempts; used for
+/// recommendations and the parent / teacher views.
+model StudentSkill {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  skill     String
+  mastery   Int      @default(0)
+  attempts  Int      @default(0)
+  correct   Int      @default(0)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skill])
+  @@index([userId, subject])
 }
