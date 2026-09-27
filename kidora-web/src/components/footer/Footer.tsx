@@ -10,7 +10,7 @@ const COLUMNS: [string, string[]][] = [
 
 const LINK_HREF: Record<string, string> = {
   Teachers: '/for-teachers', Families: '/for-families', Schools: '/for-schools', Districts: '/for-schools',
-  'Kidora Plus': '/plus', 'AI Tutor': '/ai-tutor', Games: '/games', Courses: '/courses',
+  'Kidora Plus': '/plus', 'AI Tutor': '/ai-tutor', Games: '/games', Courses: '/login?next=/courses',
 };
 
 export function Footer() {

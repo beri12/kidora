@@ -16,20 +16,31 @@ import type { Role } from '@/types';
  * previous copy lived at src/app/middleware.ts, which Next never loads — so
  * nothing was protected at all.
  */
+const SIGNED_IN_ONLY = ['/courses'];
+
+function toLogin(req: NextRequest, pathname: string) {
+  const url = req.nextUrl.clone();
+  url.pathname = '/login';
+  url.search = '';
+  url.searchParams.set('next', pathname);
+  return NextResponse.redirect(url);
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const role = req.cookies.get('kidora_role')?.value as Role | undefined;
+
+  // Pages any signed-in role may see, but a signed-out visitor may not — the
+  // course catalogue is for members, not for the marketing site.
+  if (SIGNED_IN_ONLY.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+    return role ? NextResponse.next() : toLogin(req, pathname);
+  }
 
   const area = areaFor(pathname);
   if (!area) return NextResponse.next();
 
-  const role = req.cookies.get('kidora_role')?.value as Role | undefined;
-
-  if (!role) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('next', pathname);
-    return NextResponse.redirect(url);
-  }
+  if (!role) return toLogin(req, pathname);
 
   const allowed = AREA_ROLES[area] ?? [];
   if (!allowed.includes(role)) {
@@ -64,6 +75,7 @@ function homeFor(role: Role): string {
 
 export const config = {
   matcher: [
+    '/courses/:path*',
     '/student/:path*',
     '/teacher/:path*',
     '/parent/:path*',
