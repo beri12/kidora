@@ -2,18 +2,16 @@
 
 import Link from 'next/link';
 import { useRef, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import {
-  ArrowRight, BarChart3, Bot, BookOpen, Calculator, Check, Code2, FlaskConical, Gamepad2, KeyRound,
+  ArrowRight, Bot, BookOpen, Calculator, Check, Code2, FlaskConical, Gamepad2,
   Landmark, Languages, LineChart, School, ShieldCheck, Sparkles, Trophy, UserPlus, Users,
 } from 'lucide-react';
 
 import { Navbar } from '@/components/navbar/Navbar';
 import { Footer } from '@/components/footer/Footer';
 import { KidHero, Person, RobotBuddy, SavannaScene, SchoolBuilding, Sparkle, Star } from '@/components/auth/kidora/illustrations';
-import { coursesApi } from '@/lib/api/courses';
 import { useIsoLayoutEffect } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { StartLearningButton } from './StartLearningButton';
@@ -132,7 +130,6 @@ export function Landing() {
       </section>
       <AiTutor />
       <Games />
-      <CourseDiscovery />
       <FinalCta />
       <Footer />
     </div>
@@ -326,47 +323,6 @@ function Games() {
               <div className="mt-2 flex justify-center gap-0.5 text-amber-400">★★★</div>
             </div>
           ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ------------------------------------------------------- course discovery */
-
-function CourseDiscovery() {
-  const q = useQuery({ queryKey: ['courses', 'catalogue'], queryFn: coursesApi.catalogue, staleTime: 5 * 60_000 });
-  const courses = (q.data ?? []).slice(0, 6);
-  return (
-    <section id="courses" className="bg-slate-50 py-20">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <SectionHead eyebrow="Course discovery" title="Courses made by real teachers" body="From early reading to C++ — and every course can be joined with a teacher’s code." />
-        {courses.length > 0 ? (
-          <ul data-cards className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {courses.map((c) => (
-              <li key={c.id}>
-                <Link href={`/courses/${c.id}`} className="flex h-full flex-col rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-1 hover:shadow-lg">
-                  <span className="inline-flex w-fit items-center gap-1 rounded-full bg-iris-50 px-3 py-1 text-xs font-extrabold text-iris-700"><BookOpen className="h-3.5 w-3.5" aria-hidden />{c.subject?.name ?? 'Course'}</span>
-                  <span className="mt-3 font-display text-lg font-extrabold">{c.title}</span>
-                  {c.isPremium && <span className="mt-1 text-xs font-bold text-amber-600">Premium</span>}
-                  <span className="mt-auto pt-4 text-sm font-extrabold text-iris-700">View course →</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <ul data-cards className="mt-10 grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {[{ i: Calculator, t: 'Math' }, { i: FlaskConical, t: 'Science' }, { i: Code2, t: 'Coding' }, { i: Languages, t: 'English' }, { i: Landmark, t: 'History' }, { i: BarChart3, t: 'And more' }].map(({ i: I, t }) => (
-              <li key={t} className="flex flex-col items-center rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-slate-100">
-                <I className="h-7 w-7 text-iris-600" aria-hidden /><span className="mt-2 font-display font-extrabold">{t}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div data-reveal className="mt-10 flex flex-col items-center justify-center gap-3 rounded-3xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-100 sm:flex-row sm:text-left">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-iris-100 text-iris-700"><KeyRound className="h-6 w-6" aria-hidden /></span>
-          <p className="font-semibold text-slate-700"><span className="font-extrabold text-ink">Got a course code from your teacher?</span> Sign in and enter it on your dashboard to join straight away.</p>
-          <Link href="/courses" className="shrink-0 rounded-2xl bg-ink px-5 py-3 font-extrabold text-white hover:bg-iris-700">Explore Courses</Link>
         </div>
       </div>
     </section>

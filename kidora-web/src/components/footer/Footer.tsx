@@ -11,7 +11,7 @@ const COLUMNS: [string, string[]][] = [
 ];
 
 const LINK_HREF: Record<string, string> = {
-  Courses: '/auth/login?next=/courses', Games: '/games', 'AI Tutor': '/ai-tutor', Pricing: '/pricing',
+  Courses: '/courses', Games: '/games', 'AI Tutor': '/ai-tutor', Pricing: '/pricing',
   'Log in': '/auth/login', 'Sign up': '/auth/signup', 'Forgot password': '/auth/forgot-password',
   Privacy: '/privacy', Terms: '/terms',
 };
