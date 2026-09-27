@@ -10,7 +10,7 @@ const COLUMNS: [string, string[]][] = [
 ];
 
 const LINK_HREF: Record<string, string> = {
-  Courses: '/courses', Games: '/games', 'AI Tutor': '/ai-tutor', Pricing: '/pricing',
+  Courses: '/auth/login?next=/courses', Games: '/games', 'AI Tutor': '/ai-tutor', Pricing: '/pricing',
   Teachers: '/for-teachers', Families: '/for-families', Schools: '/pricing', Districts: '/pricing',
   'Log in': '/auth/login', 'Sign up': '/auth/signup', 'Forgot password': '/auth/forgot-password',
   Privacy: '/privacy', Terms: '/terms',
