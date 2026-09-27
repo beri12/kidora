@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { isAudience, useAudienceHref } from '@/lib/audience';
 
 const COLUMNS: [string, string[]][] = [
   ['Company', ['About', 'Careers', 'Press', 'Blog']],
@@ -9,11 +10,11 @@ const COLUMNS: [string, string[]][] = [
 ];
 
 const LINK_HREF: Record<string, string> = {
-  Teachers: '/for-teachers', Families: '/for-families', Schools: '/for-schools', Districts: '/for-schools',
   'Kidora Plus': '/plus', 'AI Tutor': '/ai-tutor', Games: '/games', Courses: '/login?next=/courses',
 };
 
 export function Footer() {
+  const audienceHref = useAudienceHref();
   return (
     <footer className="bg-white border-t-2 border-brand-100">
       <div className="max-w-[1240px] mx-auto px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-8">
@@ -34,7 +35,7 @@ export function Footer() {
             <div className="font-display font-extrabold text-brand-900 mb-3">{col[0]}</div>
             <div className="flex flex-col gap-2">
               {col[1].map((l) => (
-                <Link key={l} href={LINK_HREF[l] ?? '/'} className="font-bold text-brand-500 text-sm hover:text-brand-800 transition-colors">{l}</Link>
+                <Link key={l} href={isAudience(l) ? audienceHref(l) : LINK_HREF[l] ?? '/'} className="font-bold text-brand-500 text-sm hover:text-brand-800 transition-colors">{l}</Link>
               ))}
             </div>
           </div>

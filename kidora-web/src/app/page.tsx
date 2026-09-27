@@ -151,6 +151,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Navbar } from '@/components/navbar/Navbar';
 import Image from "next/image";
+import { AUDIENCE_NAMES, isAudience, useAudienceHref } from "@/lib/audience";
 
 const ROLES = [
   { emoji: '\uD83E\uDDD1\u200D\uD83C\uDFEB', label: 'Teacher', role: 'TEACHER' },
@@ -258,6 +259,7 @@ function splitWords(el: HTMLElement) {
 }
 
 export default function Home() {
+  const audienceHref = useAudienceHref();
   const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -491,7 +493,7 @@ export default function Home() {
 
       {/* FOOTER */}
       <footer className="bg-brand-950 text-brand-200 px-6 pt-14 pb-8">
-        <div className="max-w-[1280px] mx-auto grid md:grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-8">
+        <div className="max-w-[1280px] mx-auto grid sm:grid-cols-2 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-8">
           <div>
             <div className="flex items-center gap-2.5 mb-3">
               <div className="w-[38px] h-[38px] rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center text-xl">{'\uD83D\uDC35'}</div>
@@ -503,12 +505,13 @@ export default function Home() {
             { h: 'Company', links: ['About us', 'Press', 'Careers', 'Accessibility'] },
             { h: 'Learn', links: ['Math', 'Reading', 'Science', 'Coding', 'Kidora Plus'] },
             { h: 'Support', links: ['Help Center', 'Contact', 'Privacy & Security', 'Terms of Service'] },
+            { h: 'For', links: AUDIENCE_NAMES },
             { h: 'Community', links: ['Teacher Community', 'Wall of Love', 'Find a tutor'] },
           ].map((col) => (
             <div key={col.h} className="flex flex-col gap-2.5">
               <div className="font-display font-extrabold text-white">{col.h}</div>
               {col.links.map((l) => (
-                <Link key={l} href="#" className="text-brand-300 font-bold hover:text-white transition-colors">{l}</Link>
+                <Link key={l} href={isAudience(l) ? audienceHref(l) : "#"} className="text-brand-300 font-bold hover:text-white transition-colors">{l}</Link>
               ))}
             </div>
           ))}
