@@ -23,8 +23,15 @@ const SUBJECTS = [
  */
 function useAuthEntrance(scope: React.RefObject<HTMLElement | null>, deps: unknown[] = []) {
   useGsap(() => {
-    gsap.from('[data-anim="card"]', { y: 28, opacity: 0, duration: 0.6, ease: 'power3.out' });
-    gsap.from('[data-anim="row"]', { y: 14, opacity: 0, duration: 0.45, ease: 'power2.out', stagger: 0.05, delay: 0.15 });
+    // fromTo with explicit end values, not from(): gsap.from() reads the
+    // element's *current* style as the end state. Role cards carry Tailwind's
+    // `transition` (opacity + transform), so when the entrance re-ran (React
+    // dev double-mount, a step change) it read a half-faded 0 as "the end" and
+    // left Parent, Teacher, School and District invisible. clearProps hands
+    // the styles back to CSS once done, so hover lift still works.
+    const done = { y: 0, opacity: 1, clearProps: 'transform,opacity' };
+    gsap.fromTo('[data-anim="card"]', { y: 28, opacity: 0 }, { ...done, duration: 0.6, ease: 'power3.out' });
+    gsap.fromTo('[data-anim="row"]', { y: 14, opacity: 0 }, { ...done, duration: 0.45, ease: 'power2.out', stagger: 0.05, delay: 0.15 });
   }, scope, deps);
 }
 
