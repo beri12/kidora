@@ -1054,6 +1054,9 @@ model Notification {
   @@index([userId, read, createdAt])
 }
 
+// One row per account. `provider` / `externalId` record what activated the
+// current plan: a PayPal order id, a Stripe session id, or nothing for a
+// pilot/free activation (provider = pilot).
 model Subscription {
   id         String           @id @default(cuid())
   plan       PlanKey          @default(free)
@@ -1063,20 +1066,53 @@ model Subscription {
   userId     String           @unique
   renewsAt   DateTime?
   createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @default(now()) @updatedAt
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// Every checkout attempt and every pilot activation. `externalId` is the
+// provider's order id (PayPal order / Stripe session) and is the idempotency
+// key for capture; `providerCaptureId` is the PayPal capture id, which refund
+// and dispute webhooks reference.
 model Payment {
-  id          String          @id @default(cuid())
-  provider    PaymentProvider
-  status      PaymentStatus   @default(pending)
-  plan        PlanKey
-  amountCents Int
-  currency    String          @default("USD")
-  externalId  String?         @unique
-  userId      String
-  createdAt   DateTime        @default(now())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String          @id @default(cuid())
+  provider          PaymentProvider
+  status            PaymentStatus   @default(pending)
+  plan              PlanKey
+  amountCents       Int
+  currency          String          @default("USD")
+  externalId        String?         @unique
+  providerCaptureId String?         @unique
+  userId            String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+// The commercial terms of each plan — the backend's single source of truth
+// for what a plan costs. Checkout never takes an amount from the browser.
+//
+// Changing a price is a data change, not a code change:
+//   priceCents = 0  -> activated directly (pilot / free), PayPal is not called
+//   priceCents > 0  -> PayPal checkout for exactly this amount
+// Marketing copy (feature bullets, descriptions) stays in the web app.
+model Plan {
+  key             PlanKey         @id
+  name            String
+  priceCents      Int             @default(0)
+  currency        String          @default("USD")
+  billingInterval BillingInterval @default(month)
+  // False hides the plan from checkout entirely.
+  active          Boolean         @default(true)
+  // A $0 price is a pilot price (shown as "Free during Kidora pilot") rather
+  // than the permanently free tier. A $0 plan that is neither pilot-enabled
+  // nor the free tier is sold by contact only (e.g. district contracts).
+  pilotEnabled    Boolean         @default(false)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 }
 
 model RefreshToken {
@@ -1517,6 +1553,8 @@ enum PlanKey {
 enum PaymentProvider {
   stripe
   paypal
+  // A $0 pilot/free activation. No money moved and no provider was called.
+  pilot
 }
 
 enum PaymentStatus {
@@ -1524,6 +1562,13 @@ enum PaymentStatus {
   succeeded
   failed
   refunded
+  // The buyer closed the PayPal window before approving.
+  cancelled
+}
+
+enum BillingInterval {
+  month
+  year
 }
 
 // ---- new enums ----

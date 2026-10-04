@@ -9,7 +9,9 @@ export class InvoicesService {
 
   async forUser(userId: string) {
     const payments = await this.prisma.payment.findMany({
-      where: { userId, status: 'succeeded' },
+      // Pilot activations are recorded as payments but nothing was charged,
+      // so they are not invoices.
+      where: { userId, status: 'succeeded', provider: { not: 'pilot' } },
       orderBy: { createdAt: 'desc' },
     });
     return payments.map((p, i) => ({

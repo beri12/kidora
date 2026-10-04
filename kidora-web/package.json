@@ -11,7 +11,7 @@
     "walkthrough:assignments": "node scripts/assignments-walkthrough.mjs"
   },
   "dependencies": {
-    "@paypal/react-paypal-js": "^8.8.1",
+    "@paypal/react-paypal-js": "^10.5.2",
     "@react-three/drei": "^10.0.0",
     "@react-three/fiber": "^9.0.0",
     "@stripe/stripe-js": "^5.4.0",

@@ -160,7 +160,7 @@ docker compose up --build
 - **Rewards** — `GET /api/rewards`, `POST /api/rewards/purchase`, `GET /api/missions`, `POST /api/missions/:id/complete`, `GET /api/achievements`, `GET /api/leaderboard`
 - **AI** — `POST /api/ai/chat`, `GET /api/ai/chat/history`
 - **Subscriptions** — `GET /api/subscriptions`, `GET /api/subscriptions/usage`, `POST /api/subscriptions`, `POST /api/subscriptions/cancel`
-- **Payments** — `POST /api/payments/stripe/checkout`, `POST /api/payments/stripe/webhook`, `POST /api/payments/paypal/order|capture`
+- **Payments** — `GET /api/payments/plans`, `POST /api/payments/activate-plan` ($0 pilot/free), `POST /api/payments/paypal/create-order|capture-order|cancel-order`, `POST /api/payments/stripe/checkout`, `POST /api/payments/stripe/webhook`. See [docs/PAYMENTS.md](docs/PAYMENTS.md).
 - **Invoices** — `GET /api/invoices`, `GET /api/invoices/:id/pdf`
 - **Admin** — `GET /api/admin/users`, `GET /api/analytics/platform`
 

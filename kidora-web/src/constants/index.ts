@@ -50,6 +50,9 @@ export const PERMISSIONS: Record<Role, string[]> = {
   DISTRICT_ADMIN: ['district:manage', 'school:view', 'report:view'],
 };
 
+// Marketing copy for the /pricing cards. Prices are NOT taken from here: the
+// API's plan catalog (GET /payments/plans) is the source of truth, so a price
+// change never needs a web deploy. priceCents is kept for the Plan type only.
 export const PLANS: Plan[] = [
   { key: 'free', name: 'Free', priceCents: 0, interval: 'month', features: ['20 starter lessons', 'Daily challenge', 'Basic games', '1 child profile'] },
   { key: 'family', name: 'Family Premium', priceCents: 1299, interval: 'month', popular: true, features: ['Full 500+ library', 'All games & quizzes', 'Certificates', 'Up to 4 kids', 'Parent reports'] },

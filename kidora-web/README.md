@@ -30,7 +30,7 @@ app/
   rewards/                          # wallet + shop + missions + achievements
   ai-tutor/                         # Kai chat  → POST /ai/chat
   account/                          # subscription + usage + invoices
-  pricing/                          # Stripe + PayPal checkout
+  pricing/                          # plan cards: Start Pilot ($0) or PayPal checkout
   layout.tsx, page.tsx, globals.css
 components/  ui · auth (PhoneField · CountryPicker · OtpInput · RolePicker · AuthShell) ·
              navbar · sidebar · shared

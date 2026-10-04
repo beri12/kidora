@@ -34,7 +34,7 @@ Set env `NEXT_PUBLIC_API_URL=https://api.kidora.com/api` + payment public keys, 
 
 ## Stripe/PayPal webhooks
 - Stripe: point a webhook at `https://api.kidora.com/api/payments/stripe/webhook` (raw body enabled).
-- PayPal: capture flow is server-side; add a webhook for subscription sync in production.
+- PayPal: capture flow is server-side (see PAYMENTS.md). Webhooks (refunds, disputes) are not wired yet; `Payment.providerCaptureId` is what they will match on.
 
 ## Health
 `GET /api/health` for load-balancer checks.

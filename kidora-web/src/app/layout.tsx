@@ -2,6 +2,7 @@ import './globals.css';
 import type { ReactNode } from 'react';
 import { Baloo_2, Nunito } from 'next/font/google';
 import { Providers } from '@/providers';
+import { FlashBanner } from '@/components/shared/FlashBanner';
 
 const baloo = Baloo_2({ subsets: ['latin'], weight: ['600', '700', '800'], variable: '--font-baloo' });
 const nunito = Nunito({ subsets: ['latin'], weight: ['600', '700', '800', '900'], variable: '--font-nunito' });
@@ -12,7 +13,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${baloo.variable} ${nunito.variable}`}>
       <body className="font-body">
-        <Providers>{children}</Providers>
+        <Providers>{children}<FlashBanner /></Providers>
       </body>
     </html>
   );

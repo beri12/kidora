@@ -165,8 +165,12 @@ export class LearningService {
       return { allowed: false, reason: 'INVITE_ONLY', message: 'This course is invite only. Ask your teacher to add you.' };
     }
     if (course.access === 'PREMIUM') {
+      // Subscription.status is stored lowercase ('active'); this compared
+      // against 'ACTIVE' and so denied every subscriber. The free tier does
+      // not unlock premium, and a paid period ends at renewsAt.
       const sub = await this.prisma.subscription.findFirst({
-        where: { userId: u.id, status: 'ACTIVE' }, select: { id: true },
+        where: { userId: u.id, status: 'active', plan: { not: 'free' }, OR: [{ renewsAt: null }, { renewsAt: { gt: new Date() } }] },
+        select: { id: true },
       });
       if (!sub) return { allowed: false, reason: 'PREMIUM', message: 'This course is part of Kidora Plus.' };
     }

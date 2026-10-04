@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PlanKey } from '@prisma/client';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private payments: PaymentsService) {}
 
   async mine(userId: string) {
     let sub = await this.prisma.subscription.findUnique({ where: { userId } });
@@ -12,14 +13,13 @@ export class SubscriptionsService {
     return sub;
   }
 
-  // Change plan (upgrade/downgrade). Payment activation happens via the
-  // Stripe/PayPal webhooks in PaymentsModule; this is the internal sync point.
+  // Change plan. This used to activate any plan it was given, so a signed-in
+  // user could POST {plan:'school'} and skip payment. It now goes through the
+  // same rules as the pricing page: $0 plans (pilot / free tier) activate,
+  // paid plans are refused with "requires payment" and must use PayPal.
   async setPlan(userId: string, plan: PlanKey) {
-    await this.mine(userId);
-    return this.prisma.subscription.update({
-      where: { userId },
-      data: { plan, status: 'active', renewsAt: plan === 'free' ? null : new Date(Date.now() + 30 * 864e5) },
-    });
+    await this.payments.activatePlan(userId, plan);
+    return this.mine(userId);
   }
 
   async cancel(userId: string) {

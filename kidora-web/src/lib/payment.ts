@@ -6,6 +6,7 @@
 // lib/http that read a localStorage key this app never writes, so every one of
 // these calls would have gone out unauthenticated.
 import { api as http } from "@/lib/axios";
+import { API_ORIGIN } from "@/lib/api/client";
 
 export type PaymentProvider = "stripe" | "paypal" | "apple_pay" | "telebirr";
 export type BillingCycle = "monthly" | "yearly";
@@ -32,8 +33,8 @@ export interface SubscriptionSummary {
   planKey: PlanKey;
   billingCycle: BillingCycle;
   status: "active" | "past_due" | "canceled" | "trialing";
-  currentPeriodEnd: string; // ISO date
-  provider: PaymentProvider;
+  currentPeriodEnd: string | null; // ISO date; null for pilot/free access
+  provider: PaymentProvider | "pilot" | null;
 }
 
 export interface Invoice {
@@ -63,18 +64,40 @@ export async function getCheckoutSessionStatus(sessionId: string) {
   return data;
 }
 
+// These read SubscriptionsController / InvoicesController. They previously
+// called /payments/subscription and /payments/invoices, which the API never
+// had, so the My Subscription and Billing tabs always failed.
+interface ApiSubscription { id: string; plan: PlanKey; status: string; renewsAt: string | null; provider: PaymentProvider | "pilot" | null }
+interface ApiInvoice { id: string; plan: PlanKey; amount: string; currency: string; pdfUrl: string; createdAt: string }
+
 export async function getMySubscription(): Promise<SubscriptionSummary | null> {
-  const { data } = await http.get<SubscriptionSummary | null>("/payments/subscription");
-  return data;
+  const { data } = await http.get<ApiSubscription | null>("/subscriptions");
+  // The free tier is "no subscription" as far as this screen is concerned.
+  if (!data || data.plan === "free") return null;
+  return {
+    id: data.id,
+    planKey: data.plan,
+    billingCycle: "monthly",
+    status: data.status === "cancelled" ? "canceled" : "active",
+    currentPeriodEnd: data.renewsAt,
+    provider: data.provider,
+  };
 }
 
 export async function cancelSubscription(): Promise<void> {
-  await http.post("/payments/subscription/cancel");
+  await http.post("/subscriptions/cancel");
 }
 
 export async function getInvoices(): Promise<Invoice[]> {
-  const { data } = await http.get<Invoice[]>("/payments/invoices");
-  return data;
+  const { data } = await http.get<ApiInvoice[]>("/invoices");
+  return data.map((i) => ({
+    id: i.id,
+    amount: Number(i.amount),
+    currency: i.currency,
+    issuedAt: i.createdAt,
+    pdfUrl: API_ORIGIN + i.pdfUrl,
+    planKey: i.plan,
+  }));
 }
 
 // --- PayPal (in-app Smart Buttons flow: create order -> user approves -> capture) ---

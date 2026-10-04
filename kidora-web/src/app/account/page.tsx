@@ -1,6 +1,7 @@
 'use client';
+import Link from 'next/link';
 import { Navbar } from '@/components/navbar/Navbar';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { useSubscription, useInvoices } from '@/features/subscription/hooks';
 
 export default function AccountPage() {
@@ -33,7 +34,9 @@ export default function AccountPage() {
         </div>
 
         <div className="flex gap-3 mt-4 flex-wrap">
-          <Button variant="grass" onClick={() => setPlan.mutate('family')}>Upgrade to Family</Button>
+          {/* Upgrades go through the pricing page: Start Pilot while the plan
+              is $0, PayPal once it is priced. */}
+          <Link href="/pricing?plan=family" className={buttonVariants({ variant: 'grass' })}>Upgrade to Family</Link>
           <Button variant="outline" onClick={() => setPlan.mutate('free')}>Downgrade</Button>
           <Button variant="ghost" onClick={() => cancel.mutate()}>Cancel</Button>
         </div>

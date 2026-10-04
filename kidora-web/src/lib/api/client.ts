@@ -150,7 +150,10 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
   }
 
   if (!res.ok) {
-    const msg = (data as { message?: string | string[] })?.message;
+    // AllExceptionsFilter nests Nest's body under `error`
+    // ({ statusCode, error: { message } }); bare { message } is still accepted.
+    const body = data as { message?: string | string[]; error?: { message?: string | string[] } } | undefined;
+    const msg = body?.error?.message ?? body?.message;
     // Never surface a raw backend message for 5xx — those can carry stack
     // detail. Validation messages (400/422) are written for users, so they pass
     // through.

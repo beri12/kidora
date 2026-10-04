@@ -9,7 +9,8 @@ describe('StripeService.handleWebhook', () => {
   };
   const email: any = { sendSubscriptionSuccess: jest.fn() };
   const config: any = { get: () => 'http://localhost:3000' };
-  const svc = new StripeService(config, prisma, email);
+  const plans: any = { find: jest.fn().mockResolvedValue({ key: 'family', name: 'Family Premium' }) };
+  const svc = new StripeService(config, prisma, email, plans);
 
   it('activates subscription on completed checkout', async () => {
     // stub the Stripe SDK signature verification
@@ -20,6 +21,6 @@ describe('StripeService.handleWebhook', () => {
     const res = await svc.handleWebhook(Buffer.from('{}'), 'sig');
     expect(res).toEqual({ received: true });
     expect(prisma.subscription.upsert).toHaveBeenCalled();
-    expect(email.sendSubscriptionSuccess).toHaveBeenCalledWith('a@b.com', 'Leo', expect.any(String));
+    expect(email.sendSubscriptionSuccess).toHaveBeenCalledWith('a@b.com', 'Leo', 'Family Premium');
   });
 });

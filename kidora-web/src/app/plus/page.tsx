@@ -1,10 +1,23 @@
 'use client';
-import { useState } from 'react';
-import { PaymentPanel } from '@/components/checkout/Paymentpanel';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { PlanCheckoutButton, PlanCheckoutProvider } from '@/components/checkout/PlanCheckout';
+import { priceLabel, usePlanCatalog } from '@/features/payments/hooks';
+import type { CheckoutMode } from '@/lib/api/payments';
 import { useMySubscription, useInvoices, useCancelSubscription } from '@/hooks/usepayment';
 import type { PlanKey } from '@/lib/payment';
 
-interface Plan { key: PlanKey; name: string; emoji: string; price: number; custom?: boolean; tag?: string; color: string; feats: string[]; }
+// Display copy only. Price and how each plan is obtained come from the API
+// catalog (GET /payments/plans), so a price change needs no web deploy.
+interface Plan { key: PlanKey; name: string; emoji: string; tag?: string; color: string; feats: string[]; }
+
+const CTA_CLASS = 'w-full py-3 rounded-2xl font-display font-extrabold text-white disabled:opacity-70';
+function ctaBackground(mode: CheckoutMode | undefined, popular: boolean): string {
+  if (popular) return 'linear-gradient(135deg,#8B5CF6,#6D28D9)';
+  if (mode === 'contact') return 'linear-gradient(135deg,#0284C7,#0369A1)';
+  if (mode === 'free') return '#CBD5E1';
+  return 'linear-gradient(135deg,#22C55E,#15803D)';
+}
 
 const TABS = [
   { key: 'pricing', label: '💎 Pricing' },
@@ -15,25 +28,39 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]['key'];
 
-// Checkout is now 3 steps, not 4. Stripe/PayPal/Telebirr all redirect off-site
-// on "Pay now", so there's no in-app confirmation step to show; the real
-// confirmation happens on /payment/success after the redirect comes back.
+// Step 3 is the plan's own call to action: "Start Pilot" for a $0 plan, or
+// the PayPal button for a priced one. Confirmation comes from the API.
 const CHECKOUT_STEPS = ['Choose Plan', 'Account', 'Payment'];
 
+const PLANS: Plan[] = [
+  { key: 'free', name: 'Free', emoji: '🌱', color: '#94A3B8', feats: ['Basic lessons', 'Limited games', 'Basic progress tracking', '1 child profile'] },
+  { key: 'family', name: 'Family', emoji: '⭐', tag: 'Most Popular', color: '#8B5CF6', feats: ['Unlimited learning', 'AI Tutor (Kai)', 'Advanced reports', 'Avatar customization', 'All games', 'Premium worlds'] },
+  { key: 'school', name: 'School', emoji: '🏫', color: '#16A34A', feats: ['Teacher dashboard', 'Classroom management', 'Student analytics', 'School reports', 'Up to 40 students'] },
+  { key: 'district', name: 'District', emoji: '🏛️', color: '#0284C7', feats: ['Multiple schools', 'District analytics', 'Advanced administration', 'Priority support', 'Custom onboarding'] },
+];
+
 export default function PlusPage() {
-  const [tab, setTab] = useState<Tab>('pricing');
-  const [yearly, setYearly] = useState(false);
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F1ECFF]" />}>
+      <PlusInner />
+    </Suspense>
+  );
+}
+
+function PlusInner() {
+  const params = useSearchParams();
+  // ?plan= is set by the sign-in redirect; ?tab= by the payment result pages.
+  const resume = params.get('plan');
+  const initialTab = TABS.find((t) => t.key === params.get('tab'))?.key ?? 'pricing';
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [plan, setPlan] = useState<PlanKey>('family');
   const [step, setStep] = useState(1);
+  const { data: catalog } = usePlanCatalog();
+  const catalogPlan = (key: PlanKey) => catalog?.plans.find((x) => x.id === key);
 
   const go = (t: Tab) => { setTab(t); setStep(1); };
 
-  const plans: Plan[] = [
-    { key: 'free', name: 'Free', emoji: '🌱', price: 0, color: '#94A3B8', feats: ['Basic lessons', 'Limited games', 'Basic progress tracking', '1 child profile'] },
-    { key: 'family', name: 'Family', emoji: '⭐', price: yearly ? 109 : 12.99, tag: 'Most Popular', color: '#8B5CF6', feats: ['Unlimited learning', 'AI Tutor (Kai)', 'Advanced reports', 'Avatar customization', 'All games', 'Premium worlds'] },
-    { key: 'school', name: 'School', emoji: '🏫', price: yearly ? 790 : 99, color: '#16A34A', feats: ['Teacher dashboard', 'Classroom management', 'Student analytics', 'School reports', 'Up to 40 students'] },
-    { key: 'district', name: 'District', emoji: '🏛️', price: 0, custom: true, color: '#0284C7', feats: ['Multiple schools', 'District analytics', 'Advanced administration', 'Priority support', 'Custom onboarding'] },
-  ];
+  const plans = PLANS;
 
   return (
     <div className="min-h-screen bg-[#F1ECFF] text-[#3B0764] font-body">
@@ -57,41 +84,33 @@ export default function PlusPage() {
         {tab === 'pricing' && (
           <>
             <h1 className="font-display text-3xl md:text-4xl font-extrabold text-center mb-1.5">Choose your plan 💎</h1>
-            <p className="font-bold text-[#7C6BA8] text-center mb-5">Start free. Upgrade anytime. Cancel whenever.</p>
-            <div className="flex items-center justify-center gap-3 mb-7">
-              <span className="font-display font-extrabold" style={{ color: yearly ? '#A99BC9' : '#6D28D9' }}>Monthly</span>
-              <button onClick={() => setYearly(!yearly)} className="w-[58px] h-8 rounded-full relative transition" style={{ background: yearly ? '#8B5CF6' : '#CBD5E1' }}>
-                <span className="absolute top-[3px] w-[26px] h-[26px] rounded-full bg-white transition-all" style={{ left: yearly ? 29 : 3 }} />
-              </button>
-              <span className="font-display font-extrabold" style={{ color: yearly ? '#6D28D9' : '#A99BC9' }}>Yearly</span>
-              <span className="font-display font-extrabold text-xs text-[#16A34A] bg-[#DCFCE7] px-2.5 py-1 rounded-full">Save 30%</span>
-            </div>
+            <p className="font-bold text-[#7C6BA8] text-center mb-7">Start free. Upgrade anytime. Cancel whenever.</p>
+            <PlanCheckoutProvider>
             <div className="grid gap-4 items-stretch" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))' }}>
               {plans.map((p) => {
                 const popular = p.tag === 'Most Popular';
+                const cp = catalogPlan(p.key);
+                const price = priceLabel(cp);
                 return (
-                  <div key={p.key} className="rounded-3xl p-6 relative flex flex-col transition-transform hover:-translate-y-2 cursor-pointer"
-                    style={{ border: popular ? '3px solid #8B5CF6' : '2px solid #EDE4FF', background: popular ? 'linear-gradient(160deg,#F6F2FF,#EDE9FE)' : '#fff', boxShadow: '0 12px 30px -14px rgba(80,40,140,.3)' }}>
+                  <div key={p.key} className="rounded-3xl p-6 relative flex flex-col transition-transform hover:-translate-y-2"
+                    style={{ border: popular || resume === p.key ? '3px solid #8B5CF6' : '2px solid #EDE4FF', background: popular ? 'linear-gradient(160deg,#F6F2FF,#EDE9FE)' : '#fff', boxShadow: '0 12px 30px -14px rgba(80,40,140,.3)' }}>
                     {popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-display font-extrabold px-3.5 py-1 rounded-full whitespace-nowrap" style={{ background: 'linear-gradient(135deg,#FACC15,#F59E0B)', color: '#7C2D12' }}>⭐ Most Popular</div>}
                     <div className="text-4xl">{p.emoji}</div>
                     <h3 className="font-display text-xl font-extrabold mt-1">{p.name}</h3>
                     <div className="my-2">
-                      {p.custom ? <span className="font-display font-extrabold text-2xl">Contact us</span>
-                        : p.price === 0 ? <span className="font-display font-extrabold text-3xl">Free</span>
-                        : <><span className="font-display font-extrabold text-3xl">${p.price}</span><span className="font-bold text-[#A99BC9] text-sm">{yearly ? '/yr' : '/mo'}</span></>}
+                      <span className={'font-display font-extrabold ' + (cp?.checkout === 'contact' ? 'text-2xl' : 'text-3xl')}>{price.amount}</span>
+                      {price.suffix && <span className="font-bold text-[#A99BC9] text-sm">{price.suffix}</span>}
+                      {price.note && <div className="font-bold text-[13px] text-[#16A34A]">{price.note}</div>}
                     </div>
                     <div className="flex flex-col gap-2 my-3 flex-1">
                       {p.feats.map((ft) => <div key={ft} className="flex gap-2 font-bold text-[13px] text-[#4C1D95]"><span style={{ color: p.color }}>✓</span>{ft}</div>)}
                     </div>
-                    <button onClick={() => { setPlan(p.key); setTab('checkout'); setStep(1); }}
-                      className="w-full py-3 rounded-2xl font-display font-extrabold text-white"
-                      style={{ background: popular ? 'linear-gradient(135deg,#8B5CF6,#6D28D9)' : p.custom ? 'linear-gradient(135deg,#0284C7,#0369A1)' : p.price === 0 ? '#CBD5E1' : 'linear-gradient(135deg,#22C55E,#15803D)' }}>
-                      {p.custom ? 'Contact Sales' : p.price === 0 ? 'Get Started' : 'Choose ' + p.name}
-                    </button>
+                    <PlanCheckoutButton planId={p.key} autoStart={resume === p.key} buttonClassName={CTA_CLASS} buttonStyle={{ background: ctaBackground(cp?.checkout, popular) }} />
                   </div>
                 );
               })}
             </div>
+            </PlanCheckoutProvider>
           </>
         )}
 
@@ -135,13 +154,13 @@ export default function PlusPage() {
               })}
             </div>
 
-            {step === 1 && (() => { const p = plans.find((x) => x.key === plan) || plans[1]; return (
+            {step === 1 && (() => { const p = plans.find((x) => x.key === plan) || plans[1]; const cp = catalogPlan(p.key); const price = priceLabel(cp); return (
               <div className="bg-white rounded-3xl border-2 border-[#EDE4FF] p-6 max-w-[520px] mx-auto" style={{ boxShadow: '0 12px 30px -14px rgba(80,40,140,.3)' }}>
                 <h3 className="font-display text-xl font-extrabold mb-4">Your plan</h3>
                 <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-[#F6F2FF] mb-4">
                   <div className="text-4xl">{p.emoji}</div>
-                  <div className="flex-1"><h4 className="font-display font-extrabold text-lg">Kidora {p.name}</h4><p className="font-bold text-[13px] text-[#7C6BA8]">{yearly ? 'Billed yearly' : 'Billed monthly'}</p></div>
-                  <div className="font-display font-extrabold text-xl text-[#6D28D9]">{p.custom ? 'Custom' : p.price === 0 ? 'Free' : '$' + p.price}</div>
+                  <div className="flex-1"><h4 className="font-display font-extrabold text-lg">Kidora {p.name}</h4><p className="font-bold text-[13px] text-[#7C6BA8]">{price.note ?? (cp?.checkout === 'paypal' ? (cp.billingInterval === 'year' ? 'Billed yearly' : 'Billed monthly') : 'No payment needed')}</p></div>
+                  <div className="font-display font-extrabold text-xl text-[#6D28D9]">{price.amount}{price.suffix ?? ''}</div>
                 </div>
                 <div className="flex gap-2.5">
                   {plans.filter((x) => x.key !== 'district').map((x) => (
@@ -160,13 +179,22 @@ export default function PlusPage() {
               </div>
             )}
 
-            {step === 3 && (
-              <PaymentPanel planKey={plan} billingCycle={yearly ? 'yearly' : 'monthly'} />
-            )}
+            {step === 3 && (() => { const p = plans.find((x) => x.key === plan) || plans[1]; const cp = catalogPlan(p.key); return (
+              <div className="bg-white rounded-3xl border-2 border-[#EDE4FF] p-6 max-w-[520px] mx-auto" style={{ boxShadow: '0 12px 30px -14px rgba(80,40,140,.3)' }}>
+                <h3 className="font-display text-xl font-extrabold mb-2">{cp?.checkout === 'paypal' ? 'Pay with PayPal' : 'Activate your plan'}</h3>
+                <p className="font-bold text-sm text-[#7C6BA8] mb-4">
+                  {cp?.checkout === 'paypal'
+                    ? 'Approve the payment in PayPal. Your plan unlocks as soon as Kidora confirms it.'
+                    : 'Kidora ' + p.name + ' is free right now. No payment details needed.'}
+                </p>
+                <PlanCheckoutProvider>
+                  <PlanCheckoutButton planId={p.key} buttonClassName={CTA_CLASS} buttonStyle={{ background: ctaBackground(cp?.checkout, false) }} />
+                </PlanCheckoutProvider>
+              </div>
+            ); })()}
 
-            {/* Back / Continue nav. Step 3 has no "Continue" or "Pay now" button here
-               because PaymentPanel owns its own submit button, loading state, and
-               redirect. This avoids two competing "pay" actions on screen. */}
+            {/* Back / Continue nav. Step 3 has no "Continue" button: the plan's
+               own call to action owns submit, loading state and redirect. */}
             <div className="flex justify-center gap-3 mt-5.5">
               {step > 1 && <button onClick={() => setStep(step - 1)} className="px-6 py-3 rounded-2xl font-display font-extrabold text-[#6D28D9] bg-[#EDE4FF]">← Back</button>}
               {step < 3 && <button onClick={() => setStep(step + 1)} className="px-8 py-3 rounded-2xl font-display font-extrabold text-white" style={{ background: 'linear-gradient(135deg,#8B5CF6,#6D28D9)' }}>Continue →</button>}
@@ -223,8 +251,11 @@ function SubscriptionTab({ onManagePlans }: { onManagePlans: () => void }) {
                 {PLAN_LABEL[subscription.planKey].emoji} Kidora {PLAN_LABEL[subscription.planKey].name}
               </h2>
               <p className="font-bold opacity-90 text-sm mt-1">
-                {subscription.billingCycle === 'yearly' ? 'Billed yearly' : 'Billed monthly'} · renews{' '}
-                {new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                {subscription.provider === 'pilot'
+                  ? 'Free during Kidora pilot'
+                  : subscription.currentPeriodEnd
+                    ? 'Active until ' + new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Active'}
               </p>
             </div>
             <div className="inline-flex items-center gap-2 bg-white/25 px-4 py-2 rounded-full font-display font-extrabold capitalize">

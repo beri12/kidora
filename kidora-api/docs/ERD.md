@@ -29,6 +29,7 @@ Course *─1 User (teacher)
 - **Rarity**: common · rare · epic · legendary
 - **TxnType**: EARN · SPEND · BONUS · PURCHASE
 - **PlanKey**: free · family · school · district
-- **PaymentProvider**: stripe · paypal   **PaymentStatus**: pending · succeeded · failed · refunded
+- **PaymentProvider**: stripe · paypal · pilot   **PaymentStatus**: pending · succeeded · failed · refunded · cancelled
+- **Plan** (keyed by PlanKey): price, currency, billing interval, active, pilotEnabled — the price source for checkout
 - **LessonType**: VIDEO · INTERACTIVE · QUIZ · GAME
 ```
