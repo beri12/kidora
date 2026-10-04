@@ -1,5 +1,5 @@
 import { AuthGuard } from '@nestjs/passport';
-import { oauthCredentials } from '../../config/oauth-callback';
+import { callbackUrlProblems, oauthCredentials } from '../../config/oauth-callback';
 import { ExecutionContext, Injectable, NotImplementedException } from '@nestjs/common';
 
 /**
@@ -22,6 +22,15 @@ export function ProviderGuard(name: string) {
         throw new NotImplementedException(
           `${name} sign-in is not configured on this server. Set ${c.idVar} (and ${c.secretVar}) and restart.`,
         );
+      }
+      // Only the start route: on the callback the visitor is already back
+      // from the provider, and failures there redirect to the web app.
+      const req = ctx.switchToHttp().getRequest();
+      const starting = !String(req?.path ?? req?.url ?? '').includes('/callback');
+      const problems = starting ? callbackUrlProblems(name) : [];
+      if (problems.length) {
+        // Names variables only, never their secret values.
+        throw new NotImplementedException(`${name} sign-in is misconfigured on this server: ${problems.join(' ')}`);
       }
       return super.canActivate(ctx) as any;
     }

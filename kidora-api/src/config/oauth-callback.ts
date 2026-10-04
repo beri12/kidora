@@ -25,7 +25,7 @@
  *   - "/api" is appended when it is missing, because every route lives there.
  */
 export function apiBaseUrl(): string {
-  const raw = (process.env.API_URL || process.env.PUBLIC_API_URL)?.trim().replace(/\/+$/, '');
+  const raw = (cleanEnv(process.env.API_URL) || cleanEnv(process.env.PUBLIC_API_URL)).replace(/\/+$/, '');
   if (!raw) return `http://localhost:${process.env.PORT ?? 4000}/api`;
 
   let url = raw.endsWith('/api') ? raw : `${raw}/api`;
@@ -37,17 +37,59 @@ export function apiBaseUrl(): string {
 }
 
 /**
- * Problems with the callback URLs that will make a provider refuse sign-in,
- * in words an operator can act on. Printed at boot.
+ * A value pasted into .env, as the provider expects it: surrounding quotes
+ * and whitespace (including a Windows CR) removed. `GOOGLE_CLIENT_ID="…" `
+ * with a trailing space reached Google byte for byte, and Google answers a
+ * malformed client_id or redirect_uri with a bare "Error 400: invalid_request".
+ */
+export function cleanEnv(value: string | undefined): string {
+  return (value ?? '').trim().replace(/^(['"])(.*)\1$/, '$2').trim();
+}
+
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])$/;
+const PRIVATE_IP = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+
+/**
+ * Problems that will make a provider refuse sign-in, in words an operator can
+ * act on. Printed at boot, and the start route refuses to send anyone to the
+ * provider while one exists — Google's own page for these says only
+ * "invalid_request", with the reason hidden behind "error details".
  */
 export function callbackUrlProblems(provider: string): string[] {
   const url = oauthCallbackUrl(provider);
+  const P = provider.toUpperCase();
   const problems: string[] = [];
-  if (process.env.NODE_ENV === 'production') {
-    if (/^http:\/\/(localhost|127\.0\.0\.1)/.test(url)) {
-      problems.push('API_URL is not set, so the provider would be sent to localhost. Set API_URL=https://<your api host>/api.');
-    } else if (url.startsWith('http://')) {
-      problems.push(`${url} is not https; ${provider} will refuse it. Fix ${provider.toUpperCase()}_CALLBACK_URL.`);
+
+  let parsed: URL | null = null;
+  try { parsed = new URL(url); } catch { /* reported below */ }
+  if (!parsed || !/^https?:$/.test(parsed.protocol)) {
+    problems.push(`The redirect URI "${url}" is not a full http(s) URL. Set ${P}_CALLBACK_URL to e.g. http://localhost:4000/api/auth/${provider}/callback.`);
+    return problems;
+  }
+
+  const local = LOCAL_HOST.test(parsed.hostname);
+  if (process.env.NODE_ENV === 'production' && local) {
+    problems.push('API_URL is not set, so the provider would be sent to localhost. Set API_URL=https://<your api host>/api.');
+  } else if (parsed.protocol === 'http:' && !local && provider !== 'github') {
+    // Google, Facebook ("Enforce HTTPS"), TikTok, Microsoft and Apple only
+    // allow plain http for localhost (GitHub alone accepts it). Google wants
+    // device parameters for a LAN address on top.
+    problems.push(
+      PRIVATE_IP.test(parsed.hostname)
+        ? `${url} uses a local network address; ${provider} only accepts http://localhost or https. Open the app via localhost, or use an https tunnel.`
+        : `${url} is not https; ${provider} will refuse it. Fix ${P}_CALLBACK_URL / API_URL.`,
+    );
+  }
+
+  if (provider === 'google') {
+    const { id, secret } = oauthCredentials('google');
+    if (id && /^GOCSPX-/.test(id)) {
+      problems.push('GOOGLE_CLIENT_ID holds the client secret (GOCSPX-…). Put the client ID (…apps.googleusercontent.com) there and the secret in GOOGLE_CLIENT_SECRET.');
+    } else if (id && !/\.apps\.googleusercontent\.com$/.test(id)) {
+      problems.push(`GOOGLE_CLIENT_ID "${id.slice(0, 12)}…" is not an OAuth client ID. Copy the "Client ID" ending in .apps.googleusercontent.com from Google Cloud → Credentials → OAuth 2.0 Client IDs (type "Web application").`);
+    }
+    if (secret && /\.apps\.googleusercontent\.com$/.test(secret)) {
+      problems.push('GOOGLE_CLIENT_SECRET holds the client ID. Put the secret (GOCSPX-…) there.');
     }
   }
   return problems;
@@ -59,7 +101,7 @@ export function callbackUrlProblems(provider: string): string[] {
  */
 export function oauthCallbackUrl(provider: string): string {
   const P = provider.toUpperCase();
-  const explicit = (process.env[`${P}_CALLBACK_URL`] || process.env[`${P}_REDIRECT_URI`])?.trim();
+  const explicit = cleanEnv(process.env[`${P}_CALLBACK_URL`]) || cleanEnv(process.env[`${P}_REDIRECT_URI`]);
   return explicit || `${apiBaseUrl()}/auth/${provider}/callback`;
 }
 
@@ -77,6 +119,6 @@ export function oauthCredentials(provider: string) {
     id: [`${provider.toUpperCase()}_CLIENT_ID`],
     secret: [`${provider.toUpperCase()}_CLIENT_SECRET`],
   };
-  const pick = (keys: string[]) => keys.map((k) => process.env[k]?.trim()).find(Boolean) ?? '';
+  const pick = (keys: string[]) => keys.map((k) => cleanEnv(process.env[k])).find(Boolean) ?? '';
   return { id: pick(names.id), secret: pick(names.secret), idVar: names.id[0], secretVar: names.secret[0] };
 }
