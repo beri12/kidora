@@ -17,7 +17,8 @@ function setup(overrides: Record<string, unknown> = {}) {
       create: jest.fn(async ({ data }: any) => Object.assign(payment, data)),
       findUnique: jest.fn(async () => payment),
       updateMany: jest.fn(async ({ where, data }: any) => {
-        if (where.status && where.status !== payment.status) return { count: 0 };
+        const st = where.status;
+        if (st && (typeof st === 'object' ? !st.in.includes(payment.status) : st !== payment.status)) return { count: 0 };
         payment.status = data.status;
         return { count: 1 };
       }),
@@ -26,7 +27,7 @@ function setup(overrides: Record<string, unknown> = {}) {
     user: { findUnique: jest.fn(async () => ({ id: 'u1', email: 'a@b.c', name: 'Abebe Bekele', phone: '+251911223344' })) },
   };
   const pricing: any = { checkoutPrice: jest.fn(async () => ({ name: 'Student', amountMinor: 499, currency: 'USD' })) };
-  const settlement = new PaymentSettlementService(prisma, { sendSubscriptionSuccess: jest.fn() } as any);
+  const settlement = new PaymentSettlementService(prisma, { sendSubscriptionSuccess: jest.fn() } as any, pricing);
   const config: any = { get: () => 'https://justkidora.com' };
   return { svc: new ChapaService(config, prisma, pricing, settlement), prisma, payment };
 }

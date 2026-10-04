@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, MotionConfig, motion, type Variants } from 'framer-motion';
 import { PayPalButtons, PayPalScriptProvider } from '@paypal/react-paypal-js';
@@ -13,6 +13,7 @@ import { paymentsApi } from '@/lib/api/payments';
 import { ROLE_HOME } from '@/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import { apiErrorMessage } from '@/lib/api-error';
+import { ApiError } from '@/lib/api/client';
 
 type Billing = 'monthly' | 'yearly';
 
@@ -60,6 +61,20 @@ const rise: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
 };
 
+/**
+ * A message safe to show. The payments client throws ApiError, whose 4xx
+ * messages are written for people; an outage or network failure gets a fixed
+ * line so no provider detail reaches the screen.
+ */
+function checkoutError(e: unknown, fallback: string) {
+  if (e instanceof ApiError) {
+    if (e.isUnauthorized) return 'Please sign in to continue.';
+    if (e.isNetwork || e.status >= 500) return 'Payment service is temporarily unavailable. Please try again.';
+    return e.message || fallback;
+  }
+  return apiErrorMessage(e, fallback);
+}
+
 /** The monthly or yearly price, or null for "custom". Yearly falls back to monthly. */
 function priceFor(plan: PublicPlan, billing: Billing) {
   if (billing === 'yearly' && plan.yearlyPriceMinor != null) return { minor: plan.yearlyPriceMinor, per: '/year' };
@@ -70,6 +85,9 @@ function priceFor(plan: PublicPlan, billing: Billing) {
 export function PricingView() {
   const [billing, setBilling] = useState<Billing>('monthly');
   const [checkout, setCheckout] = useState<PublicPlan | null>(null);
+  // A $0 pilot plan being activated (its slug), and why the last attempt failed.
+  const [activating, setActivating] = useState<string | null>(null);
+  const [pilotError, setPilotError] = useState('');
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
   const params = useSearchParams();
@@ -82,14 +100,34 @@ export function PricingView() {
 
   const hasYearly = Boolean(data?.plans.some((p) => p.yearlyPriceMinor != null));
 
+  /**
+   * A $0 plan during the pilot: activated by the API straight away, with no
+   * payment provider. Nothing unlocks until the API confirms it.
+   */
+  const activatePilot = useCallback(async (plan: PublicPlan) => {
+    if (!plan.checkoutPlan || activating) return;
+    setActivating(plan.slug);
+    setPilotError('');
+    try {
+      await paymentsApi.activatePlan(plan.checkoutPlan);
+      router.push('/payment/return?provider=pilot&status=paid');
+    } catch (e) {
+      setActivating(null);
+      setPilotError(checkoutError(e, "We couldn't start your pilot. Please try again."));
+    }
+  }, [activating, router]);
+
   // Back from sign-up with ?checkout=<plan>: pick up where the visitor left off.
   const resume = params.get('checkout');
+  const resumed = useRef(false);
   useEffect(() => {
-    if (!resume || !user || !data) return;
+    if (!resume || !user || !data || resumed.current) return;
+    resumed.current = true;
     const plan = data.plans.find((p) => p.slug === resume && p.checkoutPlan);
-    if (plan) setCheckout(plan);
     router.replace('/pricing', { scroll: false });
-  }, [resume, user, data, router]);
+    if (plan?.checkoutMode === 'pilot') void activatePilot(plan);
+    else if (plan) setCheckout(plan);
+  }, [resume, user, data, router, activatePilot]);
 
   /**
    * Signed out → create an account for that role, then come back.
@@ -103,7 +141,8 @@ export function PricingView() {
       router.push(`/auth/signup?role=${role}&next=${encodeURIComponent(back)}`);
       return;
     }
-    if (plan.checkoutPlan) setCheckout(plan);
+    if (plan.checkoutMode === 'pilot') void activatePilot(plan);
+    else if (plan.checkoutPlan) setCheckout(plan);
     // Signed in, and this plan is not sold through checkout (Teacher): take
     // them to their own dashboard, or to the role step if they have none yet.
     else router.push(user.roleConfirmed === false ? `/auth/signup/role?role=${role}` : ROLE_HOME[user.role] ?? '/');
@@ -159,6 +198,12 @@ export function PricingView() {
             </div>
           )}
 
+          {pilotError && (
+            <p role="alert" className="mx-auto mt-6 max-w-md rounded-2xl border-2 border-coral-400/40 bg-white px-4 py-3 text-center font-body font-bold text-coral-600">
+              {pilotError}
+            </p>
+          )}
+
           {data && (
             <motion.ul
               variants={grid}
@@ -167,7 +212,7 @@ export function PricingView() {
               className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
             >
               {data.plans.map((plan) => (
-                <PlanCard key={plan.slug} plan={plan} billing={billing} onStart={() => start(plan)} />
+                <PlanCard key={plan.slug} plan={plan} billing={billing} busy={activating === plan.slug} disabled={!!activating} onStart={() => start(plan)} />
               ))}
             </motion.ul>
           )}
@@ -188,9 +233,10 @@ export function PricingView() {
   );
 }
 
-function PlanCard({ plan, billing, onStart }: { plan: PublicPlan; billing: Billing; onStart: () => void }) {
+function PlanCard({ plan, billing, busy, disabled, onStart }: { plan: PublicPlan; billing: Billing; busy: boolean; disabled: boolean; onStart: () => void }) {
   const s = STYLE[plan.audience];
   const price = priceFor(plan, billing);
+  const pilot = plan.checkoutMode === 'pilot';
 
   return (
     <motion.li
@@ -220,7 +266,12 @@ function PlanCard({ plan, billing, onStart }: { plan: PublicPlan; billing: Billi
         <p className="mt-1 min-h-[3.9rem] font-body text-[15px] font-semibold leading-snug text-slate-600">{plan.tagline}</p>
 
         <div className="mt-4">
-          {price ? (
+          {pilot ? (
+            <>
+              <span className={`font-display text-4xl font-extrabold ${s.price}`}>Free</span>
+              <p className="mt-1 font-body text-sm font-extrabold text-emerald-600">Free during Kidora pilot</p>
+            </>
+          ) : price ? (
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={billing}
@@ -237,7 +288,7 @@ function PlanCard({ plan, billing, onStart }: { plan: PublicPlan; billing: Billi
           ) : (
             <span className={`font-display text-3xl font-extrabold ${s.price}`}>Custom</span>
           )}
-          {plan.unitLabel && <p className="mt-1 font-body text-sm font-bold text-slate-500">{plan.unitLabel}</p>}
+          {plan.unitLabel && !pilot && <p className="mt-1 font-body text-sm font-bold text-slate-500">{plan.unitLabel}</p>}
         </div>
 
         <ul className="mt-5 flex-1 space-y-2.5 text-left">
@@ -252,12 +303,14 @@ function PlanCard({ plan, billing, onStart }: { plan: PublicPlan; billing: Billi
         <motion.button
           type="button"
           onClick={onStart}
+          disabled={disabled}
+          aria-busy={busy}
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.96 }}
-          className={`mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full font-display text-[17px] font-extrabold text-white shadow-md outline-none focus-visible:ring-4 ${s.button}`}
-          aria-label={`Get started with the ${plan.name} plan`}
+          className={`mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full font-display text-[17px] font-extrabold text-white shadow-md outline-none focus-visible:ring-4 disabled:opacity-70 ${s.button}`}
+          aria-label={pilot ? `Start the free ${plan.name} pilot` : `Get started with the ${plan.name} plan`}
         >
-          Get Started <span aria-hidden>→</span>
+          {busy ? 'Activating pilot…' : pilot ? 'Start Pilot' : <>Get Started <span aria-hidden>→</span></>}
         </motion.button>
       </div>
     </motion.li>
@@ -453,11 +506,15 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
   const paypal = usePaypalOrder();
   const [error, setError] = useState('');
   const [chapaBusy, setChapaBusy] = useState(false);
+  // Where the PayPal flow is, for the status line and to block double submits.
+  const [paypalPhase, setPaypalPhase] = useState<'idle' | 'connecting' | 'paying' | 'capturing'>('idle');
+  const [notice, setNotice] = useState('');
   const key = plan.checkoutPlan!;
   const price = priceFor(plan, 'monthly');
-  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
   const providers = useQuery({ queryKey: ['payment-providers'], queryFn: paymentsApi.providers, staleTime: 10 * 60_000 });
   const p = providers.data;
+  // Served by the API with the environment it runs; the env var is a fallback.
+  const paypalClientId = p?.paypalClientId ?? process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
   const none = p && !p.chapa && !p.stripe && !(p.paypal && paypalClientId);
 
   async function payWithChapa() {
@@ -467,7 +524,7 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
       const { url } = await paymentsApi.chapaCheckout(key);
       window.location.href = url;
     } catch (e) {
-      setError(apiErrorMessage(e, "We couldn't start Chapa checkout."));
+      setError(checkoutError(e, "We couldn't start Chapa checkout."));
       setChapaBusy(false);
     }
   }
@@ -521,7 +578,7 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
         {p?.stripe && (
           <button
             type="button"
-            onClick={() => stripe.mutate(key, { onError: (e) => setError(apiErrorMessage(e, "We couldn't start checkout.")) })}
+            onClick={() => stripe.mutate(key, { onError: (e) => setError(checkoutError(e, "We couldn't start checkout.")) })}
             disabled={stripe.isPending}
             className="mt-3 min-h-12 w-full rounded-full bg-brand-700 font-display text-lg font-extrabold text-white disabled:opacity-60"
           >
@@ -531,18 +588,56 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
 
         {p?.paypal && paypalClientId && (
           <div className="mt-3">
-            <PayPalScriptProvider options={{ clientId: paypalClientId, currency: plan.currency }}>
+            <PayPalScriptProvider options={{ clientId: paypalClientId, currency: plan.currency, intent: 'capture' }}>
               <PayPalButtons
                 style={{ layout: 'horizontal', shape: 'pill', tagline: false }}
-                createOrder={() => paypal.createOrder(key)}
-                onApprove={async (data) => {
-                  const res = await paypal.capture(data.orderID);
-                  if ((res as { granted?: boolean }).granted === false) setError('The payment did not complete. You have not been charged for the plan.');
-                  else window.location.href = '/payment/return?provider=paypal&status=paid';
+                disabled={paypalPhase !== 'idle'}
+                // The API sets the amount from the plan row; nothing here is a price.
+                createOrder={async () => {
+                  setError('');
+                  setNotice('');
+                  setPaypalPhase('connecting');
+                  try {
+                    const id = await paypal.createOrder(key);
+                    setPaypalPhase('paying');
+                    return id;
+                  } catch (e) {
+                    setPaypalPhase('idle');
+                    setError(checkoutError(e, 'Payment could not be completed. Please try again.'));
+                    throw e;
+                  }
                 }}
-                onError={() => setError('PayPal could not complete the payment.')}
+                onApprove={async (data) => {
+                  setPaypalPhase('capturing');
+                  try {
+                    const res = await paypal.capture(data.orderID);
+                    if (res.status === 'PENDING') {
+                      setPaypalPhase('idle');
+                      setNotice('PayPal is reviewing your payment. Your plan turns on as soon as it clears.');
+                      return;
+                    }
+                    window.location.href = '/payment/return?provider=paypal&status=paid';
+                  } catch (e) {
+                    setPaypalPhase('idle');
+                    setError(checkoutError(e, 'Payment could not be completed. Please try again.'));
+                  }
+                }}
+                onCancel={(data) => {
+                  setPaypalPhase('idle');
+                  setNotice('Payment was cancelled. No charge was made.');
+                  if (typeof data.orderID === 'string') void paymentsApi.paypalCancel(data.orderID).catch(() => undefined);
+                }}
+                onError={() => {
+                  setPaypalPhase('idle');
+                  setError((prev) => prev || 'Payment could not be completed. Please try again.');
+                }}
               />
             </PayPalScriptProvider>
+            {paypalPhase !== 'idle' && (
+              <p role="status" className="mt-2 text-center font-body text-[13px] font-bold text-slate-600">
+                {paypalPhase === 'connecting' ? 'Connecting to PayPal…' : paypalPhase === 'paying' ? 'Complete your payment in the PayPal window…' : 'Processing payment…'}
+              </p>
+            )}
           </div>
         )}
 
@@ -552,6 +647,7 @@ function CheckoutDialog({ plan, billing, onClose }: { plan: PublicPlan; billing:
           </p>
         )}
 
+        {notice && <p role="status" className="mt-3 font-body-x text-[13px] text-slate-600">{notice}</p>}
         {error && <p role="alert" className="mt-3 font-body-x text-[13px] text-coral-600">{error}</p>}
 
         <button type="button" onClick={onClose} className="mt-4 min-h-11 w-full font-display font-extrabold text-slate-500">

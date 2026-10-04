@@ -1140,17 +1140,25 @@ enum PlanAudience {
   DISTRICT
 }
 
+/// Every checkout attempt and every $0 pilot activation. `externalId` is the
+/// provider's reference (PayPal order id, Chapa tx_ref, Stripe session id);
+/// `providerCaptureId` is the PayPal capture id, which refund and dispute
+/// webhooks reference.
 model Payment {
-  id          String          @id @default(cuid())
-  provider    PaymentProvider
-  status      PaymentStatus   @default(pending)
-  plan        PlanKey
-  amountCents Int
-  currency    String          @default("USD")
-  externalId  String?         @unique
-  userId      String
-  createdAt   DateTime        @default(now())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String          @id @default(cuid())
+  provider          PaymentProvider
+  status            PaymentStatus   @default(pending)
+  plan              PlanKey
+  amountCents       Int
+  currency          String          @default("USD")
+  externalId        String?         @unique
+  providerCaptureId String?         @unique
+  userId            String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
 }
 
 /// One external identity (a Google, TikTok, Facebook … account) attached to a
@@ -1624,6 +1632,8 @@ enum PaymentProvider {
   stripe
   paypal
   chapa
+  /// A $0 pilot activation. No money moved and no provider was called.
+  pilot
 }
 
 enum PaymentStatus {
@@ -1631,6 +1641,8 @@ enum PaymentStatus {
   succeeded
   failed
   refunded
+  /// The buyer closed the PayPal window before approving.
+  cancelled
 }
 
 // ---- new enums ----

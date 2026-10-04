@@ -11,7 +11,13 @@ export class CheckoutDto {
   plan!: CheckoutPlan;
 }
 
-export class CaptureDto { @ApiProperty() @IsString() orderId!: string; }
+/** A PayPal order id, as returned by create-order. */
+export class CaptureDto {
+  @ApiProperty({ example: '5O190127TN364715T' })
+  @IsString()
+  @Matches(/^[A-Za-z0-9-]{1,64}$/, { message: 'We could not find that payment.' })
+  orderId!: string;
+}
 
 export class ChapaVerifyParams {
   @ApiProperty({ example: 'kidora-3f0c…' })

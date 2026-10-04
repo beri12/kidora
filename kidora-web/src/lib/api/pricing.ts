@@ -8,12 +8,14 @@ export interface PublicPlan {
   tagline: string;
   unitLabel: string;
   currency: string;
-  /** Minor units (cents). Null = custom pricing. */
+  /** Minor units (cents). Null = custom pricing. 0 = free during the Kidora pilot. */
   monthlyPriceMinor: number | null;
   yearlyPriceMinor: number | null;
   features: string[];
   /** Set when "Get Started" can go straight to checkout for a signed-in visitor. */
   checkoutPlan: "student" | "family" | "school" | "district" | null;
+  /** Set with checkoutPlan: `pilot` ($0) activates directly, `paid` opens checkout. */
+  checkoutMode: "pilot" | "paid" | null;
 }
 
 export interface PricingCatalog {

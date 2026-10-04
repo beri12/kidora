@@ -14,7 +14,8 @@ function setup(paymentOverrides: Record<string, unknown> = {}) {
     payment: {
       findUnique: jest.fn(async () => payment),
       updateMany: jest.fn(async ({ where, data }: any) => {
-        if (where.status && where.status !== payment.status) return { count: 0 };
+        const st = where.status;
+        if (st && (typeof st === 'object' ? !st.in.includes(payment.status) : st !== payment.status)) return { count: 0 };
         payment.status = data.status;
         return { count: 1 };
       }),
@@ -24,7 +25,7 @@ function setup(paymentOverrides: Record<string, unknown> = {}) {
   };
   const email: any = { sendSubscriptionSuccess: jest.fn() };
   const config: any = { get: () => 'http://localhost:3000' };
-  const settlement = new PaymentSettlementService(prisma, email);
+  const settlement = new PaymentSettlementService(prisma, email, {} as any);
   const svc = new StripeService(config, prisma, {} as any, settlement);
   const deliver = (session: Record<string, unknown>) => {
     (svc as any).stripe = { webhooks: { constructEvent: () => ({ type: 'checkout.session.completed', data: { object: session } }) } };

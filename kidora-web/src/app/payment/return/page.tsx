@@ -59,6 +59,9 @@ function PaymentReturn() {
     failed: { title: 'Oops! 🙈', emoji: '😕', heading: 'The payment did not complete', body: 'You have not been charged for the plan. You can try again from the pricing page.' },
     signin: { title: 'Welcome back! 👋', emoji: '🔐', heading: 'Sign in to finish', body: 'Sign in with the account you paid from, and we will confirm your payment.' },
   };
+  // A $0 pilot activation is not a payment; PayPal gets the wording buyers expect.
+  if (provider === 'pilot') copy.paid = { ...copy.paid, heading: 'Your Kidora pilot access is now active.', body: 'Premium courses and games are unlocked for the pilot. Nothing was charged.' };
+  if (provider === 'paypal') copy.paid = { ...copy.paid, heading: 'Payment successful. Your Kidora plan is now active.' };
   const c = copy[state];
 
   return (

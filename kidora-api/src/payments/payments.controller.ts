@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
 import { ChapaService } from './chapa.service';
+import { PaymentSettlementService } from './payment-settlement.service';
 import { CheckoutDto, CaptureDto, ChapaVerifyParams } from './dto/payment.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
@@ -11,17 +12,35 @@ import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorat
 @ApiTags('payments')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private stripe: StripeService, private paypal: PaypalService, private chapa: ChapaService) {}
+  constructor(
+    private stripe: StripeService,
+    private paypal: PaypalService,
+    private chapa: ChapaService,
+    private settlement: PaymentSettlementService,
+  ) {}
 
-  /** Which ways to pay are configured, so the web app only offers those. */
+  /**
+   * Which ways to pay are configured, so the web app only offers those. The
+   * PayPal client id is public by design and is served from here so the web
+   * app needs no PayPal variable; the secret never leaves the server.
+   */
   @Public() @Get('providers')
   providers() {
+    const paypal = this.paypal.publicConfig();
     return {
       chapa: this.chapa.enabled,
       stripe: Boolean(process.env.STRIPE_SECRET_KEY),
-      paypal: Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET),
+      paypal: this.paypal.enabled,
+      paypalClientId: paypal.clientId,
+      paypalEnvironment: paypal.environment,
     };
   }
+
+  // --- $0 pilot plans --------------------------------------------------------
+
+  /** Activates a plan whose price is $0 right now. No payment provider is called. */
+  @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Post('activate-plan') @HttpCode(200)
+  activatePlan(@CurrentUser() u: AuthUser, @Body() dto: CheckoutDto) { return this.settlement.activatePilot(u.id, dto.plan); }
 
   // --- Chapa ---------------------------------------------------------------
 
@@ -63,9 +82,16 @@ export class PaymentsController {
   @Public() @Post('stripe/webhook')
   stripeWebhook(@Req() req: any, @Headers('stripe-signature') sig: string) { return this.stripe.handleWebhook(req.rawBody, sig); }
 
-  @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Post('paypal/order')
+  // --- PayPal ----------------------------------------------------------------
+  // paypal/order and paypal/capture are the original paths, kept as aliases.
+
+  @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Post(['paypal/create-order', 'paypal/order'])
   paypalOrder(@CurrentUser() u: AuthUser, @Body() dto: CheckoutDto) { return this.paypal.createOrder(u.id, dto.plan); }
 
-  @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Post('paypal/capture')
+  @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Post(['paypal/capture-order', 'paypal/capture']) @HttpCode(200)
   paypalCapture(@CurrentUser() u: AuthUser, @Body() dto: CaptureDto) { return this.paypal.capture(u.id, dto.orderId); }
+
+  /** The buyer closed the PayPal window. */
+  @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Post('paypal/cancel-order') @HttpCode(200)
+  paypalCancel(@CurrentUser() u: AuthUser, @Body() dto: CaptureDto) { return this.paypal.cancel(u.id, dto.orderId); }
 }

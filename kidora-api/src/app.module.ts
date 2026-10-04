@@ -53,13 +53,14 @@ import databaseConfig from './config/database.config';
 import redisConfig from './config/redis.config';
 import mailConfig from './config/mail.config';
 import storageConfig from './config/storage.config';
+import paymentsConfig from './config/payments.config';
 import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, databaseConfig, redisConfig, mailConfig, storageConfig],
+      load: [appConfig, authConfig, databaseConfig, redisConfig, mailConfig, storageConfig, paymentsConfig],
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     DatabaseModule,
