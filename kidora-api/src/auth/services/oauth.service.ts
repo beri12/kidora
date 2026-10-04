@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { AuthProvider, Role, User } from '@prisma/client';
+import { AuthProvider, Prisma, Role, User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CacheService } from '../../infrastructure/cache/cache.service';
 import { EmailService } from '../../infrastructure/email/email.service';
@@ -54,11 +54,8 @@ export class OAuthService {
     if (!provider) throw new BadRequestException('Unsupported sign-in provider');
     const email = p.email?.trim().toLowerCase() || null;
 
-    const linked = await this.prisma.socialAccount.findUnique({
-      where: { provider_providerId: { provider, providerId: p.providerId } },
-      include: { user: true },
-    });
-    if (linked) return linked.user;
+    const linked = await this.linkedUser(provider, p.providerId);
+    if (linked) return linked;
 
     let user = email ? await this.prisma.user.findUnique({ where: { email } }) : null;
 
@@ -80,21 +77,41 @@ export class OAuthService {
       return user;
     }
 
-    user = await this.prisma.user.create({
-      data: {
-        email,
-        name: p.name,
-        avatarUrl: p.avatarUrl ?? null,
-        role: Role.PARENT,
-        // The role step ("How will you use Kidora?") runs after the redirect.
-        roleConfirmed: false,
-        emailVerified: Boolean(email),
-        socialAccounts: { create: { provider, providerId: p.providerId, email } },
-        subscription: { create: { plan: 'free' } },
-      },
-    });
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          name: p.name,
+          avatarUrl: p.avatarUrl ?? null,
+          role: Role.PARENT,
+          // The role step ("How will you use Kidora?") runs after the redirect.
+          roleConfirmed: false,
+          emailVerified: Boolean(email),
+          socialAccounts: { create: { provider, providerId: p.providerId, email } },
+          subscription: { create: { plan: 'free' } },
+        },
+      });
+    } catch (e) {
+      // Two first sign-ins with the same identity at once (a double click on
+      // the provider's Continue button): the (provider, providerId) unique
+      // index lets only one create succeed, and its transaction rolls back
+      // the loser's user row. The loser signs in to the winner's account.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const winner = await this.linkedUser(provider, p.providerId);
+        if (winner) return winner;
+      }
+      throw e;
+    }
     if (user.email) this.email.sendWelcome(user.email, user.name);
     return user;
+  }
+
+  private async linkedUser(provider: AuthProvider, providerId: string): Promise<User | null> {
+    const linked = await this.prisma.socialAccount.findUnique({
+      where: { provider_providerId: { provider, providerId } },
+      include: { user: true },
+    });
+    return linked?.user ?? null;
   }
 
   /**

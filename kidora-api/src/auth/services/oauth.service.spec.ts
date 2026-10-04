@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { OAuthService } from './oauth.service';
 
 /** Just enough Prisma for find-or-create-and-link over users + social accounts. */
@@ -102,6 +103,51 @@ describe('OAuthService', () => {
     const u = await svc.resolveUser(google);
     expect(u.passwordHash).toBeNull();
     expect(u.emailVerified).toBe(true);
+  });
+
+  // Facebook is asked for public_profile only, so it never reports an email.
+  const facebook = { provider: 'facebook', providerId: 'fb-123', email: null, name: 'Abebe Kebede', avatarUrl: null };
+
+  it('creates a Kidora account on a first Facebook sign-in with no email, using the default role step', async () => {
+    const { svc, db } = setup();
+    const u = await svc.resolveUser(facebook);
+    expect(db.users).toEqual([expect.objectContaining({ email: null, name: 'Abebe Kebede', role: 'PARENT', roleConfirmed: false, emailVerified: false, avatarUrl: null })]);
+    expect(db.links).toEqual([expect.objectContaining({ provider: 'FACEBOOK', providerId: 'fb-123', userId: u.id, email: null })]);
+  });
+
+  it('signs the same Facebook id into the same account every time', async () => {
+    const { svc, db } = setup();
+    const ids = new Set<string>();
+    for (let i = 0; i < 3; i++) ids.add((await svc.resolveUser({ ...facebook, name: `Renamed ${i}` })).id);
+    expect(ids.size).toBe(1);
+    expect(db.users).toHaveLength(1);
+    expect(db.links).toHaveLength(1);
+  });
+
+  it('never matches a Facebook sign-in to an email account', async () => {
+    const { svc, db } = setup();
+    db.users.push({ id: 'email-user', email: 'abebe@example.com', emailVerified: true, active: true });
+    const u = await svc.resolveUser(facebook);
+    expect(u.id).not.toBe('email-user');
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('when two first sign-ins race, the loser gets the winner\'s account instead of an error', async () => {
+    const { svc, db } = setup();
+    const winner = { id: 'winner', name: 'Abebe Kebede' };
+    (db.socialAccount.findUnique as jest.Mock)
+      .mockResolvedValueOnce(null) // not linked yet when the request starts
+      .mockResolvedValueOnce({ user: winner }); // linked by the racing request
+    (db.user.create as jest.Mock).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' }),
+    );
+    await expect(svc.resolveUser(facebook)).resolves.toBe(winner);
+  });
+
+  it('still fails on other database errors', async () => {
+    const { svc, db } = setup();
+    (db.user.create as jest.Mock).mockRejectedValueOnce(new Error('connection lost'));
+    await expect(svc.resolveUser(facebook)).rejects.toThrow('connection lost');
   });
 
   it('rejects an unknown provider', async () => {
