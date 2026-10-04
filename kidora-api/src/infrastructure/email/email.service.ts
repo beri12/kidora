@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import {
@@ -9,23 +9,56 @@ import {
 } from './templates';
 
 @Injectable()
-export class EmailService {
+export class EmailService implements OnApplicationBootstrap {
   private logger = new Logger('Email');
   private transporter: nodemailer.Transporter;
   constructor(private config: ConfigService) {
     this.transporter = nodemailer.createTransport({
       host: config.get('mail.host'),
       port: config.get('mail.port'),
-      secure: false,
+      secure: config.get('mail.secure'),
       auth: config.get('mail.user') ? { user: config.get('mail.user'), pass: config.get('mail.pass') } : undefined,
+      // Without these a wrong host or a blocked port held the sign-up request
+      // open for two minutes before anything was reported.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
     });
+  }
+
+  /**
+   * Checks the SMTP login once at boot and says what is wrong, so "the code
+   * never arrived" is answered in the log before anyone signs up. Never
+   * blocks startup.
+   */
+  onApplicationBootstrap() {
+    const where = `${this.config.get('mail.host')}:${this.config.get('mail.port')}`;
+    void this.transporter.verify().then(
+      () => this.logger.log(`SMTP ${where}: connected, sending from ${this.config.get('mail.from')}`),
+      (e: unknown) => this.logger.warn(`SMTP ${where}: NOT working: ${EmailService.explain(e)}`),
+    );
+  }
+
+  /** An SMTP failure in words an operator can act on. */
+  static explain(e: unknown): string {
+    const err = e as { code?: string; responseCode?: number; message?: string };
+    const msg = err.message ?? String(e);
+    if (err.code === 'EAUTH' || err.responseCode === 535) {
+      return `login refused (${msg}). For Gmail, SMTP_PASS must be a 16-character App Password (Google Account → Security → 2-Step Verification → App passwords), not your normal password.`;
+    }
+    if (err.code === 'ECONNREFUSED') return `nothing is listening there (${msg}). Check SMTP_HOST / SMTP_PORT, or start MailHog for local testing.`;
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNECTION' || err.code === 'ESOCKET') {
+      return `could not connect (${msg}). Check SMTP_HOST / SMTP_PORT; use 465 (SSL) or 587 (STARTTLS). Some networks block outgoing SMTP.`;
+    }
+    if (err.code === 'EDNS' || /ENOTFOUND/.test(msg)) return `unknown host (${msg}). Check SMTP_HOST.`;
+    return msg;
   }
 
   private async send(to: string, subject: string, html: string) {
     try {
       await this.transporter.sendMail({ from: this.config.get('mail.from'), to, subject, html });
     } catch (e) {
-      this.logger.warn('Email send failed (dev is fine): ' + (e as Error).message);
+      this.logger.warn(`Email to ${to} failed: ${EmailService.explain(e)}`);
     }
   }
 
@@ -55,10 +88,10 @@ export class EmailService {
       return { dev: false };
     } catch (e) {
       if (process.env.NODE_ENV === 'production') {
-        this.logger.error(`Verification email to ${to} failed: ${(e as Error).message}`);
+        this.logger.error(`Verification email to ${to} failed: ${EmailService.explain(e)}`);
         throw new ServiceUnavailableException("We couldn't send the verification email. Please try again in a moment.");
       }
-      this.logger.warn(`Email is not reachable (${(e as Error).message}). [DEV EMAIL] code for ${to}: ${code}`);
+      this.logger.warn(`Email not sent (${EmailService.explain(e)}). [DEV EMAIL] code for ${to}: ${code}`);
       return { dev: true };
     }
   }

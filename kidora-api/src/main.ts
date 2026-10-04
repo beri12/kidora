@@ -120,7 +120,7 @@ function reportSignInSetup() {
   for (const name of providers) {
     const c = oauthCredentials(name);
     if (!c.id) continue;
-    lines.push(`  ${name}: on — register this redirect URI with the provider, exactly:`);
+    lines.push(`  ${name}: on — client ${name === 'google' ? c.id : c.id.slice(0, 6) + '…'}; register this redirect URI on THAT client, exactly:`);
     lines.push(`      ${oauthCallbackUrl(name)}`);
     for (const p of callbackUrlProblems(name)) lines.push(`    ERROR: ${p}`);
     if (!c.secret) {
@@ -133,8 +133,9 @@ function reportSignInSetup() {
 
   const prod = process.env.NODE_ENV === 'production';
   console.log(
-    '  Email codes: sent through ' + (process.env.SMTP_HOST ?? 'localhost') + ':' + (process.env.SMTP_PORT ?? '1025')
-      + (prod ? '' : ' — if unreachable, the code is printed in this log instead.'),
+    '  Email codes: sent through ' + (process.env.SMTP_HOST?.trim() || 'localhost') + ':' + (process.env.SMTP_PORT?.trim() || '1025')
+      + (process.env.SMTP_HOST ? '' : ' (MailHog, local only: no real inbox gets these)')
+      + (prod ? '' : ' — if unreachable, the code is printed in this log instead. The SMTP check follows below.'),
   );
   if (process.env.AUTH_TEST_EXPOSE_OTP === 'true' && !prod) {
     console.log('  AUTH_TEST_EXPOSE_OTP=true — codes are returned in API responses for the e2e suite. Never use this for real users.');
