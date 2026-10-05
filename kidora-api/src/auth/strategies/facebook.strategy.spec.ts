@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { UnauthorizedException } from '@nestjs/common';
 import { FacebookStrategy, toOAuthProfile } from './facebook.strategy';
+import { toTiktokProfile } from './tiktok.strategy';
 
 jest.mock('axios');
 const mocked = axios as jest.Mocked<typeof axios>;
@@ -53,5 +54,15 @@ describe('FacebookStrategy', () => {
   it('lets a Graph API failure surface as an error (the guard turns it into a safe redirect)', async () => {
     mocked.get.mockRejectedValueOnce(new Error('Graph 500'));
     await expect(new FacebookStrategy().validate('t')).rejects.toThrow('Graph 500');
+  });
+});
+
+describe('TikTok profile', () => {
+  it('uses open_id as the identity', () => {
+    expect(toTiktokProfile({ open_id: 'oid-1', display_name: 'Tok' })).toMatchObject({ provider: 'tiktok', providerId: 'oid-1', name: 'Tok' });
+  });
+  it('refuses a profile without open_id instead of storing "undefined"', () => {
+    expect(() => toTiktokProfile({ display_name: 'x' })).toThrow(UnauthorizedException);
+    expect(() => toTiktokProfile(undefined)).toThrow(UnauthorizedException);
   });
 });

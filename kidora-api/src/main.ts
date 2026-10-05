@@ -11,7 +11,7 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { redisUrl } from './config/redis.config';
-import { callbackUrlProblems, oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
+import { callbackUrlProblems, callbackUrlWarnings, oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
 // sync across every API instance (horizontal scaling / sticky sessions).
@@ -77,7 +77,8 @@ async function bootstrap() {
   // disallows the wildcard origin whenever credentials: true is set.
   const corsOrigin = process.env.CORS_ORIGIN;
   app.enableCors({
-    origin: corsOrigin ? corsOrigin.split(',') : true,
+    // Trimmed: "http://localhost:3000, https://justkidora.com" must match both.
+    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean) : true,
     credentials: true,
   });
 
@@ -119,10 +120,15 @@ function reportSignInSetup() {
   const lines: string[] = [];
   for (const name of providers) {
     const c = oauthCredentials(name);
-    if (!c.id) continue;
+    if (!c.id) {
+      // A secret with no id leaves the provider silently off.
+      if (c.secret) lines.push(`  ${name}: off — ${c.secretVar} is set but ${c.idVar} is missing.`);
+      continue;
+    }
     lines.push(`  ${name}: on — client ${name === 'google' ? c.id : c.id.slice(0, 6) + '…'}; register this redirect URI on THAT client, exactly:`);
     lines.push(`      ${oauthCallbackUrl(name)}`);
     for (const p of callbackUrlProblems(name)) lines.push(`    ERROR: ${p}`);
+    for (const w of callbackUrlWarnings(name)) lines.push(`    WARNING: ${w}`);
     if (!c.secret) {
       lines.push(`    WARNING: ${c.idVar} is set but ${c.secretVar} is not, so ${name} sign-in will be rejected.`);
     }
@@ -140,6 +146,11 @@ function reportSignInSetup() {
   if (process.env.AUTH_TEST_EXPOSE_OTP === 'true' && !prod) {
     console.log('  AUTH_TEST_EXPOSE_OTP=true — codes are returned in API responses for the e2e suite. Never use this for real users.');
   }
-  console.log(`  Web app redirected to: ${process.env.WEB_URL ?? 'http://localhost:3000'}  (set WEB_URL if that is wrong)\n`);
+  const web = process.env.WEB_URL?.trim() || 'http://localhost:3000';
+  console.log(`  Web app redirected to: ${web}  (set WEB_URL if that is wrong)`);
+  if (prod && /^http:\/\/(localhost|127\.0\.0\.1)/.test(web)) {
+    console.log('    WARNING: NODE_ENV=production but WEB_URL is localhost; on a server set WEB_URL=https://justkidora.com.');
+  }
+  console.log('');
 }
 bootstrap();

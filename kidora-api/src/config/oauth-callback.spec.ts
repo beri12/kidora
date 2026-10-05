@@ -1,10 +1,10 @@
-import { apiBaseUrl, callbackUrlProblems, cleanEnv, oauthCallbackUrl, oauthCredentials } from './oauth-callback';
+import { apiBaseUrl, callbackUrlProblems, callbackUrlWarnings, cleanEnv, oauthCallbackUrl, oauthCredentials } from './oauth-callback';
 
 describe('OAuth callback URLs', () => {
   const env = { ...process.env };
   afterEach(() => { process.env = { ...env }; });
   const set = (vars: Record<string, string | undefined>) => {
-    for (const k of ['API_URL', 'PUBLIC_API_URL', 'GOOGLE_CALLBACK_URL', 'GOOGLE_REDIRECT_URI', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CALLBACK_URL', 'NODE_ENV']) delete process.env[k];
+    for (const k of ['API_URL', 'PUBLIC_API_URL', 'GOOGLE_CALLBACK_URL', 'GOOGLE_REDIRECT_URI', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CALLBACK_URL', 'FACEBOOK_CALLBACK_URL', 'TIKTOK_CALLBACK_URL', 'NODE_ENV']) delete process.env[k];
     Object.assign(process.env, vars);
   };
 
@@ -33,9 +33,34 @@ describe('OAuth callback URLs', () => {
     expect(oauthCallbackUrl('google')).toBe('https://b.example/cb');
   });
 
-  it('names the problem when production has no API_URL', () => {
+  it('warns, without blocking, when production has no API_URL (a local docker-compose run is legitimate)', () => {
     set({ NODE_ENV: 'production' });
-    expect(callbackUrlProblems('google')[0]).toMatch(/API_URL is not set/);
+    expect(callbackUrlProblems('google')).toEqual([]);
+    expect(callbackUrlWarnings('google')[0]).toMatch(/set API_URL/);
+  });
+
+  it('sends exactly http://localhost:4000/api/auth/google/callback for local setups', () => {
+    set({});
+    expect(oauthCallbackUrl('google')).toBe('http://localhost:4000/api/auth/google/callback');
+    set({ API_URL: 'http://localhost:4000' });
+    expect(oauthCallbackUrl('google')).toBe('http://localhost:4000/api/auth/google/callback');
+    set({ API_URL: 'http://localhost:4000/api/' });
+    expect(oauthCallbackUrl('google')).toBe('http://localhost:4000/api/auth/google/callback');
+    set({ GOOGLE_CALLBACK_URL: 'http://localhost:4000/api/auth/google/callback/' });
+    expect(oauthCallbackUrl('google')).toBe('http://localhost:4000/api/auth/google/callback');
+  });
+
+  it('builds production callbacks from API_URL without localhost', () => {
+    set({ NODE_ENV: 'production', API_URL: 'https://api.justkidora.com' });
+    expect(oauthCallbackUrl('google')).toBe('https://api.justkidora.com/api/auth/google/callback');
+    expect(oauthCallbackUrl('facebook')).toBe('https://api.justkidora.com/api/auth/facebook/callback');
+    expect(oauthCallbackUrl('tiktok')).toBe('https://api.justkidora.com/api/auth/tiktok/callback');
+    expect(callbackUrlWarnings('google')).toEqual([]);
+  });
+
+  it('warns that 127.0.0.1 is a different redirect URI from localhost', () => {
+    set({ GOOGLE_CALLBACK_URL: 'http://127.0.0.1:4000/api/auth/google/callback' });
+    expect(callbackUrlWarnings('google')[0]).toMatch(/different address from localhost/);
   });
 
   // Google answers each of these with a bare "Error 400: invalid_request".

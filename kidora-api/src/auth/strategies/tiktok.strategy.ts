@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import axios from 'axios';
@@ -44,10 +44,19 @@ export class TiktokStrategy extends PassportStrategy(Strategy, 'tiktok') {
     const { data } = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
       params: { fields: 'open_id,display_name,avatar_url' },
       headers: { Authorization: 'Bearer ' + accessToken },
+      timeout: 10_000,
     });
-    const u = data?.data?.user ?? {};
-    // TikTok never returns an email address, so these accounts are identified
-    // by open_id alone and land with `email: undefined`.
-    return { provider: 'tiktok', providerId: String(u.open_id), email: undefined, name: u.display_name || 'TikTok User', avatarUrl: u.avatar_url ?? null };
+    return toTiktokProfile(data?.data?.user);
   }
+}
+
+/**
+ * TikTok never returns an email address, so these accounts are identified by
+ * open_id alone. A missing open_id used to become the string "undefined",
+ * which every such sign-in would then have shared as one account.
+ */
+export function toTiktokProfile(u: { open_id?: string; display_name?: string; avatar_url?: string } | undefined) {
+  const providerId = u?.open_id ? String(u.open_id).trim() : '';
+  if (!providerId) throw new UnauthorizedException('TikTok did not return an account id');
+  return { provider: 'tiktok', providerId, email: undefined, name: u?.display_name?.trim() || 'TikTok User', avatarUrl: u?.avatar_url ?? null };
 }

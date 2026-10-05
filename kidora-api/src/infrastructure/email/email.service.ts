@@ -32,11 +32,53 @@ export class EmailService implements OnApplicationBootstrap {
    * blocks startup.
    */
   onApplicationBootstrap() {
-    const where = `${this.config.get('mail.host')}:${this.config.get('mail.port')}`;
+    const c = (k: string) => this.config.get(`mail.${k}`);
+    const where = `${c('host')}:${c('port')}`;
+    // Everything but the password, so a wrong value is visible at a glance.
+    this.logger.log(`SMTP configuration detected: host=${c('host')} port=${c('port')} secure=${c('secure')} user=${c('user') || '(none)'} from=${c('from')}`);
+    for (const w of EmailService.configWarnings({ host: c('host'), user: c('user'), pass: c('pass'), from: c('from') })) this.logger.warn(w);
     void this.transporter.verify().then(
-      () => this.logger.log(`SMTP ${where}: connected, sending from ${this.config.get('mail.from')}`),
-      (e: unknown) => this.logger.warn(`SMTP ${where}: NOT working: ${EmailService.explain(e)}`),
+      () => this.logger.log(`SMTP ${where}: connection OK`),
+      (e: unknown) => this.logger.warn(`SMTP ${where}: connection FAILED: ${EmailService.explain(e)}`),
     );
+  }
+
+  /**
+   * Settings that cannot work, found before the first send. Gmail's
+   * "535-5.7.8 Username and Password not accepted" is almost always the
+   * normal account password in SMTP_PASS: Gmail only accepts a 16-letter
+   * App Password over SMTP. Values are never printed, only what is wrong.
+   */
+  static configWarnings(m: { host: string; user: string; pass: string; from: string }): string[] {
+    const out: string[] = [];
+    const local = /^(localhost|127\.0\.0\.1|mailhog)$/i.test(m.host);
+    if (local) {
+      out.push(`SMTP_HOST=${m.host} is a local test server (MailHog): codes will not reach real inboxes. Set SMTP_HOST=smtp.gmail.com etc. for real email.`);
+      return out;
+    }
+    if (!m.user) out.push('SMTP_USER is missing; most SMTP servers will refuse to send.');
+    if (!m.pass) out.push('SMTP_PASS is missing; the server will refuse the login.');
+    if (/(^|\.)(gmail|googlemail)\.com$/i.test(m.host)) {
+      if (m.pass && !/^[a-z]{16}$/i.test(m.pass)) {
+        out.push('SMTP_PASS is not a 16-letter Gmail App Password, so Gmail will answer "535-5.7.8 Username and Password not accepted". Create one at https://myaccount.google.com/apppasswords (2-Step Verification must be on) and paste it into SMTP_PASS.');
+      }
+      const fromAddr = /<([^>]+)>/.exec(m.from)?.[1] ?? m.from;
+      if (m.user && fromAddr.toLowerCase() !== m.user.toLowerCase()) {
+        out.push(`MAIL_FROM (${fromAddr}) differs from SMTP_USER; Gmail sends as ${m.user} anyway. Set MAIL_FROM="Kidora <${m.user}>".`);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Printing a code instead of sending it is a development convenience only.
+   * Besides NODE_ENV=production, a public WEB_URL also rules it out, so a
+   * server started without NODE_ENV never writes codes to its logs.
+   */
+  static devFallbackAllowed(): boolean {
+    if (process.env.NODE_ENV === 'production') return false;
+    const web = process.env.WEB_URL?.trim();
+    return !web || /^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(web);
   }
 
   /** An SMTP failure in words an operator can act on. */
@@ -87,11 +129,13 @@ export class EmailService implements OnApplicationBootstrap {
       });
       return { dev: false };
     } catch (e) {
-      if (process.env.NODE_ENV === 'production') {
+      if (!EmailService.devFallbackAllowed()) {
+        // The reason goes to the log, the code never does.
         this.logger.error(`Verification email to ${to} failed: ${EmailService.explain(e)}`);
         throw new ServiceUnavailableException("We couldn't send the verification email. Please try again in a moment.");
       }
-      this.logger.warn(`Email not sent (${EmailService.explain(e)}). [DEV EMAIL] code for ${to}: ${code}`);
+      this.logger.error(`Verification email to ${to} FAILED: ${EmailService.explain(e)}`);
+      this.logger.warn(`[DEV EMAIL] development fallback, the email was not delivered. Code for ${to}: ${code}`);
       return { dev: true };
     }
   }

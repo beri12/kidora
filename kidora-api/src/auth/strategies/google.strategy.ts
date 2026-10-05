@@ -11,7 +11,8 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       clientID: config.get('auth.google.clientId') || 'missing',
       clientSecret: config.get('auth.google.clientSecret') || 'missing',
       callbackURL: config.get('auth.google.callbackUrl'),
-      scope: ['email', 'profile'],
+      // Basic sign-in only: who the user is and their verified address.
+      scope: ['openid', 'email', 'profile'],
       // CSRF protection for the round trip; see SignedCookieStateStore.
       store: oauthStateStore,
     });

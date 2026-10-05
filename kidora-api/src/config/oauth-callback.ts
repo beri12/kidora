@@ -68,9 +68,7 @@ export function callbackUrlProblems(provider: string): string[] {
   }
 
   const local = LOCAL_HOST.test(parsed.hostname);
-  if (process.env.NODE_ENV === 'production' && local) {
-    problems.push('API_URL is not set, so the provider would be sent to localhost. Set API_URL=https://<your api host>/api.');
-  } else if (parsed.protocol === 'http:' && !local && provider !== 'github') {
+  if (parsed.protocol === 'http:' && !local && provider !== 'github') {
     // Google, Facebook ("Enforce HTTPS"), TikTok, Microsoft and Apple only
     // allow plain http for localhost (GitHub alone accepts it). Google wants
     // device parameters for a LAN address on top.
@@ -96,13 +94,34 @@ export function callbackUrlProblems(provider: string): string[] {
 }
 
 /**
+ * Things that are not certain to fail, but usually explain a
+ * redirect_uri_mismatch. Printed at boot; never block sign-in (a local
+ * docker-compose run is NODE_ENV=production on localhost, legitimately).
+ */
+export function callbackUrlWarnings(provider: string): string[] {
+  const url = oauthCallbackUrl(provider);
+  const warnings: string[] = [];
+  let host: string;
+  try { host = new URL(url).hostname; } catch { return warnings; }
+  if (process.env.NODE_ENV === 'production' && LOCAL_HOST.test(host)) {
+    warnings.push('NODE_ENV=production but the redirect URI is localhost. On a server, set API_URL=https://<your api host>/api.');
+  }
+  if (host === '127.0.0.1' || host === '[::1]') {
+    warnings.push(`the redirect URI uses ${host}; providers treat it as a different address from localhost, so register this exact string (or use localhost).`);
+  }
+  return warnings;
+}
+
+/**
  * The callback for one provider. An explicit `<PROVIDER>_CALLBACK_URL` always
- * wins — some providers require an exact string that differs from ours.
+ * wins — some providers require an exact string that differs from ours. A
+ * trailing slash is dropped: ".../callback/" is a different URI to Google and
+ * the cause of many redirect_uri_mismatch errors.
  */
 export function oauthCallbackUrl(provider: string): string {
   const P = provider.toUpperCase();
   const explicit = cleanEnv(process.env[`${P}_CALLBACK_URL`]) || cleanEnv(process.env[`${P}_REDIRECT_URI`]);
-  return explicit || `${apiBaseUrl()}/auth/${provider}/callback`;
+  return (explicit || `${apiBaseUrl()}/auth/${provider}/callback`).replace(/\/+$/, '');
 }
 
 /**
