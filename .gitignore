@@ -29,3 +29,6 @@ apps/ai-service/models/
 # Playwright walkthrough screenshots
 walkthrough-shots/
 **/walkthrough-shots/
+
+# Packaged download of the mobile app (rebuild with git archive)
+/kidora-mobile.zip
