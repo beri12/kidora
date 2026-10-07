@@ -1,0 +1,15 @@
+appId: com.kidora.app.dev
+name: Student login lands on the student dashboard
+tags: [student, auth]
+env:
+  EMAIL: ${STUDENT_EMAIL}
+  PASSWORD: ${STUDENT_PASSWORD}
+---
+- runFlow: subflows/login.yaml
+- extendedWaitUntil:
+    visible:
+      id: "student-dashboard"
+    timeout: 15000
+- assertVisible:
+    id: "student-welcome"
+- assertVisible: "Continue learning"

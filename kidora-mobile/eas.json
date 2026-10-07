@@ -1,0 +1,53 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "22.22.0",
+      "env": {
+        "EXPO_PUBLIC_SOCKET_URL": "https://api.justkidora.com"
+      }
+    },
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_ENVIRONMENT": "development",
+        "EXPO_PUBLIC_API_URL": "http://10.0.2.2:4000/api",
+        "EXPO_PUBLIC_SOCKET_URL": "http://10.0.2.2:4000"
+      },
+      "android": { "buildType": "apk" },
+      "ios": { "simulator": true }
+    },
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_ENVIRONMENT": "preview",
+        "EXPO_PUBLIC_API_URL": "https://api.justkidora.com/api"
+      },
+      "android": { "buildType": "apk" }
+    },
+    "production": {
+      "extends": "base",
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_ENVIRONMENT": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.justkidora.com/api"
+      },
+      "android": { "buildType": "app-bundle" }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": { "track": "internal", "releaseStatus": "draft" },
+      "ios": {}
+    }
+  }
+}

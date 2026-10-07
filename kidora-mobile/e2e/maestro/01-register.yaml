@@ -1,0 +1,32 @@
+appId: com.kidora.app.dev
+name: Register a new parent account
+tags: [auth]
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "get-started"
+- tapOn:
+    id: "role-PARENT"
+- tapOn:
+    id: "register-name"
+- inputText: "E2E Parent"
+- tapOn:
+    id: "register-email"
+- inputRandomEmail
+- tapOn:
+    id: "register-password"
+- inputText: "Password123"
+- tapOn:
+    id: "register-confirm"
+- inputText: "Password123"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "register-submit"
+- tapOn:
+    id: "register-submit"
+- extendedWaitUntil:
+    visible:
+      id: "parent-dashboard"
+    timeout: 15000

@@ -1,0 +1,32 @@
+appId: com.kidora.app.dev
+name: Open island → open lesson → complete lesson → earn XP
+tags: [student, game, lms]
+env:
+  EMAIL: ${STUDENT_EMAIL}
+  PASSWORD: ${STUDENT_PASSWORD}
+---
+- runFlow: subflows/login.yaml
+- extendedWaitUntil:
+    visible:
+      id: "student-dashboard"
+    timeout: 15000
+- tapOn: "Islands"
+- assertVisible:
+    id: "islands-screen"
+- tapOn:
+    id: "island-MATH_ISLAND"
+- assertVisible:
+    id: "island-screen"
+- scrollUntilVisible:
+    element:
+      id: "map-node-0"
+- tapOn:
+    id: "map-node-0"
+- assertVisible:
+    id: "lesson-screen"
+- tapOn:
+    id: "complete-lesson"
+# Either the XP pop or a level-up modal confirms the reward.
+- extendedWaitUntil:
+    visible: ".*XP.*|LEVEL UP!"
+    timeout: 10000

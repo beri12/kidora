@@ -1,0 +1,16 @@
+# Reusable sign-in. Pass EMAIL / PASSWORD via -e.
+appId: com.kidora.app.dev
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "go-login"
+- tapOn:
+    id: "login-identifier"
+- inputText: ${EMAIL}
+- tapOn:
+    id: "login-password"
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "login-submit"

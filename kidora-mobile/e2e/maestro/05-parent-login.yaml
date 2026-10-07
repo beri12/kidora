@@ -1,0 +1,15 @@
+appId: com.kidora.app.dev
+name: Parent login sees the family dashboard
+tags: [parent, auth]
+env:
+  EMAIL: ${PARENT_EMAIL}
+  PASSWORD: ${PARENT_PASSWORD}
+---
+- runFlow: subflows/login.yaml
+- extendedWaitUntil:
+    visible:
+      id: "parent-dashboard"
+    timeout: 15000
+- tapOn: "Children"
+- assertVisible:
+    id: "parent-children"

@@ -1,0 +1,15 @@
+appId: com.kidora.app.dev
+name: Teacher login sees classes
+tags: [teacher, auth]
+env:
+  EMAIL: ${TEACHER_EMAIL}
+  PASSWORD: ${TEACHER_PASSWORD}
+---
+- runFlow: subflows/login.yaml
+- extendedWaitUntil:
+    visible:
+      id: "teacher-dashboard"
+    timeout: 15000
+- tapOn: "Classes"
+- assertVisible:
+    id: "teacher-classes"

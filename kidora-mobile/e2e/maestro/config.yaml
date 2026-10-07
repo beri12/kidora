@@ -1,0 +1,5 @@
+# Maestro workspace config — run all flows: `maestro test e2e/maestro`
+flows:
+  - "*.yaml"
+excludeTags:
+  - wip

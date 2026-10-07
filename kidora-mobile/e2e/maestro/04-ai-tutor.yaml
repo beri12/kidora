@@ -1,0 +1,23 @@
+appId: com.kidora.app.dev
+name: Open Kai and ask a question
+tags: [student, ai]
+env:
+  EMAIL: ${STUDENT_EMAIL}
+  PASSWORD: ${STUDENT_PASSWORD}
+---
+- runFlow: subflows/login.yaml
+- extendedWaitUntil:
+    visible:
+      id: "student-dashboard"
+    timeout: 15000
+- tapOn: "Kai"
+- assertVisible:
+    id: "ai-tutor-screen"
+- tapOn:
+    id: "ai-input"
+- inputText: "What is a fraction?"
+- tapOn:
+    id: "ai-ask"
+- extendedWaitUntil:
+    notVisible: "Kai is thinking…"
+    timeout: 30000
