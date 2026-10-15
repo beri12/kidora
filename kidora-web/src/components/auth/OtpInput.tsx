@@ -18,7 +18,7 @@ interface Props {
  *
  * Handles the things people actually do with an OTP: typing, pasting the
  * whole code into any box, backspacing across boxes, arrowing back to fix a
- * digit, and the browser auto-filling the code straight from the SMS
+ * digit, and the browser auto-filling the code from an email or password manager
  * (autoComplete="one-time-code" on the first box).
  */
 export function OtpInput({
@@ -36,6 +36,7 @@ export function OtpInput({
   useEffect(() => {
     if (autoFocus) refs.current[0]?.focus();
   }, [autoFocus]);
+
 
   // Focus the first empty box whenever the code is cleared (wrong code, resend).
   useEffect(() => {
@@ -55,7 +56,7 @@ export function OtpInput({
     const typed = raw.replace(/\D/g, '');
     if (!typed) return;
 
-    // More than one digit in a single event means a paste or an SMS autofill,
+    // More than one digit in a single event means a paste or an autofill,
     // never typing. Those always carry the code from its first digit, so they
     // fill from box one — dropping them at the caret would scatter the code
     // when someone pastes into the middle of an empty row.

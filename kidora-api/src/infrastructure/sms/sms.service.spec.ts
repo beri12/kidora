@@ -109,3 +109,54 @@ describe('SmsService.normalize', () => {
     });
   });
 });
+
+describe('SmsService one-time-code text', () => {
+  const env = { ...process.env };
+  afterEach(() => { process.env = { ...env }; });
+
+  it('leads with the brand and the code', () => {
+    delete process.env.SMS_OTP_DOMAIN;
+    delete process.env.WEB_URL;
+    const body = new SmsService().otpMessage('482913');
+    expect(body.startsWith('Kidora: 482913 is your verification code.')).toBe(true);
+    expect(body).toContain('expires in 5 minutes');
+    expect(body).toContain('Never share this code');
+    expect(body).not.toContain('@');
+  });
+
+  it('ends with the WebOTP line for an https web app, so browsers can autofill it', () => {
+    delete process.env.SMS_OTP_DOMAIN;
+    process.env.WEB_URL = 'https://app.kidora.com';
+    expect(new SmsService().otpMessage('482913').split('\n').pop()).toBe('@app.kidora.com #482913');
+  });
+
+  it('leaves the WebOTP line out for a localhost web app', () => {
+    delete process.env.SMS_OTP_DOMAIN;
+    process.env.WEB_URL = 'http://localhost:3000';
+    expect(new SmsService().otpMessage('482913')).not.toContain('#482913');
+  });
+});
+
+describe('SmsService.send without Twilio', () => {
+  const env = { ...process.env };
+  afterEach(() => { process.env = { ...env }; });
+
+  const unconfigure = () => {
+    for (const k of ['TWILIO_ACCOUNT_SID', 'TWILIO_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_TOKEN', 'TWILIO_PHONE_NUMBER',
+      'TWILIO_FROM', 'TWILIO_SENDER_ID', 'TWILIO_MESSAGING_SERVICE_SID', 'SMS_STRICT']) delete process.env[k];
+  };
+
+  it('logs the message in development', async () => {
+    unconfigure();
+    process.env.NODE_ENV = 'development';
+    await expect(new SmsService().send('+251912345678', 'hi')).resolves.toMatchObject({ dev: true });
+  });
+
+  // Accepting the request and texting nobody would leave the user waiting for
+  // a code that is never coming.
+  it('refuses in production', async () => {
+    unconfigure();
+    process.env.NODE_ENV = 'production';
+    await expect(new SmsService().send('+251912345678', 'hi')).rejects.toThrow('unavailable');
+  });
+});

@@ -134,6 +134,48 @@ export class LearningService {
   /* ------------------------------------------------------- access control */
 
   /**
+   * Whether a paid plan covers this learner. Any of these counts, as the
+   * pricing page promises:
+   *   - their own Student (or any paid) plan
+   *   - a parent's Family plan (ParentStudent link or a parent's child profile)
+   *   - their school's School plan, held by a leader of the same school
+   *   - their district's District plan, held by a leader of the same district
+   *
+   * Subscriptions store 'active' in lower case; every account also holds an
+   * 'active' free plan, so only paid plans within their period count.
+   */
+  async hasPremiumAccess(userId: string): Promise<boolean> {
+    const me = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        schoolId: true,
+        districtId: true,
+        school: { select: { districtId: true } },
+        studentLinks: { select: { parentId: true } },
+        childProfileAccount: { select: { parentId: true } },
+      },
+    });
+    if (!me) return false;
+
+    const parentIds = [...me.studentLinks.map((l) => l.parentId), ...(me.childProfileAccount ? [me.childProfileAccount.parentId] : [])];
+    const districtId = me.districtId ?? me.school?.districtId ?? null;
+    const hit = await this.prisma.subscription.findFirst({
+      where: {
+        status: { equals: 'active', mode: 'insensitive' },
+        AND: [{ OR: [{ renewsAt: null }, { renewsAt: { gt: new Date() } }] }],
+        OR: [
+          { userId, plan: { not: 'free' } },
+          ...(parentIds.length ? [{ userId: { in: parentIds }, plan: 'family' as const }] : []),
+          ...(me.schoolId ? [{ plan: 'school' as const, user: { schoolId: me.schoolId } }] : []),
+          ...(districtId ? [{ plan: 'district' as const, user: { districtId } }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+    return Boolean(hit);
+  }
+
+  /**
    * Decides whether this student may open this course. The rules live here so
    * that browse, detail, enrol and the player cannot disagree.
    */
@@ -165,10 +207,8 @@ export class LearningService {
       return { allowed: false, reason: 'INVITE_ONLY', message: 'This course is invite only. Ask your teacher to add you.' };
     }
     if (course.access === 'PREMIUM') {
-      const sub = await this.prisma.subscription.findFirst({
-        where: { userId: u.id, status: 'ACTIVE' }, select: { id: true },
-      });
-      if (!sub) return { allowed: false, reason: 'PREMIUM', message: 'This course is part of Kidora Plus.' };
+      const sub = await this.hasPremiumAccess(u.id);
+      if (!sub) return { allowed: false, reason: 'PREMIUM', message: 'This is a premium course.' };
     }
 
     if (course.prerequisites.length) {
@@ -219,7 +259,7 @@ export class LearningService {
       where: { studentId: u.id, ...(status === 'COMPLETED' ? { status: 'COMPLETED' as const } : {}) },
       orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
       select: {
-        status: true, progressPercent: true, lessonsCompleted: true, lastActivityAt: true, completedAt: true,
+        status: true, progressPercent: true, lessonsCompleted: true, lastActivityAt: true, completedAt: true, source: true,
         lastLesson: { select: { id: true, title: true, order: true } },
         course: {
           select: {
@@ -240,7 +280,7 @@ export class LearningService {
       grade: e.course.grade?.name ?? null, teacher: e.course.teacher?.name ?? null,
       progressPercent: e.progressPercent, lessonsCompleted: e.lessonsCompleted,
       totalLessons: e.course._count.lessons, issuesCertificate: e.course.issuesCertificate,
-      currentLesson: e.lastLesson, lastActivityAt: e.lastActivityAt, completedAt: e.completedAt,
+      currentLesson: e.lastLesson, lastActivityAt: e.lastActivityAt, completedAt: e.completedAt, source: e.source,
       status: e.status === 'COMPLETED' ? 'COMPLETED' : e.lessonsCompleted > 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
     }));
     return status && status !== 'COMPLETED' ? list.filter((c) => c.status === status) : list;

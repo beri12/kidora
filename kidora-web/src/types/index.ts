@@ -13,17 +13,14 @@ export type Role =
 /** The roles a visitor may pick for themselves in the "How will you use Kidora?" step. */
 export type SignupRoleKey = Extract<
   Role,
-  'PARENT' | 'TEACHER' | 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'
+  'CHILD' | 'PARENT' | 'TEACHER' | 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN'
 >;
 
 export interface User {
   id: string;
   name: string;
-  /** Null on accounts created from a phone number alone. */
+  /** Null only on older accounts that signed up by phone before email-only sign-in. */
   email: string | null;
-  /** E.164, present once a number has been verified. */
-  phone?: string | null;
-  phoneVerified?: boolean;
   /** False until the account has answered "How will you use Kidora?". */
   roleConfirmed?: boolean;
   /** The newest school / district access request, when there is one. */
@@ -34,6 +31,10 @@ export interface User {
   avatarColor: string;
   schoolId?: string | null;
   districtId?: string | null;
+  /** A school picked at sign-up without its code, waiting for approval. */
+  requestedSchoolId?: string | null;
+  gradeLevel?: string | null;
+  dateOfBirth?: string | null;
   subscriptionPlan?: 'free' | 'family' | 'school';
 }
 
@@ -43,17 +44,23 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
-/** POST /auth/phone/start */
-export interface PhoneStartResponse {
-  sent: boolean;
-  /** Masked for display, e.g. "+2519****344". */
-  phone: string;
-  /** Seconds the code stays valid. */
+/**
+ * POST /auth/register, POST /auth/email/resend, and the body of the 403 an
+ * unverified account gets from POST /auth/login. The code itself only ever
+ * arrives by email.
+ */
+export interface EmailPending {
+  needsEmailVerification: true;
+  email: string;
+  /** e.g. "ab***@example.com" */
+  maskedEmail: string;
   expiresIn: number;
-  /** Seconds before "Resend code" is allowed again. */
   resendIn: number;
-  /** Only present in development, when Twilio is not configured. */
-  devCode?: string;
+}
+
+/** POST /auth/email/verify */
+export interface EmailVerifyResponse extends AuthResponse {
+  needsRole: boolean;
 }
 
 export type OrgRequestStatus = 'PENDING' | 'CHANGES_REQUESTED' | 'APPROVED' | 'REJECTED';
@@ -77,14 +84,6 @@ export interface SubmitOrgRequestResponse {
   status: 'PENDING' | 'APPROVED';
   request: OrgRequest;
   roleGranted: boolean;
-}
-
-/** POST /auth/phone/verify */
-export interface PhoneVerifyResponse extends AuthResponse {
-  /** True when this verification created the account. */
-  isNewUser: boolean;
-  /** True while the account still has to pick a role. */
-  needsRole: boolean;
 }
 
 export interface Subject {

@@ -9,7 +9,8 @@
  * depending on.
  */
 export const FEATURES = [
-  'auth.sms-otp',
+  'auth.email-social',
+  'courses.access-codes',
   'lms.authoring',
   'lms.learning',
   'lms.studio',

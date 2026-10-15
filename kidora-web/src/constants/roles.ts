@@ -155,14 +155,15 @@ ONBOARDING.SCHOOL_LEADER = ONBOARDING.SCHOOL_ADMIN;
 
 // ---- "How will you use Kidora?" ----
 //
-// Shown once, right after a phone or social sign-in, for accounts the API
-// flags with `needsRole`. Keys are the backend Role enum values that
-// self-signup accepts — CHILD and ADMIN are deliberately absent: children
-// join through a parent or a school, admins are created by an admin.
+// Shown once, right after a phone, email or social sign-up, for accounts the
+// API flags with `needsRole`. `role` is the backend Role enum value sent to
+// POST /auth/role. ADMIN is deliberately absent: admins are created by an
+// admin. Students (CHILD) sign up here too, optionally with the school code
+// their teacher gave them.
 export interface UseCase {
   key: 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_LEADER' | 'STUDENT';
-  /** The Role value sent to POST /auth/role, or null when it is not self-serve. */
-  role: 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN' | null;
+  /** The Role value sent to POST /auth/role. */
+  role: 'CHILD' | 'PARENT' | 'TEACHER' | 'SCHOOL_LEADER' | 'DISTRICT_ADMIN';
   label: string;
   emoji: string;
   blurb: string;
@@ -178,30 +179,28 @@ export interface UseCase {
 
 export const USE_CASES: UseCase[] = [
   {
-    key: 'PARENT', role: 'PARENT', label: "I'm a Parent", emoji: '👨‍👩‍👧',
-    blurb: "Follow your child's progress and manage the family plan.",
-    bg: 'from-grass-400 to-grass-700', shadow: 'rgba(21,128,61,.45)',
+    key: 'STUDENT', role: 'CHILD', label: 'Student', emoji: '🧒',
+    blurb: 'Learn through games, courses and activities.',
+    bg: 'from-sky-300 to-sky-500', shadow: 'rgba(2,132,199,.45)',
   },
   {
-    key: 'TEACHER', role: 'TEACHER', label: "I'm a Teacher", emoji: '👩‍🏫',
-    blurb: 'Run your classes, assignments and grades.',
-    bg: 'from-brand-400 to-brand-700', shadow: 'rgba(109,40,217,.45)',
+    key: 'PARENT', role: 'PARENT', label: 'Parent', emoji: '👩',
+    blurb: "Support your child's learning journey.",
+    bg: 'from-emerald-300 to-emerald-500', shadow: 'rgba(21,128,61,.45)',
   },
   {
-    key: 'SCHOOL_LEADER', role: 'SCHOOL_LEADER', label: "I'm a School Leader", emoji: '🏫',
-    blurb: 'Oversee teachers, classes and school-wide results.',
-    bg: 'from-sun-400 to-sun-700', shadow: 'rgba(180,83,9,.45)', needsVerification: true,
+    key: 'TEACHER', role: 'TEACHER', label: 'Teacher', emoji: '👩‍🏫',
+    blurb: 'Create and sell courses.',
+    bg: 'from-violet-300 to-violet-600', shadow: 'rgba(109,40,217,.45)',
   },
   {
-    key: 'DISTRICT_LEADER', role: 'DISTRICT_ADMIN', label: "I'm a District Leader", emoji: '🏢',
-    blurb: 'Bring Kidora to every school in your district.',
-    bg: 'from-coral-400 to-coral-600', shadow: 'rgba(225,29,72,.45)', needsVerification: true,
+    key: 'SCHOOL_LEADER', role: 'SCHOOL_LEADER', label: 'School Leader', emoji: '🏫',
+    blurb: 'Manage your school and students.',
+    bg: 'from-orange-300 to-orange-500', shadow: 'rgba(180,83,9,.45)', needsVerification: true,
   },
   {
-    // Students never create their own account: a parent adds a child, or a
-    // school imports its roster and hands out a student code.
-    key: 'STUDENT', role: null, label: "I'm a Student", emoji: '🧒',
-    blurb: 'Ask a parent or your school for your Kidora code.',
-    bg: 'from-brand-300 to-brand-500', shadow: 'rgba(139,92,246,.4)',
+    key: 'DISTRICT_LEADER', role: 'DISTRICT_ADMIN', label: 'District Leader', emoji: '🏢',
+    blurb: 'Manage schools across your district.',
+    bg: 'from-teal-300 to-teal-600', shadow: 'rgba(13,148,136,.45)', needsVerification: true,
   },
 ];

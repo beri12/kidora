@@ -1,5 +1,5 @@
 import { registerAs } from '@nestjs/config';
-import { oauthCallbackUrl } from './oauth-callback';
+import { oauthCallbackUrl, oauthCredentials } from './oauth-callback';
 
 // The dev fallbacks below are committed to the repository, so anyone could
 // forge an admin token against a production instance that booted without
@@ -19,8 +19,9 @@ export default registerAs('auth', () => ({
   accessTtl: Number(process.env.JWT_ACCESS_TTL ?? 900),
   refreshTtl: Number(process.env.JWT_REFRESH_TTL ?? 604800),
   google: {
-    clientId: process.env.GOOGLE_CLIENT_ID ?? '',
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+    // Same cleaned values the ProviderGuard checks (quotes/whitespace removed).
+    clientId: oauthCredentials('google').id,
+    clientSecret: oauthCredentials('google').secret,
     callbackUrl: oauthCallbackUrl('google'),
   },
   mfaIssuer: process.env.MFA_ISSUER ?? 'Kidora',

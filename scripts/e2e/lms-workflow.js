@@ -28,7 +28,7 @@ const post = (p, token, data) => j(p, { method: 'POST', token, body: data === un
 const patch = (p, token, data) => j(p, { method: 'PATCH', token, body: JSON.stringify(data) });
 const put = (p, token, data) => j(p, { method: 'PUT', token, body: JSON.stringify(data) });
 const del = (p, token) => j(p, { method: 'DELETE', token });
-const reg = async (p) => (await post('/auth/register', null, p)).body;
+const { register: reg } = require('./register');
 
 (async () => {
   const s = Date.now();

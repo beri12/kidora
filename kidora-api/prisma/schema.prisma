@@ -60,9 +60,16 @@ model User {
   points Int @default(0)
   streak Int @default(0)
 
+  // Deprecated: provider identities live in SocialAccount now (one user,
+  // many providers). Kept, and backfilled from, so no data is dropped; nothing
+  // writes to these any more.
   googleId   String? @unique
   facebookId String? @unique
   tiktokId   String? @unique
+
+  socialAccounts SocialAccount[]
+  gameSessions   GameSession[]
+  skills         StudentSkill[]
 
   mfaEnabled  Boolean  @default(false)
   mfaSecret   String?
@@ -95,10 +102,22 @@ model User {
   // LMS
   // ============================================================
 
-  displayName  String?
-  gradeId      String?
-  lastActiveAt DateTime?
-  active       Boolean   @default(true)
+  displayName String?
+  gradeId     String?
+
+  // What a student told us at sign-up. Grade is kept as text because a
+  // learner at home has no school Grade row to point to; dateOfBirth drives
+  // age-appropriate content. Neither grants access to anything.
+  dateOfBirth DateTime? @db.Date
+  gradeLevel  String?
+
+  // A school the student or teacher picked from search without its join
+  // code. It grants nothing: the school's admin approves it (or the code is
+  // entered later), and only then is schoolId set.
+  requestedSchoolId String?
+  requestedSchool   School?   @relation("SchoolJoinRequests", fields: [requestedSchoolId], references: [id], onDelete: SetNull)
+  lastActiveAt      DateTime?
+  active            Boolean   @default(true)
 
   grade Grade? @relation(fields: [gradeId], references: [id])
 
@@ -228,6 +247,7 @@ model User {
   uploadSessions  UploadSession[]    @relation("Uploader")
   contentProgress ContentProgress[]  @relation("ContentProgressStudent")
 
+  @@index([requestedSchoolId])
   @@index([schoolId, role])
   @@index([schoolId, gradeId])
   @@index([districtId, role])
@@ -251,12 +271,13 @@ model District {
 }
 
 model School {
-  id         String    @id @default(cuid())
-  name       String
-  districtId String?
-  createdAt  DateTime  @default(now())
-  district   District? @relation(fields: [districtId], references: [id])
-  members    User[]
+  id           String    @id @default(cuid())
+  name         String
+  districtId   String?
+  createdAt    DateTime  @default(now())
+  district     District? @relation(fields: [districtId], references: [id])
+  members      User[]
+  joinRequests User[]    @relation("SchoolJoinRequests")
 
   // --- LMS additions ---
   slug           String?         @unique
@@ -537,6 +558,12 @@ model Course {
   access           CourseAccess @default(FREE)
   estimatedMinutes Int?
   archivedAt       DateTime?
+
+  // Course access code (e.g. CPP-7K4M9X): stored upper case, compared case
+  // insensitively by normalising input. Random, never derived from the id.
+  accessCode          String?   @unique
+  accessCodeEnabled   Boolean   @default(false)
+  accessCodeRotatedAt DateTime?
 
   // Completion rules. What a student must finish before the course counts as
   // done — read by the completion check, not by the UI.
@@ -957,6 +984,9 @@ model CourseEnrollment {
   lastActivityAt   DateTime?
   completedAt      DateTime?
   enrolledAt       DateTime         @default(now())
+  /// How the student got this course, and who gave it to them.
+  source           EnrollmentSource @default(SELF)
+  assignedById     String?
   course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   student          User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
   class            SchoolClass?     @relation(fields: [classId], references: [id])
@@ -1066,17 +1096,98 @@ model Subscription {
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+/// A price on the public pricing page, editable without a deploy.
+///
+/// ROLE_PLAN rows are the big cards (Student, Parent, Teacher, School Leader,
+/// District Leader); SCHOOL_TIER rows are the school categories under them.
+/// Money is in the currency's minor units (cents, santim) — never a float.
+/// A null price means "custom pricing / contact sales".
+model SubscriptionPlan {
+  id                String       @id @default(cuid())
+  slug              String       @unique
+  kind              PlanKind     @default(ROLE_PLAN)
+  audience          PlanAudience
+  name              String
+  tagline           String       @default("")
+  /// "Per student", "Per school" …
+  unitLabel         String       @default("")
+  currency          String       @default("ETB")
+  monthlyPriceMinor Int?
+  yearlyPriceMinor  Int?
+  features          String[]     @default([])
+  /// The entitlement a completed checkout grants, when this plan is sold
+  /// through checkout. Checkout charges this row's price, not a constant.
+  grantsPlan        PlanKey?
+  maxStudents       Int?
+  sortOrder         Int          @default(0)
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([kind, active, sortOrder])
+}
+
+enum PlanKind {
+  ROLE_PLAN
+  SCHOOL_TIER
+}
+
+enum PlanAudience {
+  STUDENT
+  PARENT
+  TEACHER
+  SCHOOL
+  DISTRICT
+}
+
+/// Every checkout attempt and every $0 pilot activation. `externalId` is the
+/// provider's reference (PayPal order id, Chapa tx_ref, Stripe session id);
+/// `providerCaptureId` is the PayPal capture id, which refund and dispute
+/// webhooks reference.
 model Payment {
-  id          String          @id @default(cuid())
-  provider    PaymentProvider
-  status      PaymentStatus   @default(pending)
-  plan        PlanKey
-  amountCents Int
-  currency    String          @default("USD")
-  externalId  String?         @unique
-  userId      String
-  createdAt   DateTime        @default(now())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String          @id @default(cuid())
+  provider          PaymentProvider
+  status            PaymentStatus   @default(pending)
+  plan              PlanKey
+  amountCents       Int
+  currency          String          @default("USD")
+  externalId        String?         @unique
+  providerCaptureId String?         @unique
+  userId            String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+/// One external identity (a Google, TikTok, Facebook … account) attached to a
+/// Kidora user. A user can hold several; a provider identity belongs to at
+/// most one user. Provider tokens are not stored: Kidora only needs the
+/// identity at sign-in, and an unstored token cannot leak.
+model SocialAccount {
+  id         String       @id @default(cuid())
+  userId     String
+  provider   AuthProvider
+  providerId String
+  /// The address the provider reported, if any, as it was at link time.
+  email      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+enum AuthProvider {
+  GOOGLE
+  TIKTOK
+  FACEBOOK
+  APPLE
+  MICROSOFT
+  GITHUB
 }
 
 model RefreshToken {
@@ -1457,6 +1568,7 @@ enum World {
   SCIENCE_PLANET
   CODING_CITY
   ART_VALLEY
+  HISTORY_WORLD
 }
 
 enum Rarity {
@@ -1512,11 +1624,16 @@ enum PlanKey {
   family
   school
   district
+  student
+  teacher
 }
 
 enum PaymentProvider {
   stripe
   paypal
+  chapa
+  /// A $0 pilot activation. No money moved and no provider was called.
+  pilot
 }
 
 enum PaymentStatus {
@@ -1524,6 +1641,8 @@ enum PaymentStatus {
   succeeded
   failed
   refunded
+  /// The buyer closed the PayPal window before approving.
+  cancelled
 }
 
 // ---- new enums ----
@@ -1645,6 +1764,7 @@ enum MissionMetric {
   SUBJECT_LESSONS
   COURSES_COMPLETED
   XP_EARNED
+  GAME_LEVELS_COMPLETED
 }
 
 enum NotificationType {
@@ -1821,6 +1941,17 @@ enum SupportPriority {
 
 /// How a student may reach a course. Enforced server-side in the course
 /// access check, never by the browser.
+enum EnrollmentSource {
+  SELF
+  ACCESS_CODE
+  PARENT
+  TEACHER
+  SCHOOL
+  SCHOOL_LEADER
+  CLASS
+  ADMIN
+}
+
 enum CourseAccess {
   FREE
   PREMIUM
@@ -2096,4 +2227,146 @@ model ContentProgress {
 
   @@unique([studentId, contentItemId])
   @@index([contentItemId])
+}
+
+// ---------------------------------------------------------------------------
+// LEARNING GAMES
+//
+// Content (games, levels, challenges) lives here so it can change without a
+// deploy. Challenge answers stay on the server: the web app receives prompts
+// and options only, sends an answer, and the API decides whether it is right.
+// XP, coins, streaks and quests go through the existing reward pipeline
+// (Transaction.sourceKey keeps every grant idempotent).
+// ---------------------------------------------------------------------------
+
+model Game {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  tagline     String        @default("")
+  description String        @default("")
+  world       World
+  subject     String
+  minGrade    Int           @default(1)
+  maxGrade    Int           @default(8)
+  /// Badge slug awarded for finishing every level.
+  badgeSlug   String?
+  order       Int           @default(0)
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  levels      GameLevel[]
+  sessions    GameSession[]
+}
+
+model GameLevel {
+  id                String          @id @default(cuid())
+  gameId            String
+  order             Int
+  name              String
+  /// Shown before play: the story beat / what this level teaches.
+  intro             String          @default("")
+  learningObjective String          @default("")
+  /// 1 (counting) … 7 (word problems); drives recommendations.
+  difficulty        Int             @default(1)
+  /// XP for each challenge answered correctly on the first try.
+  xpPerCorrect      Int             @default(10)
+  /// XP for finishing the level.
+  xpReward          Int             @default(50)
+  game              Game            @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  challenges        GameChallenge[]
+  sessions          GameSession[]
+
+  @@unique([gameId, order])
+}
+
+model GameChallenge {
+  id          String            @id @default(cuid())
+  levelId     String
+  order       Int
+  kind        GameChallengeKind @default(MULTIPLE_CHOICE)
+  /// The skill this practises, e.g. "math.multiplication", "bio.cell".
+  skill       String
+  prompt      String
+  /// Speaker for story-style prompts ("Elephant", "Kai"). Optional.
+  speaker     String?
+  /// Multiple choice options, or kind-specific setup (grid, target …). Sent to the client.
+  setup       Json              @default("{}")
+  /// The answer and anything needed to check it. NEVER sent to the client.
+  solution    Json
+  hints       String[]          @default([])
+  explanation String            @default("")
+  language    String            @default("en")
+  level       GameLevel         @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  attempts    GameAttempt[]
+
+  @@unique([levelId, order])
+}
+
+enum GameChallengeKind {
+  /// Pick one option. setup: { options: string[], scene?: string }
+  MULTIPLE_CHOICE
+  /// Program a robot across a grid. setup: { size, start, dir, goal, walls, items?, maxBlocks }
+  CODE_PATH
+  /// Set angle and power to hit a target. setup: { gravity, target: [min,max], mass }
+  PHYSICS_LAUNCH
+}
+
+model GameSession {
+  id           String        @id @default(cuid())
+  userId       String
+  gameId       String
+  levelId      String
+  startedAt    DateTime      @default(now())
+  endedAt      DateTime?
+  completed    Boolean       @default(false)
+  correctCount Int           @default(0)
+  attemptCount Int           @default(0)
+  hintsUsed    Int           @default(0)
+  bestStreak   Int           @default(0)
+  score        Int           @default(0)
+  xpEarned     Int           @default(0)
+  accuracy     Int           @default(0)
+  /// Bonus challenge wheel outcome, decided by the server at completion.
+  bonus        Json?
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  level        GameLevel     @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  attempts     GameAttempt[]
+
+  @@index([userId, gameId])
+  @@index([userId, completed])
+}
+
+model GameAttempt {
+  id          String        @id @default(cuid())
+  sessionId   String
+  challengeId String
+  correct     Boolean
+  /// Measured by the server between hand-out and answer, not reported by the client.
+  responseMs  Int
+  hintsUsed   Int           @default(0)
+  answer      Json
+  createdAt   DateTime      @default(now())
+  session     GameSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  challenge   GameChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, challengeId])
+}
+
+/// Per-skill mastery (0–100), updated from game attempts; used for
+/// recommendations and the parent / teacher views.
+model StudentSkill {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  skill     String
+  mastery   Int      @default(0)
+  attempts  Int      @default(0)
+  correct   Int      @default(0)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skill])
+  @@index([userId, subject])
 }

@@ -9,7 +9,7 @@ import { PendingApproval } from '@/components/auth/PendingApproval';
  */
 export default function PendingPage() {
   return (
-    <AuthShell title="Almost there!" subtitle="We're verifying your organisation.">
+    <AuthShell title="Almost there!">
       <PendingApproval />
     </AuthShell>
   );

@@ -12,7 +12,7 @@ const API = process.env.API_URL || 'http://localhost:4000/api';
 const WEB = process.env.WEB_URL || 'http://localhost:3000';
 let pass = 0, fail = 0;
 const check = (l, c, extra = '') => { if (c) { console.log(`  PASS  ${l}`); pass++; } else { console.log(`  FAIL  ${l}${extra ? `\n        ${extra}` : ''}`); fail++; } };
-const reg = async (p) => (await (await fetch(`${API}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })).json());
+const { register: reg } = require('./register');
 const MP4 = Buffer.alloc(120000, 9);
 
 (async () => {

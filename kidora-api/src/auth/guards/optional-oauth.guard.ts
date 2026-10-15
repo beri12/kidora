@@ -1,4 +1,5 @@
 import { AuthGuard } from '@nestjs/passport';
+import { callbackUrlProblems, oauthCredentials } from '../../config/oauth-callback';
 import { ExecutionContext, Injectable, NotImplementedException } from '@nestjs/common';
 
 /**
@@ -16,13 +17,37 @@ export function ProviderGuard(name: string) {
   @Injectable()
   class G extends AuthGuard(name) {
     canActivate(ctx: ExecutionContext) {
-      const key = `${name.toUpperCase()}_CLIENT_ID`;
-      if (!process.env[key]) {
+      const c = oauthCredentials(name);
+      if (!c.id) {
         throw new NotImplementedException(
-          `${name} sign-in is not configured on this server. Set ${key} (and ${name.toUpperCase()}_CLIENT_SECRET) and restart.`,
+          `${name} sign-in is not configured on this server. Set ${c.idVar} (and ${c.secretVar}) and restart.`,
         );
       }
+      // Only the start route: on the callback the visitor is already back
+      // from the provider, and failures there redirect to the web app.
+      const req = ctx.switchToHttp().getRequest();
+      const starting = !String(req?.path ?? req?.url ?? '').includes('/callback');
+      const problems = starting ? callbackUrlProblems(name) : [];
+      if (problems.length) {
+        // Names variables only, never their secret values.
+        throw new NotImplementedException(`${name} sign-in is misconfigured on this server: ${problems.join(' ')}`);
+      }
       return super.canActivate(ctx) as any;
+    }
+
+    /**
+     * On the callback, a refusal — the visitor pressed "Cancel" at Google, the
+     * state check failed, the code was already used — would otherwise surface
+     * as a bare 401 JSON page on the API's domain. It is handed to the
+     * controller instead, which sends the visitor back to the web app with a
+     * readable reason.
+     */
+    handleRequest(err: any, user: any, info: any, ctx: ExecutionContext) {
+      if (user) return user;
+      const req = ctx.switchToHttp().getRequest();
+      const denied = req?.query?.error === 'access_denied' || req?.query?.error_reason === 'user_denied';
+      const reason = denied ? 'cancelled' : (info?.message as string) || (err?.message as string) || 'failed';
+      return { oauthError: reason, provider: name };
     }
   }
   return G;

@@ -1,7 +1,7 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
-import { GamesService } from './games.service';
+import { LiveGamesService } from './live-games.service';
 
 // Live multiplayer game gateway. Rooms are namespaced by game slug and
 // their state is kept in Redis so multiple API instances stay in sync.
@@ -9,7 +9,7 @@ import { GamesService } from './games.service';
 export class GamesGateway implements OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private logger = new Logger('GamesGateway');
-  constructor(private games: GamesService) {}
+  constructor(private games: LiveGamesService) {}
 
   @SubscribeMessage('game:join')
   async onJoin(@ConnectedSocket() client: Socket, @MessageBody() body: { game: string; room: string }) {

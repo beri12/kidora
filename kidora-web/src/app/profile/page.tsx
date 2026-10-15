@@ -46,7 +46,7 @@ export default function ProfilePage() {
   const [meta, setMeta] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (user === null) router.replace('/login');
+    if (user === null) router.replace('/auth/login');
   }, [user, router]);
 
   useEffect(() => {

@@ -23,7 +23,7 @@ const j = async (path, opts = {}) => {
   try { body = await res.json(); } catch { /* empty body */ }
   return { status: res.status, body };
 };
-const reg = async (p) => (await j('/auth/register', { method: 'POST', body: JSON.stringify(p) })).body;
+const { register: reg } = require('./register');
 const msg = (r) => {
   const m = r.body?.error?.message ?? r.body?.message;
   return Array.isArray(m) ? m[0] : m ?? '';

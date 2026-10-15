@@ -5,6 +5,8 @@ module.exports = {
     extend: {
       colors: {
         brand: { 50: '#F6F2FF', 100: '#F3E8FF', 200: '#EDE9FE', 300: '#DDD6FE', 400: '#C4B5FD', 500: '#A78BFA', 600: '#8B5CF6', 700: '#7C3AED', 800: '#6D28D9', 900: '#3B0764' },
+        // Kidora auth / landing primary (the purple of the sign-up designs).
+        iris: { 50: '#F3F0FF', 100: '#E9E3FF', 200: '#D5CBFF', 300: '#B7A6FF', 400: '#8F77FB', 500: '#6E52F5', 600: '#5B3CF0', 700: '#4B2ED6', 800: '#3D25AE', 900: '#2A1A78' },
         grass: { 100: '#DCFCE7', 200: '#BBF7D0', 400: '#4ADE80', 500: '#22C55E', 600: '#16A34A', 700: '#15803D' },
         sun: { 300: '#FDE68A', 400: '#FACC15', 500: '#F59E0B', 700: '#B45309' },
         coral: { 400: '#FB7185', 500: '#F43F5E', 600: '#E11D48' },

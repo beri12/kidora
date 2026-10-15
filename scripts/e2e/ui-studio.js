@@ -11,9 +11,7 @@ const check = (l, cond, extra = '') => {
   if (cond) { console.log(`  PASS  ${l}`); pass++; }
   else { console.log(`  FAIL  ${l}${extra ? `\n        ${extra}` : ''}`); fail++; }
 };
-const reg = async (p) => (await (await fetch(`${API}/auth/register`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p),
-})).json());
+const { register: reg } = require('./register');
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 

@@ -62,26 +62,108 @@ refresh — `POST /auth/refresh` reads the role from the database rather than co
 of the token it is replacing, which is also what stops a disabled account from refreshing
 its way back in.
 
-## Phone sign-in (Twilio)
-One number, one code, no password. `POST /auth/phone/start` texts a 6-digit code;
-`POST /auth/phone/verify` checks it and signs the user in, creating the account on first use.
+## Sign-in methods
+Email + password (with an emailed 6-digit code to confirm the address), Google, Facebook
+and TikTok. **Phone-number sign-in has been removed**: the `/auth/phone/*`, `/auth/otp/*`
+and SMS-MFA routes no longer exist and `/auth/login` takes an email only. The `User.phone`
+column is kept (nothing is deleted), but it is no longer a way in — an older account that
+only ever had a phone number needs an email added by support, or can sign in with Google.
+Twilio is now only used for optional organisation-request notices.
 
-```bash
-TWILIO_SID=ACxxxxxxxx
-TWILIO_TOKEN=xxxxxxxx
-# either a purchased number...
-TWILIO_FROM=+15551234567
-# ...or a Messaging Service, which is what you want for international OTP traffic
-TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxx
-```
+## Email verification
+`POST /auth/register` creates the account unverified and emails a 6-digit code; it returns
+`{ needsEmailVerification, email, maskedEmail, resendIn }` and **no tokens**.
+`POST /auth/email/verify` checks the code and signs in; `POST /auth/email/resend` sends a
+new one (and answers identically for unknown addresses). A correct password on an
+unverified account gets `403 { code: "EMAIL_NOT_VERIFIED", … }` and a fresh code, so the
+web app goes straight to the code step. Same limits as SMS codes, with a 10-minute expiry.
+Accounts that existed before this change are marked verified by migration.
 
-With none of these set the SMS is only logged and the API returns the code in the response
-as `devCode` (never when `NODE_ENV=production`), so the whole flow is testable offline.
+## Pricing
+Every plan on `/pricing` lives in the `SubscriptionPlan` table and is served by
+`GET /pricing` — no price is hard-coded in the web app. Prices are integers in the
+currency's minor units, with the currency stored per plan; a null price means "custom".
+Stripe and PayPal checkout charge the price read from the same row, and a payment
+turns into a plan only through `PaymentSettlementService`. That service checks the
+provider's amount, currency and payer against the `Payment` row written at checkout,
+and it is idempotent, so a webhook delivered twice grants once. The first rows come
+from the migration `20260926100000_subscription_plans`; change a price by updating
+its row (an admin pricing screen is planned).
 
-Codes are stored **hashed** in Redis for 5 minutes, are single-use, and are protected by
-four limits: a 45-second resend cooldown, 5 wrong guesses per code, 5 codes per number per
-hour, and 20 per source IP per hour. `/auth/phone/start` answers identically whether or not
-the number already has an account, so it cannot be used to test who is on Kidora.
+## Social sign-in (Google, Facebook, TikTok)
+Set `<PROVIDER>_CLIENT_ID` and `_CLIENT_SECRET` (TikTok: `TIKTOK_CLIENT_KEY`; Facebook:
+`FACEBOOK_APP_ID` / `_APP_SECRET` also work); the redirect URI to register is printed at
+startup. Linked identities are rows in `SocialAccount` (unique per provider + provider id),
+so one Kidora user can hold Google, TikTok and a phone number at once. The callback never
+puts tokens in the URL: it redirects with a one-time code (60 s, single use) that the web
+app trades at `POST /auth/oauth/exchange`. The OAuth `state` is HMAC-signed and bound to the browser by a short-lived
+httpOnly cookie (login-CSRF protection). A cancelled or failed round trip lands on
+`/auth/callback#error=cancelled|failed` with a readable message instead of a JSON 401.
+When a provider's verified email matches an account whose address was never verified,
+the address is marked verified and that account's unproven password is removed.
+
+**Google "invalid_request"** almost always means the redirect URI is http or not
+registered. Set `API_URL=https://<your api host>/api` (behind a proxy, `TRUST_PROXY=1`),
+restart, and register exactly the `…/auth/google/callback` URI the boot banner prints in
+Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs. TikTok needs
+the same for `…/auth/tiktok/callback` in the TikTok developer portal (and, while the app
+is in sandbox, the testers added as target users).
+
+## Chapa payments
+`POST /payments/chapa/checkout { plan }` prices the plan from `SubscriptionPlan`, writes a
+pending `Payment` (`externalId` = `tx_ref`) and returns Chapa's `checkout_url`. After paying,
+Chapa sends the child's grown-up to `/payment/return`, which calls
+`GET /payments/chapa/verify/:txRef`; Chapa's own callback and the signed webhook
+(`x-chapa-signature`, HMAC of `CHAPA_WEBHOOK_SECRET`) do the same. Every path re-verifies
+with Chapa and settles through `PaymentSettlementService`, so the amount, currency and
+payer must match and a payment grants its plan once. Plan prices are USD; your Chapa
+account must accept USD, or change the plan rows to ETB.
+
+## Learning games
+Five games (Math Treasure Rush, Word Safari, Science Lab, Code City, Africa History
+Quest), 3 levels × 6 challenges each, synced into the `Game*` tables at boot. Answers are
+judged by the server (`solution` is never sent), so XP, stars, streaks, badges and mastery
+(`StudentSkill`) can't be forged; implausibly fast levels earn no XP. Parents and teachers
+read progress at `GET /games/students/:id/progress` and `GET /games/classes/:id/mastery`.
+
+## Passwords and sessions
+`POST /auth/password/forgot` emails a reset code (identical answer for unknown addresses);
+`POST /auth/password/reset` sets the new password, ends every other session and signs in.
+Refresh tokens rotate: each one works once, and presenting a used one revokes all of that
+user's sessions. The spec's endpoint names are aliases of the existing handlers:
+`/auth/phone/request-otp`, `/auth/phone/verify-otp`, `/auth/email/login`,
+`/auth/email/register`, `/users/role`.
+
+## Students
+Students create their own account (email or social), pick **Student**, then give their date
+of birth (ages 3–18) and grade, both required by `POST /auth/role`. A school is optional:
+- with the school's **join code** they join it at once;
+- picked from `GET /schools/search` without a code, it is only a request
+  (`User.requestedSchoolId`) — no school courses or school plan until a school leader
+  approves it at `POST /school/join-requests/:userId/approve`.
+
+## Course access codes and assignments
+Every course can have a code like `CPP-7K4M9X` (title prefix + 6 random characters from an
+alphabet without 0/O/1/I/L; never derived from ids). Teachers, co-instructors, the course's
+school leaders and admins manage it: `GET /courses/:id/access-code`,
+`POST /courses/:id/access-code/rotate` (create/replace — the old code dies at once),
+`PATCH /courses/:id/access-code {enabled}`.
+
+A student joins with `POST /courses/access-code/join {code}` (case and dash insensitive).
+The code opens invite-only courses but never overrides the other rules: school-only still
+needs the school, premium still needs a plan (or the student's own school), prerequisites
+still apply. Ten wrong codes in an hour locks a student out for the hour, on top of a per-IP
+throttle.
+
+`POST /courses/:id/assign {studentIds}` lets a parent (linked children), teacher (students
+in their classes), school leader (their school) or admin enrol students; the assigner must be
+responsible for every student. Teachers and school leaders may assign their own courses
+whatever the access mode; anyone else only what the student could open anyway.
+
+Each `CourseEnrollment` records `source` (SELF, ACCESS_CODE, PARENT, TEACHER, SCHOOL,
+SCHOOL_LEADER, CLASS, ADMIN) and `assignedById`. The public catalogue (`GET /courses`,
+`GET /courses/:id`) only shows published FREE/PREMIUM courses, and `POST /courses/:id/enroll`
+now applies the same access rules as `/learning`.
 
 ## Run (dev)
 ```bash
@@ -102,12 +184,12 @@ one — phone sign-in, the OTP limits, the role step, verification, pending, app
 the invitation shortcut, refusal, the upload rules and the role guards:
 
 ```bash
-npm run start:dev            # in another terminal
+AUTH_TEST_EXPOSE_OTP=true npm run start:dev   # in another terminal
 npm run test:e2e:flow        # or ./scripts/e2e-auth-flow.sh
 ```
 
-It needs the dev SMS fallback (no `TWILIO_SID`), because it reads each code out of the
-`devCode` field. It also paces itself: `/auth/phone/start` allows 6 requests a minute
+It needs Twilio unset and `AUTH_TEST_EXPOSE_OTP=true`, because it reads each code out of
+the `devCode` field — the one test-only hook that returns a code, refused in production. It also paces itself: `/auth/phone/start` allows 6 requests a minute
 per IP and the run needs about ten, so it waits between them — expect a few minutes.
 It exits non-zero if anything fails.
 

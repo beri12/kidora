@@ -10,7 +10,7 @@ export default function DashboardRouter() {
   const { user, hydrated } = useAuthStore();
   useEffect(() => {
     if (!hydrated) return;
-    router.replace(user ? ROLE_HOME[user.role] : '/login');
+    router.replace(user ? ROLE_HOME[user.role] : '/auth/login');
   }, [user, hydrated, router]);
   return <div className="min-h-screen grid place-items-center font-display text-brand-600">Loading your dashboard…</div>;
 }

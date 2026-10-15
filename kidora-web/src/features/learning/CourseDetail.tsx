@@ -264,7 +264,12 @@ function Detail({ courseId }: { courseId: string }) {
                     </ul>
                   ) : null}
                   {c.accessDecision.reason === "PREMIUM" && (
-                    <Link href="/pricing" className="btn-primary w-full">See Kidora Plus</Link>
+                    <>
+                      <p className="text-center text-sm font-semibold">
+                        Unlocked by a Student plan, a parent&apos;s Family plan, or your school&apos;s plan.
+                      </p>
+                      <Link href="/pricing?checkout=plan-student" className="btn-primary w-full">Unlock this course</Link>
+                    </>
                   )}
                 </div>
               ) : (

@@ -9,9 +9,10 @@ import {
 } from "@/lib/hooks/queries";
 import type { CourseAccess, CourseTree } from "@/lib/api/authoring";
 import { fmtDate } from "@/lib/format";
+import { CourseAccessPanel } from "@/features/learning/CourseAccessPanel";
 
 const VISIBILITY: { value: CourseAccess; label: string; body: string }[] = [
-  { value: "INVITE_ONLY", label: "Private", body: "Hidden from browsing. You add students yourself." },
+  { value: "INVITE_ONLY", label: "Private", body: "Hidden from browsing. Students join with the course code, or you assign them." },
   { value: "FREE", label: "Published to Kidora", body: "Any student on Kidora can find and join it." },
   { value: "SCHOOL_ONLY", label: "My school only", body: "Only students at your school can see it." },
   { value: "PREMIUM", label: "Kidora Plus", body: "Only students with a subscription can join." },
@@ -110,6 +111,8 @@ export function PublishStep({ course, onDone }: { course: CourseTree; onDone: ()
           </CardBody>
         </Card>
 
+        <CourseAccessPanel courseId={course.id} live={live} />
+
         <Card>
           <CardHeader title="Certificate" />
           <CardBody className="text-sm">
@@ -153,7 +156,7 @@ export function PublishStep({ course, onDone }: { course: CourseTree; onDone: ()
                       {access === "FREE" ? "Every student on Kidora will be able to find it."
                         : access === "SCHOOL_ONLY" ? "Students at your school will be able to find it."
                         : access === "PREMIUM" ? "Students with Kidora Plus will be able to find it."
-                        : "It stays hidden — you add students yourself."}
+                        : "It stays hidden — students join with its code, or you assign them."}
                     </p>
                     <div className="mt-2 flex gap-2">
                       <button type="button" className="btn-ghost flex-1" onClick={() => setConfirming(false)}>Cancel</button>

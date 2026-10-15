@@ -19,6 +19,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { OrgModule } from './org/org.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { PaymentsModule } from './payments/payments.module';
+import { PricingModule } from './pricing/pricing.module';
 import { GamesModule } from './games/games.module';
 import { RewardsModule } from './rewards/rewards.module';
 import { ProgressModule } from './progress/progress.module';
@@ -52,13 +53,14 @@ import databaseConfig from './config/database.config';
 import redisConfig from './config/redis.config';
 import mailConfig from './config/mail.config';
 import storageConfig from './config/storage.config';
+import paymentsConfig from './config/payments.config';
 import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, databaseConfig, redisConfig, mailConfig, storageConfig],
+      load: [appConfig, authConfig, databaseConfig, redisConfig, mailConfig, storageConfig, paymentsConfig],
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     DatabaseModule,
@@ -74,6 +76,7 @@ import { RedisModule } from './redis/redis.module';
     OrgModule,
     TeachersModule,
     PaymentsModule,
+    PricingModule,
     GamesModule,
     RewardsModule,
     ProgressModule,

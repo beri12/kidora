@@ -1,7 +1,7 @@
 import { api } from "./client";
 
 /** SubscriptionsController + InvoicesController. */
-export type PlanKey = "free" | "family" | "school" | "district";
+export type PlanKey = "free" | "family" | "school" | "district" | "student" | "teacher";
 
 export interface Subscription { id: string; plan: PlanKey; status: string; renewsAt?: string | null; provider?: string | null }
 /** Exactly what SubscriptionsService.usage() returns. */

@@ -11,12 +11,7 @@ const check = (l, cond, extra = '') => {
   else { console.log(`  FAIL  ${l}${extra ? `\n        ${extra}` : ''}`); fail++; }
 };
 
-const reg = async (p) => {
-  const r = await fetch(`${API}/auth/register`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p),
-  });
-  return r.json();
-};
+const { register: reg } = require('./register');
 
 (async () => {
   const s = Date.now();

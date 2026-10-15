@@ -8,7 +8,6 @@ import {
   Matches,
   MaxLength,
   MinLength,
-  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
@@ -68,19 +67,6 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password!: string;
-
-  /**
-   * Optional at signup. When present it becomes the account's SMS login
-   * identity, so it is stored in E.164 form and must be unique.
-   */
-  @ApiPropertyOptional({
-    example: '+251912345678',
-    description: 'Mobile number for SMS sign-in and OTP verification',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  phone?: string;
 
   @ApiPropertyOptional({
     enum: SELF_SIGNUP_ROLES,
@@ -171,30 +157,11 @@ export class RegisterDto {
   region?: string;
 }
 
-/**
- * Password login.
- *
- * Either `email` or `phone` identifies the account — the login form lets the
- * user type whichever one they registered with.
- */
+/** Email + password sign-in. */
 export class LoginDto {
-  @ApiPropertyOptional({
-    example: 'abebe@example.com',
-    description: 'Required unless `phone` is supplied',
-  })
-  @ValidateIf((o) => !o.phone)
+  @ApiProperty({ example: 'abebe@example.com' })
   @IsEmail()
-  email?: string;
-
-  @ApiPropertyOptional({
-    example: '+251912345678',
-    description: 'Required unless `email` is supplied',
-  })
-  @ValidateIf((o) => !o.email)
-  @IsString()
-  @MinLength(7)
-  @MaxLength(20)
-  phone?: string;
+  email!: string;
 
   @ApiProperty({
     example: 'Password123',
@@ -239,55 +206,49 @@ export class MfaVerifyDto {
 }
 
 /**
- * Step 1 of SMS sign-in: ask for a one-time code.
- *
- * Deliberately never reveals whether the number belongs to an account — the
- * response is identical either way, so this endpoint can't be used to
- * enumerate Kidora's users.
+ * Confirms the address an email + password account was registered with.
  */
-export class RequestOtpDto {
-  @ApiProperty({
-    example: '+251912345678',
-    description: 'Mobile number in E.164 form (local numbers are normalised server-side)',
-  })
-  @IsString()
-  @MinLength(7)
-  @MaxLength(20)
-  phone!: string;
-}
+export class EmailVerifyDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
 
-/**
- * Step 2 of SMS sign-in: exchange the code for tokens.
- */
-export class VerifyOtpDto {
-  @ApiProperty({
-    example: '+251912345678',
-  })
-  @IsString()
-  @MinLength(7)
-  @MaxLength(20)
-  phone!: string;
-
-  @ApiProperty({
-    example: '123456',
-    description: '6-digit code delivered by SMS',
-  })
+  @ApiProperty({ example: '482913', description: '6-digit code delivered by email' })
   @IsString()
   @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code.' })
   code!: string;
 }
 
-/**
- * Attach (or replace) the mobile number on the signed-in account.
- */
-export class SetPhoneDto {
-  @ApiProperty({
-    example: '+251912345678',
-  })
+/** "Forgot password": emails a reset code (identical answer for any address). */
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
+}
+
+/** Sets a new password with the emailed reset code. */
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: '482913' })
   @IsString()
-  @MinLength(7)
-  @MaxLength(20)
-  phone!: string;
+  @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code.' })
+  code!: string;
+
+  @ApiProperty({ example: 'NewPassword123', minLength: 8, maxLength: 72 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  password!: string;
+}
+
+/** "Resend code" on the email verification step. */
+export class EmailResendDto {
+  @ApiProperty({ example: 'abebe@example.com' })
+  @IsEmail()
+  email!: string;
 }
 
 /**

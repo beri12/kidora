@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { BookOpen, CheckSquare, HelpCircle, Trophy, ChevronRight, Bot, Target, Flame, Star, Check } from "lucide-react";
 import { StudentShell } from "./StudentShell";
+import { CourseCodeCard } from "@/features/learning/CourseCodeCard";
+import { RecommendedCourses } from "@/features/learning/RecommendedCourses";
 import { useStudentDashboard, useClaimQuest } from "@/lib/hooks/queries";
 import {
   TopHeader, Card, CardHeader, CardBody, ProgressBar, Avatar, XPIndicator, CoinIndicator, StreakIndicator,
@@ -18,7 +20,7 @@ export function StudentDashboardPage() {
   return (
     <StudentShell header={({ onMenu }) => (
       <TopHeader onMenu={onMenu}
-        title={d ? <span className="flex items-center gap-3"><Avatar name={d.profile.name} src={d.profile.avatarUrl} color={d.profile.avatarColor} size={44} className="hidden sm:inline-flex" />Hi, {d.profile.displayName ?? d.profile.name}! 👋</span> : "Hi there!"}
+        title={d ? <span className="flex items-center gap-3"><Avatar name={d.profile.name} src={d.profile.avatarUrl} color={d.profile.avatarColor} size={44} className="hidden sm:inline-flex" />Welcome back, {d.profile.displayName ?? d.profile.name.split(" ")[0]}! 👋</span> : "Welcome back! 👋"}
         sub="Keep learning, keep growing!"
         right={d && <div className="hidden items-center gap-2 md:flex"><XPIndicator xp={d.profile.xp} /><CoinIndicator coins={d.profile.coins} /><StreakIndicator days={d.profile.streak} /></div>}
         notifications={d?.unreadNotifications} notificationsHref="/student/notifications"
@@ -37,6 +39,7 @@ function Body({ d }: { d: Data }) {
 
       <div className="space-y-4">
         <Adventure d={d} />
+        <CourseCodeCard />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <MiniStat icon={BookOpen} color="#22C55E" label="Courses Enrolled" value={d.stats.coursesEnrolled} href="/student/courses" />
           <MiniStat icon={CheckSquare} color="#7C3AED" label="Lessons Completed" value={d.stats.lessonsCompleted} href="/student/courses" />
@@ -79,6 +82,7 @@ function Body({ d }: { d: Data }) {
             </div>
           </Card>
         </div>
+        <RecommendedCourses />
       </div>
 
       <aside className="space-y-4">

@@ -4,9 +4,10 @@ import { PublicCoursesController } from './public-courses.controller';
 import { CoursesService } from './courses.service';
 // Adjust this import to wherever your PrismaModule actually lives.
 import { PrismaModule } from '../database/prisma.module';
+import { LmsModule } from '../lms/lms.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, LmsModule],
   controllers: [CoursesController, PublicCoursesController],
   providers: [CoursesService],
 })

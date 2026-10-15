@@ -11,7 +11,7 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { redisUrl } from './config/redis.config';
-import { oauthCallbackUrl } from './config/oauth-callback';
+import { callbackUrlProblems, callbackUrlWarnings, oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
 // sync across every API instance (horizontal scaling / sticky sessions).
@@ -58,6 +58,14 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
+  // Behind Nginx / Cloudflare every request arrives from the proxy. Without
+  // this, req.ip is the proxy's address — so the per-IP rate limits on OTP
+  // and sign-in were shared by every visitor at once — and req.secure is
+  // false even for https visitors. TRUST_PROXY is the number of proxy hops
+  // (Cloudflare → Nginx = 2); it defaults to 1 in production, off otherwise.
+  const hops = process.env.TRUST_PROXY ?? (process.env.NODE_ENV === 'production' ? '1' : '');
+  if (hops) app.set('trust proxy', /^\d+$/.test(hops) ? Number(hops) : hops);
+
   // If CORS_ORIGIN is set (comma-separated), use that explicit allow-list.
   // Otherwise fall back to `true`, which reflects whatever origin made the
   // request. This matters because `origin: '*'.split(',')` (the old code)
@@ -69,7 +77,8 @@ async function bootstrap() {
   // disallows the wildcard origin whenever credentials: true is set.
   const corsOrigin = process.env.CORS_ORIGIN;
   app.enableCors({
-    origin: corsOrigin ? corsOrigin.split(',') : true,
+    // Trimmed: "http://localhost:3000, https://justkidora.com" must match both.
+    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean) : true,
     credentials: true,
   });
 
@@ -98,44 +107,50 @@ async function bootstrap() {
 /**
  * What sign-in can actually do on this machine, printed once at boot.
  *
- * "I put it in .env and it still doesn't work" is nearly always one of two
- * things, and neither is visible from the code: a social provider whose
- * redirect URI is not the one registered with the provider, or Twilio on a
- * trial account. Both are printed here with the exact value to copy, so the
- * mismatch is obvious before anyone opens a browser.
+ * "I put it in .env and it still doesn't work" is nearly always a social
+ * provider whose redirect URI is not the one registered with it. The exact
+ * value to copy is printed here, so the mismatch is obvious before anyone
+ * opens a browser.
  */
 function reportSignInSetup() {
-  const on = (v?: string) => Boolean(v && v.trim());
-
   // Read through the same helper the strategies use, so this can never print
   // a URL different from the one actually sent to the provider.
   const providers = ['google', 'facebook', 'tiktok', 'github', 'microsoft', 'apple'];
 
   const lines: string[] = [];
   for (const name of providers) {
-    const idKey = `${name.toUpperCase()}_CLIENT_ID`;
-    const secretKey = `${name.toUpperCase()}_CLIENT_SECRET`;
-    if (!on(process.env[idKey])) continue;
-    lines.push(`  ${name}: on — register this redirect URI with the provider, exactly:`);
+    const c = oauthCredentials(name);
+    if (!c.id) {
+      // A secret with no id leaves the provider silently off.
+      if (c.secret) lines.push(`  ${name}: off — ${c.secretVar} is set but ${c.idVar} is missing.`);
+      continue;
+    }
+    lines.push(`  ${name}: on — client ${name === 'google' ? c.id : c.id.slice(0, 6) + '…'}; register this redirect URI on THAT client, exactly:`);
     lines.push(`      ${oauthCallbackUrl(name)}`);
-    if (!on(process.env[secretKey])) {
-      lines.push(`    WARNING: ${idKey} is set but ${secretKey} is not, so ${name} sign-in will be rejected.`);
+    for (const p of callbackUrlProblems(name)) lines.push(`    ERROR: ${p}`);
+    for (const w of callbackUrlWarnings(name)) lines.push(`    WARNING: ${w}`);
+    if (!c.secret) {
+      lines.push(`    WARNING: ${c.idVar} is set but ${c.secretVar} is not, so ${name} sign-in will be rejected.`);
     }
   }
 
   console.log('\nSign-in:');
   console.log(lines.length ? lines.join('\n') : '  Social sign-in: off (no provider client ids set)');
 
-  const twilio = on(process.env.TWILIO_ACCOUNT_SID ?? process.env.TWILIO_SID)
-    && on(process.env.TWILIO_AUTH_TOKEN ?? process.env.TWILIO_TOKEN)
-    && on(process.env.TWILIO_PHONE_NUMBER ?? process.env.TWILIO_FROM ?? process.env.TWILIO_MESSAGING_SERVICE_SID);
-
+  const prod = process.env.NODE_ENV === 'production';
   console.log(
-    twilio
-      ? '  SMS: Twilio configured. On a TRIAL account only verified numbers receive texts;\n'
-        + '       outside production a refused send returns the code in the response instead.'
-      : '  SMS: Twilio not configured — one-time codes are printed here and returned in the response.',
+    '  Email codes: sent through ' + (process.env.SMTP_HOST?.trim() || 'localhost') + ':' + (process.env.SMTP_PORT?.trim() || '1025')
+      + (process.env.SMTP_HOST ? '' : ' (MailHog, local only: no real inbox gets these)')
+      + (prod ? '' : ' — if unreachable, the code is printed in this log instead. The SMTP check follows below.'),
   );
-  console.log(`  Web app redirected to: ${process.env.WEB_URL ?? 'http://localhost:3000'}  (set WEB_URL if that is wrong)\n`);
+  if (process.env.AUTH_TEST_EXPOSE_OTP === 'true' && !prod) {
+    console.log('  AUTH_TEST_EXPOSE_OTP=true — codes are returned in API responses for the e2e suite. Never use this for real users.');
+  }
+  const web = process.env.WEB_URL?.trim() || 'http://localhost:3000';
+  console.log(`  Web app redirected to: ${web}  (set WEB_URL if that is wrong)`);
+  if (prod && /^http:\/\/(localhost|127\.0\.0\.1)/.test(web)) {
+    console.log('    WARNING: NODE_ENV=production but WEB_URL is localhost; on a server set WEB_URL=https://justkidora.com.');
+  }
+  console.log('');
 }
 bootstrap();

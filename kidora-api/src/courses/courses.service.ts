@@ -228,39 +228,6 @@ export class CoursesService {
   }
 
 
-  /**
-   * Enrol the signed-in student in a published course.
-   *
-   * CourseEnrollment is what every LMS student view reads — dashboard,
-   * My Courses, world map, progress — and nothing in the codebase created a
-   * row, so a published course could never reach a student. Idempotent: a
-   * second call returns the existing enrollment rather than failing.
-   */
-  async enroll(studentId: string, courseId: string) {
-    const course = await this.prisma.course.findUnique({
-      where: { id: courseId },
-      select: { id: true, published: true, title: true },
-    });
-    if (!course) throw new NotFoundException('Course not found');
-    if (!course.published) throw new ForbiddenException('That course is not published yet.');
-
-    const existing = await this.prisma.courseEnrollment.findUnique({
-      where: { courseId_studentId: { courseId, studentId } },
-    });
-    if (existing) return existing;
-
-    // Start them on the first published lesson so "Continue" has a target.
-    const firstLesson = await this.prisma.lesson.findFirst({
-      where: { courseId, status: 'PUBLISHED' },
-      orderBy: [{ section: { order: 'asc' } }, { order: 'asc' }],
-      select: { id: true },
-    });
-
-    return this.prisma.courseEnrollment.create({
-      data: { courseId, studentId, lastLessonId: firstLesson?.id ?? null, lastActivityAt: new Date() },
-    });
-  }
-
   async unenroll(studentId: string, courseId: string) {
     await this.prisma.courseEnrollment.deleteMany({ where: { courseId, studentId } });
     return { ok: true };
@@ -275,20 +242,33 @@ export class CoursesService {
     return { enrolled: Boolean(e), enrollment: e };
   }
 
+  /**
+   * What the public catalog may show: live courses open to everyone (free or
+   * premium). Private (invite / code) and school-only courses are never
+   * listed or described here — their students reach them through /learning,
+   * which checks access.
+   */
+  static readonly publicCatalog = {
+    published: true,
+    status: 'PUBLISHED' as const,
+    archivedAt: null,
+    access: { in: ['FREE' as const, 'PREMIUM' as const] },
+  };
+
   async listPublished() {
   // The catalog card renders the subject badge and the lesson count, so
   // both relations are included here. Without them every card fell back to
   // a generic "Course" badge and "0 lessons".
   return this.prisma.course.findMany({
-    where: { published: true },
+    where: CoursesService.publicCatalog,
     orderBy: { createdAt: 'desc' },
     ...CoursesService.listShape,
   });
 }
 
 async getPublished(id: string) {
-  const course = await this.prisma.course.findUnique({
-    where: { id, published: true },
+  const course = await this.prisma.course.findFirst({
+    where: { id, ...CoursesService.publicCatalog },
     include: {
       subject: true,
       _count: { select: { lessons: true } },

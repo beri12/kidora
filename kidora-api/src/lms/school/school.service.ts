@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../common/cache.service';
+import { CacheService as TenancyCache } from '../../infrastructure/cache/cache.service';
 import { TenancyService } from '../common/tenancy.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { AuditService } from '../common/audit.service';
@@ -11,7 +12,7 @@ import type { CreateStudentDto, CreateTeacherDto, CreateClassDto } from './dto';
 
 @Injectable()
 export class SchoolService {
-  constructor(private prisma: PrismaService, private cache: CacheService, private tenancy: TenancyService, private analytics: AnalyticsService, private audit: AuditService, private activity: ActivityService) {}
+  constructor(private prisma: PrismaService, private cache: CacheService, private tenancy: TenancyService, private analytics: AnalyticsService, private audit: AuditService, private activity: ActivityService, private tenancyCache: TenancyCache) {}
 
   dashboard(u: AuthUser, range?: string) {
     const schoolId = this.tenancy.requireSchool(u);
@@ -118,6 +119,57 @@ export class SchoolService {
   }
 
   /** Creates a student account in this school. Password/invite flow reuses your existing auth (see note). */
+  /**
+   * Students and teachers who picked this school at sign-up without its join
+   * code. They are not members (no school courses, no school plan) until a
+   * leader approves them here.
+   */
+  async joinRequests(u: AuthUser) {
+    const schoolId = this.tenancy.requireSchool(u);
+    const rows = await this.prisma.user.findMany({
+      where: { requestedSchoolId: schoolId, active: true },
+      orderBy: { createdAt: 'asc' }, take: 200,
+      select: { id: true, name: true, email: true, role: true, gradeLevel: true, createdAt: true, avatarColor: true },
+    });
+    return rows;
+  }
+
+  async reviewJoinRequest(u: AuthUser, userId: string, approve: boolean, ip?: string) {
+    const schoolId = this.tenancy.requireSchool(u);
+    const target = await this.prisma.user.findFirst({
+      where: { id: userId, requestedSchoolId: schoolId }, select: { id: true, name: true, role: true, gradeLevel: true },
+    });
+    if (!target) throw new NotFoundException('That request is no longer waiting.');
+    if (!approve) {
+      await this.prisma.user.update({ where: { id: target.id }, data: { requestedSchoolId: null } });
+      await this.audit.record({ actorId: u.id, schoolId, action: 'school.join.decline', entityType: 'User', entityId: target.id, ip });
+      return { ok: true, approved: false };
+    }
+    if (target.role === 'CHILD') {
+      const [school, count] = await Promise.all([
+        this.prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { studentLimit: true } }),
+        this.prisma.user.count({ where: { schoolId, role: 'CHILD', active: true } }),
+      ]);
+      if (count >= school.studentLimit) throw new BadRequestException('Student limit reached for your plan.');
+    }
+    // Place a student in the school's grade when the grade they gave has a number.
+    const level = target.role === 'CHILD' ? Number(String(target.gradeLevel ?? '').replace(/\D/g, '')) : 0;
+    const grade = level
+      ? await this.prisma.grade.upsert({ where: { schoolId_level: { schoolId, level } }, create: { schoolId, level, name: `Grade ${level}` }, update: {}, select: { id: true } })
+      : null;
+    await this.prisma.user.update({
+      where: { id: target.id },
+      data: { schoolId, requestedSchoolId: null, ...(grade ? { gradeId: grade.id } : {}) },
+    });
+    // The JWT strategy caches schoolId for a minute; the new member should see their school now.
+    await this.tenancyCache.bustTenancy(target.id);
+    await Promise.all([
+      this.audit.record({ actorId: u.id, schoolId, action: 'school.join.approve', entityType: 'User', entityId: target.id, ip }),
+      this.activity.log({ userId: target.id, schoolId, type: target.role === 'CHILD' ? 'STUDENT_REGISTERED' : 'TEACHER_REGISTERED', title: `${target.name} joined the school` }),
+    ]);
+    return { ok: true, approved: true };
+  }
+
   async createStudent(u: AuthUser, dto: CreateStudentDto, ip?: string) {
     const schoolId = this.tenancy.requireSchool(u);
     const [school, count] = await Promise.all([this.prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { studentLimit: true } }), this.prisma.user.count({ where: { schoolId, role: 'CHILD', active: true } })]);

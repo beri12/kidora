@@ -1,13 +1,14 @@
 import { Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CoursesService } from './courses.service';
+import { LearningService } from '../lms/learning/learning.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('courses')
 @Controller('courses')
 export class PublicCoursesController {
-  constructor(private readonly coursesService: CoursesService) {}
+  constructor(private readonly coursesService: CoursesService, private readonly learning: LearningService) {}
 
   @Get()
   listPublished() {
@@ -26,7 +27,10 @@ export class PublicCoursesController {
   @UseGuards(JwtAuthGuard)
   @Post(':id/enroll')
   enroll(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.coursesService.enroll(u.id, id);
+    // Same access rules as /learning/courses/:id/enroll. This route used to
+    // create the row directly, and an enrolment is what grants access — so
+    // it let anyone into premium, invite-only and other schools' courses.
+    return this.learning.enroll({ id: u.id, role: u.role, schoolId: u.schoolId ?? null }, id);
   }
 
   @ApiBearerAuth()
