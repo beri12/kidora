@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { KeyRound, Lock, Mail, Phone } from 'lucide-react';
+import { KeyRound, Lock, Mail } from 'lucide-react';
 
 import { CodeStep } from './CodeStep';
+import { isValidPhone, PhoneField } from './PhoneField';
 import { Field, FormError, PasswordField, PrimaryButton, SocialRow } from './kidora/ui';
 import { AUTH, authHref, destinationFor, rememberResetEmail, safeNext } from '@/features/auth/routes';
 import { emailSchema } from '@/features/auth/schema';
@@ -48,8 +49,7 @@ export function LoginForm({ onStepChange }: { onStepChange?: (step: string) => v
 
   async function submitPhone(e: React.FormEvent) {
     e.preventDefault();
-    const digits = form.phone.replace(/\D/g, '').length;
-    if (digits < 9 || digits > 15) { setErrors({ phone: 'Enter the phone number on your account, e.g. +251 91 122 3344' }); return; }
+    if (!isValidPhone(form.phone)) { setErrors({ phone: 'Pick your country and enter the phone number on your account.' }); return; }
     setBusy(true);
     try {
       const res = await requestPhoneLogin(form.phone.trim());
@@ -147,8 +147,8 @@ export function LoginForm({ onStepChange }: { onStepChange?: (step: string) => v
         {modeTabs}
         <form onSubmit={submitPhone} noValidate className="mt-5 space-y-4">
           <div data-anim="row">
-            <Field label="Phone number" icon={<Phone className="h-[18px] w-[18px]" />} type="tel" autoComplete="tel" inputMode="tel"
-              placeholder="+251 91 122 3344" value={form.phone} onChange={set('phone')} error={errors.phone} autoFocus maxLength={20}
+            <PhoneField label="Phone number" value={form.phone} error={errors.phone} autoFocus
+              onChange={(phone) => { setForm((f) => ({ ...f, phone })); setErrors({}); }}
               hint="The number on your Kidora account. We text you a 4-digit code." />
           </div>
           <div data-anim="row">

@@ -1,3 +1,4 @@
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   LogSmsProvider,
@@ -40,9 +41,13 @@ export class SmsService {
   }
 
   /**
-   * E.164 is what Twilio requires: a leading + and 8-15 digits.
+   * E.164 is what Twilio requires: a leading + and 8-15 digits, and the
+   * number must be a real one for its country (libphonenumber's rules for
+   * every country, so "+251 91 015 932", one digit short, is refused here
+   * rather than by Twilio after the account exists).
    * Local numbers are normalised against SMS_DEFAULT_COUNTRY_CODE (e.g. +251)
-   * so a user typing "0912345678" still reaches Twilio in a valid shape.
+   * so a user typing "0912345678" still reaches Twilio in a valid shape; the
+   * web form sends every number with its country code already.
    */
   normalize(raw: string): string | null {
     const trimmed = (raw ?? '').replace(/[\s()\-.]/g, '');
@@ -65,7 +70,9 @@ export class SmsService {
       candidate = (cc.startsWith('+') ? cc : '+' + cc) + local;
     }
 
-    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null;
+    if (!/^\+[1-9]\d{7,14}$/.test(candidate)) return null;
+    const parsed = parsePhoneNumberFromString(candidate);
+    return parsed?.isValid() ? parsed.number : null;
   }
 
   async send(to: string, body: string) {

@@ -36,6 +36,25 @@ describe('SmsService.normalize', () => {
       expect(service.normalize('+0912345678')).toBeNull();
     });
 
+    it.each([
+      ['Ethiopia', '+251 91 122 3344', '+251911223344'],
+      ['Kenya', '+254 712 345 678', '+254712345678'],
+      ['Nigeria', '+234 803 123 4567', '+2348031234567'],
+      ['South Africa', '+27 82 123 4567', '+27821234567'],
+      ['United Kingdom', '+44 7911 123456', '+447911123456'],
+      ['France', '+33 6 12 34 56 78', '+33612345678'],
+      ['Germany', '+49 1512 3456789', '+4915123456789'],
+      ['USA', '+1 202 555 0123', '+12025550123'],
+      ['India', '+91 98765 43210', '+919876543210'],
+    ])('accepts a real %s number', (_c, input, e164) => {
+      expect(service.normalize(input)).toBe(e164);
+    });
+
+    it("rejects a number that is not valid for its country", () => {
+      expect(service.normalize('+251 91 015 932')).toBeNull(); // one digit short
+      expect(service.normalize('+44 1234')).toBeNull();
+    });
+
     it('rejects a local number when no default country code is configured', () => {
       expect(service.normalize('0912345678')).toBeNull();
     });
