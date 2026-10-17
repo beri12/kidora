@@ -7,13 +7,13 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, MotionConfig, motion, type Variants } from 'framer-motion';
 import { PayPalButtons, PayPalScriptProvider } from '@paypal/react-paypal-js';
 
-import { formatMoney, pricingApi, type PublicPlan } from '@/lib/api/pricing';
+import { formatMoney, formatPilotEnd, pricingApi, type PublicPlan } from '@/lib/api/pricing';
 import { usePaypalOrder, useStripeCheckout } from '@/features/payments/hooks';
 import { paymentsApi } from '@/lib/api/payments';
 import { ROLE_HOME } from '@/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import { apiErrorMessage } from '@/lib/api-error';
-import { ApiError } from '@/lib/api/client';
+import { API_BASE_URL, ApiError } from '@/lib/api/client';
 
 type Billing = 'monthly' | 'yearly';
 
@@ -73,6 +73,19 @@ function checkoutError(e: unknown, fallback: string) {
     return e.message || fallback;
   }
   return apiErrorMessage(e, fallback);
+}
+
+/**
+ * Why the plans did not load. A network failure is spelled out in development
+ * — it is nearly always the API not running, or CORS_ORIGIN not allowing this
+ * page's origin — instead of a vague "check your internet".
+ */
+function loadError(e: unknown) {
+  if (e instanceof ApiError && e.isNetwork && process.env.NODE_ENV !== 'production') {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'this site';
+    return `Can't reach the Kidora API at ${API_BASE_URL || '(NEXT_PUBLIC_API_URL is not set)'}. Is it running, and does CORS_ORIGIN / WEB_URL allow ${origin}?`;
+  }
+  return checkoutError(e, 'Please try again.');
 }
 
 /** The monthly or yearly price, or null for "custom". Yearly falls back to monthly. */
@@ -191,10 +204,25 @@ export function PricingView() {
             <div role="alert" className="mx-auto mt-10 max-w-md rounded-3xl border-2 border-coral-400/40 bg-white p-6 text-center">
               <div className="text-4xl">🌧️</div>
               <p className="mt-2 font-display text-xl font-extrabold text-brand-900">We couldn&apos;t load prices</p>
-              <p className="mt-1 font-body font-bold text-slate-500">{apiErrorMessage(error, 'Please try again.')}</p>
+              <p className="mt-1 font-body font-bold text-slate-500">{loadError(error)}</p>
               <button onClick={() => refetch()} className="mt-4 min-h-11 rounded-full bg-brand-700 px-6 font-display font-extrabold text-white">
                 Try again
               </button>
+            </div>
+          )}
+
+          {data?.pilot?.active && (
+            <div className="mx-auto mt-8 flex max-w-3xl flex-col items-center gap-3 rounded-3xl border-2 border-emerald-200 bg-emerald-50 px-5 py-4 text-center sm:flex-row sm:text-left">
+              <span className="text-3xl" aria-hidden>🎉</span>
+              <p className="flex-1 font-body font-bold text-emerald-900">
+                Kidora pilot: every plan is <span className="font-extrabold">free until {formatPilotEnd(data.pilot.endsAt)}</span>, and all of Kidora is open while it lasts.
+              </p>
+              <Link
+                href={user ? (user.roleConfirmed === false ? '/auth/signup/role' : ROLE_HOME[user.role] ?? '/') : '/auth/signup'}
+                className="inline-flex min-h-11 shrink-0 items-center rounded-full border-2 border-emerald-600 px-5 font-display font-extrabold text-emerald-700 hover:bg-emerald-600 hover:text-white"
+              >
+                Skip for now →
+              </Link>
             </div>
           )}
 
@@ -212,7 +240,7 @@ export function PricingView() {
               className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
             >
               {data.plans.map((plan) => (
-                <PlanCard key={plan.slug} plan={plan} billing={billing} busy={activating === plan.slug} disabled={!!activating} onStart={() => start(plan)} />
+                <PlanCard key={plan.slug} plan={plan} billing={billing} pilotEndsAt={data.pilot?.endsAt ?? null} busy={activating === plan.slug} disabled={!!activating} onStart={() => start(plan)} />
               ))}
             </motion.ul>
           )}
@@ -233,7 +261,7 @@ export function PricingView() {
   );
 }
 
-function PlanCard({ plan, billing, busy, disabled, onStart }: { plan: PublicPlan; billing: Billing; busy: boolean; disabled: boolean; onStart: () => void }) {
+function PlanCard({ plan, billing, pilotEndsAt, busy, disabled, onStart }: { plan: PublicPlan; billing: Billing; pilotEndsAt: string | null; busy: boolean; disabled: boolean; onStart: () => void }) {
   const s = STYLE[plan.audience];
   const price = priceFor(plan, billing);
   const pilot = plan.checkoutMode === 'pilot';
@@ -266,7 +294,18 @@ function PlanCard({ plan, billing, busy, disabled, onStart }: { plan: PublicPlan
         <p className="mt-1 min-h-[3.9rem] font-body text-[15px] font-semibold leading-snug text-slate-600">{plan.tagline}</p>
 
         <div className="mt-4">
-          {pilot ? (
+          {pilot && price && price.minor > 0 ? (
+            // Pilot window: the real price stays on the card, free until the end date.
+            <>
+              <div className="flex items-baseline justify-center gap-1">
+                <span className={`font-display text-4xl font-extrabold line-through decoration-2 opacity-60 ${s.price}`}>{formatMoney(price.minor, plan.currency)}</span>
+                <span className="font-body text-sm font-bold text-slate-500">{price.per}</span>
+              </div>
+              <p className="mt-1 font-body text-sm font-extrabold text-emerald-600">
+                Free{pilotEndsAt ? ` until ${formatPilotEnd(pilotEndsAt)}` : ' during Kidora pilot'}
+              </p>
+            </>
+          ) : pilot ? (
             <>
               <span className={`font-display text-4xl font-extrabold ${s.price}`}>Free</span>
               <p className="mt-1 font-body text-sm font-extrabold text-emerald-600">Free during Kidora pilot</p>
@@ -288,7 +327,7 @@ function PlanCard({ plan, billing, busy, disabled, onStart }: { plan: PublicPlan
           ) : (
             <span className={`font-display text-3xl font-extrabold ${s.price}`}>Custom</span>
           )}
-          {plan.unitLabel && !pilot && <p className="mt-1 font-body text-sm font-bold text-slate-500">{plan.unitLabel}</p>}
+          {plan.unitLabel && (!pilot || (price && price.minor > 0)) && <p className="mt-1 font-body text-sm font-bold text-slate-500">{plan.unitLabel}</p>}
         </div>
 
         <ul className="mt-5 flex-1 space-y-2.5 text-left">
@@ -310,7 +349,7 @@ function PlanCard({ plan, billing, busy, disabled, onStart }: { plan: PublicPlan
           className={`mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full font-display text-[17px] font-extrabold text-white shadow-md outline-none focus-visible:ring-4 disabled:opacity-70 ${s.button}`}
           aria-label={pilot ? `Start the free ${plan.name} pilot` : `Get started with the ${plan.name} plan`}
         >
-          {busy ? 'Activating pilot…' : pilot ? 'Start Pilot' : <>Get Started <span aria-hidden>→</span></>}
+          {busy ? 'Activating pilot…' : pilot ? 'Start free pilot' : <>Get Started <span aria-hidden>→</span></>}
         </motion.button>
       </div>
     </motion.li>

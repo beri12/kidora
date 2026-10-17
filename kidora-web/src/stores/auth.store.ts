@@ -267,9 +267,11 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => set({ user: null, accessToken: null, refreshToken: null, remember: true }),
 
+      // Any plan but the free tier (Student, Family, School, District, and
+      // pilot activations of them) unlocks premium content.
       hasPlan: () => {
         const p = get().user?.subscriptionPlan;
-        return p === 'family' || p === 'school';
+        return Boolean(p) && p !== 'free';
       },
     }),
     {

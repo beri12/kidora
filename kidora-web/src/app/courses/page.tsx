@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Navbar } from '@/components/navbar/Navbar';
 import { useCourses, useEnroll, useEnrollment } from '@/features/courses/hooks';
 import { useAuthStore } from '@/stores/auth.store';
+import { usePremiumAccess } from '@/features/pricing/usePremiumAccess';
 import { useRouter } from 'next/navigation';
 import { Card, CardBody, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 // once subscribed, the ones matching their plan become available.
 export default function CoursesPage() {
   const { data: courses = [], isLoading } = useCourses();
-  const hasPlan = useAuthStore((s) => s.hasPlan());
+  const hasPlan = usePremiumAccess();
   const user = useAuthStore((s) => s.user);
   const isStudent = user?.role === 'CHILD';
 

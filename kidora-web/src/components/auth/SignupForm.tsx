@@ -137,7 +137,7 @@ export function SignupForm({ onStepChange }: { onStepChange?: (step: string) => 
         </div>
       </form>
 
-      <div data-anim="row"><SocialRow next={next} /></div>
+      <div data-anim="row"><SocialRow next={next} roleHint={roleHint} /></div>
 
       <p data-anim="row" className="mt-7 text-center font-body text-xs font-semibold leading-relaxed text-slate-500">
         By creating an account, you agree to our<br />

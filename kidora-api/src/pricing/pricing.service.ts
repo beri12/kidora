@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { PlanKind, PlanKey, SubscriptionPlan } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
-import type { PaymentsConfig } from '../config/payments.config';
+import { pilotWindow, type PaymentsConfig } from '../config/payments.config';
 
 /** Entitlements checkout sells. Teacher waits until teacher plan benefits exist. */
 const SELLABLE: PlanKey[] = ['student', 'family', 'school', 'district'];
@@ -14,9 +14,10 @@ export const PRICING_MESSAGES = {
 } as const;
 
 /**
- * How a sellable plan is obtained, decided by its monthly price alone:
- *   pilot — $0 (the Kidora pilot): activated directly, no payment provider
- *   paid  — above $0: Chapa / card / PayPal checkout for exactly that price
+ * How a sellable plan is obtained:
+ *   pilot — during the pilot window (PILOT_FREE_UNTIL), or when its price is
+ *           $0: activated directly for free, no payment provider
+ *   paid  — otherwise: Chapa / card / PayPal checkout for exactly that price
  */
 export type CheckoutMode = 'pilot' | 'paid';
 
@@ -41,6 +42,13 @@ export interface PublicPlan {
   checkoutMode: CheckoutMode | null;
 }
 
+/** The pilot as the pricing page shows it. */
+export interface PublicPilot {
+  active: boolean;
+  /** ISO timestamp; null when no pilot is configured. */
+  endsAt: string | null;
+}
+
 /**
  * The one source of prices. The pricing page reads them from here, and so
  * does checkout — so what a card shows is exactly what the provider is asked
@@ -60,7 +68,8 @@ export class PricingService {
   /** `paid` below the configured minimum is a misconfiguration: not sold. */
   private modeFor(r: SubscriptionPlan): CheckoutMode | null {
     if (r.kind !== PlanKind.ROLE_PLAN || r.monthlyPriceMinor == null || !r.grantsPlan || !SELLABLE.includes(r.grantsPlan)) return null;
-    if (r.monthlyPriceMinor === 0) return 'pilot';
+    // The listed price is kept (and shown); the pilot just makes it free for now.
+    if (r.monthlyPriceMinor === 0 || pilotWindow().active) return 'pilot';
     return r.monthlyPriceMinor >= this.minPaidMinor ? 'paid' : null;
   }
 
@@ -85,9 +94,11 @@ export class PricingService {
         checkoutMode,
       };
     };
+    const pilot = pilotWindow();
     return {
       plans: rows.filter((r) => r.kind === PlanKind.ROLE_PLAN).map(shape),
       schoolTiers: rows.filter((r) => r.kind === PlanKind.SCHOOL_TIER).map(shape),
+      pilot: { active: pilot.active, endsAt: pilot.active && pilot.endsAt ? pilot.endsAt.toISOString() : null } as PublicPilot,
     };
   }
 
@@ -118,6 +129,8 @@ export class PricingService {
   async pilotTerms(plan: PlanKey) {
     const { row, mode } = await this.sellableRow(plan);
     if (mode !== 'pilot') throw new BadRequestException(PRICING_MESSAGES.paymentRequired);
-    return { name: row.name, currency: row.currency.toUpperCase() };
+    const pilot = pilotWindow();
+    // Pilot access ends with the pilot; a plan that is simply $0 has no end.
+    return { name: row.name, currency: row.currency.toUpperCase(), endsAt: pilot.active ? pilot.endsAt : null };
   }
 }

@@ -58,8 +58,9 @@ export class PaymentSettlementService {
     const payment = await this.prisma.payment.create({
       data: { userId, provider: PaymentProvider.pilot, status: PaymentStatus.succeeded, plan, amountCents: 0, currency: terms.currency },
     });
-    // No end date: pilot access lasts until the pilot is closed (docs/PAYMENTS.md).
-    const data = { plan, status: 'active', provider: PaymentProvider.pilot, externalId: payment.id, renewsAt: null };
+    // Pilot access ends with the pilot window (PILOT_FREE_UNTIL); a plan that
+    // is simply priced at $0 has no end date.
+    const data = { plan, status: 'active', provider: PaymentProvider.pilot, externalId: payment.id, renewsAt: terms.endsAt };
     await this.prisma.subscription.upsert({ where: { userId }, update: data, create: { userId, ...data } });
     this.logger.log(`Pilot activation: user=${userId} plan=${plan}`);
 

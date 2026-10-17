@@ -138,6 +138,8 @@ export function BackLink({ href, onClick, children = 'Back' }: { href?: string; 
 
 /** Where the visitor wanted to go before the OAuth redirect; read by /auth/callback. */
 export const NEXT_KEY = 'kidora.next';
+/** The role picked on the sign-up screen, kept across the provider round trip. */
+export const ROLE_HINT_KEY = 'kidora.role-hint';
 
 type Provider = 'google' | 'facebook' | 'tiktok';
 const PROVIDERS: { key: Provider; label: string; icon: ReactNode }[] = [
@@ -152,7 +154,7 @@ const PROVIDERS: { key: Provider; label: string; icon: ReactNode }[] = [
  * is asked which providers are configured and only those are offered — a
  * button that could only fail is never shown.
  */
-export function SocialRow({ next, compact }: { next?: string | null; compact?: boolean }) {
+export function SocialRow({ next, compact, roleHint }: { next?: string | null; compact?: boolean; roleHint?: string | null }) {
   const [enabled, setEnabled] = useState<Provider[] | null>(null);
   const [leaving, setLeaving] = useState<Provider | null>(null);
 
@@ -170,6 +172,9 @@ export function SocialRow({ next, compact }: { next?: string | null; compact?: b
   const go = (p: Provider) => {
     try {
       if (next) sessionStorage.setItem(NEXT_KEY, next); else sessionStorage.removeItem(NEXT_KEY);
+      // Signing up as a teacher with Google should not ask "How will you use
+      // Kidora?" from scratch: the role step opens with this pre-selected.
+      if (roleHint) sessionStorage.setItem(ROLE_HINT_KEY, roleHint); else sessionStorage.removeItem(ROLE_HINT_KEY);
     } catch { /* storage disabled: the callback uses the default */ }
     setLeaving(p);
   };

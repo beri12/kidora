@@ -35,7 +35,7 @@ export interface User {
   requestedSchoolId?: string | null;
   gradeLevel?: string | null;
   dateOfBirth?: string | null;
-  subscriptionPlan?: 'free' | 'family' | 'school';
+  subscriptionPlan?: 'free' | 'family' | 'school' | 'district' | 'student' | 'teacher';
 }
 
 export interface AuthResponse {

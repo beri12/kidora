@@ -1,3 +1,4 @@
+import { pilotWindow } from '../../config/payments.config';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -145,6 +146,10 @@ export class LearningService {
    * 'active' free plan, so only paid plans within their period count.
    */
   async hasPremiumAccess(userId: string): Promise<boolean> {
+    // During the Kidora pilot every signed-in user can use all of Kidora,
+    // whether or not they picked a plan ("Skip for now").
+    if (pilotWindow().active) return true;
+
     const me = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {

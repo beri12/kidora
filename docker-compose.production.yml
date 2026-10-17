@@ -1,0 +1,71 @@
+# Kidora — production stack on one server.
+#
+#   docker compose -f docker-compose.production.yml --env-file kidora-api/.env.production up -d --build
+#
+# Only Nginx on the host faces the internet (deploy/nginx/justkidora.conf).
+# The API and web app are bound to 127.0.0.1; Postgres, Redis and the AI
+# service have no host ports at all.
+name: kidora
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kidora
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in kidora-api/.env.production}
+      POSTGRES_DB: kidora
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kidora -d kidora"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+
+  api:
+    build: ./kidora-api
+    restart: unless-stopped
+    env_file: ./kidora-api/.env.production
+    # Migrations run on start (prisma migrate deploy in the Dockerfile CMD).
+    ports: ["127.0.0.1:4000:4000"]
+    volumes: [uploads:/app/uploads]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  web:
+    build:
+      context: ./kidora-web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.justkidora.com/api}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://justkidora.com}
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${NEXT_PUBLIC_SUPPORT_EMAIL:-}
+        NEXT_PUBLIC_BUSINESS_ADDRESS: ${NEXT_PUBLIC_BUSINESS_ADDRESS:-}
+    restart: unless-stopped
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [api]
+
+  ai-service:
+    build: ./apps/ai-service
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      LLM_PROVIDER: ${LLM_PROVIDER:-local}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?set AI_SERVICE_TOKEN in kidora-api/.env.production}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+    expose: ["8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

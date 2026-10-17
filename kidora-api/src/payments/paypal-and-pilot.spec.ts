@@ -237,3 +237,33 @@ describe('PayPal checkout', () => {
     expect(setup({}, { PAYPAL_ENVIRONMENT: 'production' }).paypal.publicConfig()).toEqual({ clientId: 'client-id', environment: 'production' });
   });
 });
+
+describe('pilot window (PILOT_FREE_UNTIL)', () => {
+  const env = { ...process.env };
+  beforeEach(() => { process.env.PILOT_FREE_UNTIL = '2999-12-31'; });
+  afterEach(() => { process.env = { ...env }; });
+
+  it('keeps the listed price but makes every sellable plan a free pilot', async () => {
+    const t = setup(); // school is priced at 500
+    const { plans, pilot } = await t.pricing.publicCatalog();
+    expect(pilot).toEqual({ active: true, endsAt: '2999-12-31T23:59:59.999Z' });
+    expect(plans.find((p) => p.slug === 'plan-school')).toMatchObject({ monthlyPriceMinor: 500, checkoutMode: 'pilot' });
+    expect(plans.find((p) => p.slug === 'plan-teacher')?.checkoutMode).toBeNull(); // sign-up only stays so
+  });
+
+  it('activates a priced plan for $0 until the pilot ends, and refuses to charge for it', async () => {
+    const t = setup();
+    await expect(t.settlement.activatePilot('u1', 'school')).resolves.toMatchObject({ status: 'ACTIVE' });
+    expect(t.subs.get('u1')).toMatchObject({ plan: 'school', provider: 'pilot', renewsAt: new Date('2999-12-31T23:59:59.999Z') });
+    expect([...t.payments.values()][0]).toMatchObject({ provider: 'pilot', amountCents: 0 });
+    await expect(t.paypal.createOrder('u1', 'school')).rejects.toThrow('free right now');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns to paid checkout once the pilot is over', async () => {
+    process.env.PILOT_FREE_UNTIL = '2000-01-01';
+    const t = setup();
+    expect((await t.pricing.publicCatalog()).plans.find((p) => p.slug === 'plan-school')?.checkoutMode).toBe('paid');
+    await expect(t.settlement.activatePilot('u1', 'school')).rejects.toThrow(BadRequestException);
+  });
+});

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 import { AuthShell } from '@/components/auth/AuthShell';
-import { NEXT_KEY, PrimaryButton } from '@/components/auth/kidora/ui';
+import { NEXT_KEY, PrimaryButton, ROLE_HINT_KEY } from '@/components/auth/kidora/ui';
 import { AUTH, destinationFor, safeNext } from '@/features/auth/routes';
 import { celebrate } from '@/lib/motion';
 import { useAuthStore } from '@/stores/auth.store';
@@ -43,12 +43,16 @@ export default function OAuthCallbackPage() {
     }
 
     let next: string | null = null;
-    try { next = safeNext(sessionStorage.getItem(NEXT_KEY)); sessionStorage.removeItem(NEXT_KEY); } catch { /* storage off */ }
+    let roleHint: string | null = null;
+    try {
+      next = safeNext(sessionStorage.getItem(NEXT_KEY)); sessionStorage.removeItem(NEXT_KEY);
+      roleHint = sessionStorage.getItem(ROLE_HINT_KEY); sessionStorage.removeItem(ROLE_HINT_KEY);
+    } catch { /* storage off */ }
 
     exchange(code)
       .then(async (res) => {
         if (!res.needsRole) await celebrate(450);
-        router.replace(destinationFor(res.user.role, res.needsRole, next));
+        router.replace(destinationFor(res.user.role, res.needsRole, next, roleHint));
       })
       .catch(() => setFailure({ reason: 'failed', provider: '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps

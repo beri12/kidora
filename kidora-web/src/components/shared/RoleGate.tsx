@@ -1,6 +1,7 @@
 'use client';
 import type { ReactNode } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
+import { usePremiumAccess } from '@/features/pricing/usePremiumAccess';
 import type { Role } from '@/types';
 
 // Renders children only if the current user's role is allowed.
@@ -10,8 +11,8 @@ export function RoleGate({ allow, children, fallback = null }: { allow: Role[]; 
   return <>{children}</>;
 }
 
-// Gates premium content behind an active subscription.
+// Gates premium content behind an active subscription, or the open pilot.
 export function PremiumGate({ children, fallback }: { children: ReactNode; fallback: ReactNode }) {
-  const hasPlan = useAuthStore((s) => s.hasPlan());
-  return <>{hasPlan ? children : fallback}</>;
+  const hasAccess = usePremiumAccess();
+  return <>{hasAccess ? children : fallback}</>;
 }

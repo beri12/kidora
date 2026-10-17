@@ -55,3 +55,27 @@ export default registerAs('payments', (): PaymentsConfig => {
     minPaidAmountCents: Number.isInteger(min) && min > 0 ? min : 1,
   };
 });
+
+export interface PilotWindow {
+  /** True while PILOT_FREE_UNTIL is in the future. */
+  active: boolean;
+  /** When pilot access ends; null when no pilot is configured. */
+  endsAt: Date | null;
+}
+
+/**
+ * The Kidora pilot: until PILOT_FREE_UNTIL every plan can be started for $0
+ * (its real price is still shown) and premium content is open to every
+ * signed-in user. The day after, checkout charges the listed prices again —
+ * no deploy needed. A date without a time means the end of that day (UTC).
+ *
+ * Read on every call so a changed value or the date passing takes effect
+ * without a restart.
+ */
+export function pilotWindow(now: Date = new Date()): PilotWindow {
+  const raw = (process.env.PILOT_FREE_UNTIL ?? '').trim().replace(/^(['"])(.*)\1$/, '$2');
+  if (!raw) return { active: false, endsAt: null };
+  const endsAt = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T23:59:59.999Z` : raw);
+  if (Number.isNaN(endsAt.getTime())) return { active: false, endsAt: null };
+  return { active: now < endsAt, endsAt };
+}

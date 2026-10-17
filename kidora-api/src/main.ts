@@ -11,6 +11,9 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { redisUrl } from './config/redis.config';
+import { allowedOrigins, corsOriginOption } from './config/cors';
+import { duplicateEnvKeys } from './config/env-file-check';
+import { pilotWindow } from './config/payments.config';
 import { callbackUrlProblems, callbackUrlWarnings, oauthCallbackUrl, oauthCredentials } from './config/oauth-callback';
 
 // Socket.IO adapter backed by Redis pub/sub so chat + game rooms stay in
@@ -75,12 +78,8 @@ async function bootstrap() {
   // silently blocked before it reaches any controller. `true` is also
   // required here (rather than a literal '*' string) because the CORS spec
   // disallows the wildcard origin whenever credentials: true is set.
-  const corsOrigin = process.env.CORS_ORIGIN;
-  app.enableCors({
-    // Trimmed: "http://localhost:3000, https://justkidora.com" must match both.
-    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean) : true,
-    credentials: true,
-  });
+  // CORS_ORIGIN (trimmed) plus the WEB_URL frontend; see config/cors.ts.
+  app.enableCors({ origin: corsOriginOption(), credentials: true });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new AllExceptionsFilter());
@@ -133,6 +132,17 @@ function reportSignInSetup() {
       lines.push(`    WARNING: ${c.idVar} is set but ${c.secretVar} is not, so ${name} sign-in will be rejected.`);
     }
   }
+
+  const dupes = duplicateEnvKeys();
+  if (dupes.length) {
+    console.log(`\nWARNING: .env defines ${dupes.join(', ')} more than once; the LAST value is used. Keep one block per environment.`);
+  }
+  const origins = allowedOrigins();
+  console.log(`\nBrowser origins allowed (CORS): ${origins ? origins.join(', ') : 'any (CORS_ORIGIN not set)'}`);
+  const pilot = pilotWindow();
+  console.log(pilot.active
+    ? `Pilot: every plan is free and all of Kidora is open until ${pilot.endsAt!.toISOString()} (PILOT_FREE_UNTIL).`
+    : pilot.endsAt ? `Pilot: ended ${pilot.endsAt.toISOString()}; listed prices apply.` : 'Pilot: off (set PILOT_FREE_UNTIL=YYYY-MM-DD to run one).');
 
   console.log('\nSign-in:');
   console.log(lines.length ? lines.join('\n') : '  Social sign-in: off (no provider client ids set)');

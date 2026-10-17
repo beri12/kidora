@@ -21,6 +21,14 @@ export interface PublicPlan {
 export interface PricingCatalog {
   plans: PublicPlan[];
   schoolTiers: PublicPlan[];
+  /** The Kidora pilot: while active, every plan starts free and all of Kidora is open. */
+  pilot?: { active: boolean; endsAt: string | null };
+}
+
+/** "Dec 31, 2026" for a pilot end date. */
+export function formatPilotEnd(iso: string | null | undefined) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 export const pricingApi = {

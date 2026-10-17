@@ -79,3 +79,22 @@ browser never sends a price; extra fields are stripped by the validation pipe.
 PayPal webhooks (refunds, disputes, completing a `PENDING` capture) and
 recurring billing. Each order buys 30 days. `Payment.providerCaptureId` is
 already stored for webhooks to match on.
+
+## Pilot window (PILOT_FREE_UNTIL)
+
+Set `PILOT_FREE_UNTIL=2026-12-31` in the API's environment to run a pilot
+without touching prices:
+
+- Every sellable plan shows its **real price, struck through**, with "Free
+  until Dec 31, 2026" and a **Start free pilot** button. A banner offers
+  **Skip for now**, straight into the user's dashboard.
+- Starting a plan records a $0 `pilot` payment. The subscription ends on the
+  pilot end date (`renewsAt`).
+- While the pilot runs, premium content is open to every signed-in user, with
+  or without a plan.
+- Paid checkout (PayPal, Chapa, card) is refused during the pilot. The day
+  after the end date, the pricing page shows the normal prices and checkout
+  charges them, with no deploy.
+
+A plan whose price is `0` in `SubscriptionPlan` stays a free pilot plan
+regardless of the window, with no end date.
