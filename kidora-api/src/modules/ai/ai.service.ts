@@ -123,6 +123,38 @@ export class AiService {
     return reply;
   }
 
+  /**
+   * The Kai chat box (POST /ai/chat). Anyone may ask for themselves; asking
+   * on behalf of a student goes through the same link checks as tutorChat.
+   * History comes from the database, never from the browser.
+   */
+  async kaiChat(u: AuthUser, message: string, studentId?: string): Promise<TutorResponsePayload> {
+    const target = !studentId || studentId === u.id ? u.id : await this.resolveStudentId(u, studentId);
+    const [context, past] = await Promise.all([
+      this.buildContext(target, { message } as TutorChatDto),
+      this.prisma.aIConversation.findMany({
+        where: { userId: target, kind: 'TUTOR' },
+        orderBy: { createdAt: 'desc' },
+        take: 3,
+        select: { message: true, response: true },
+      }),
+    ]);
+    const history = past.reverse().flatMap((h) => [
+      { role: 'user', content: h.message },
+      { role: 'assistant', content: h.response },
+    ]);
+
+    const reply = await this.client.tutorChat({ message, context, history });
+
+    // An offline answer is not part of the conversation worth remembering.
+    if (!reply.degraded) {
+      await this.prisma.aIConversation.create({
+        data: { userId: target, message, response: reply.message, kind: 'TUTOR' },
+      }).catch(() => undefined);
+    }
+    return reply;
+  }
+
   health() {
     return this.client.health();
   }

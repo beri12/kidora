@@ -27,7 +27,10 @@ import { MessagesController } from './messages/messages.controller';
 import { NotificationsController } from './notifications/notifications.controller';
 import { AiTutorService } from './ai/ai-tutor.service';
 import { AiController } from './ai/ai.controller';
-import { KIDORA_AI_PROVIDER, UnconfiguredAiProvider } from './ai/ai-provider';
+import { KIDORA_AI_PROVIDER } from './ai/ai-provider';
+import { AiServiceAiProvider } from './ai/ai-service.provider';
+import { AiModule } from '../modules/ai/ai.module';
+import { AiClient } from '../modules/ai/ai.client';
 import { AttendanceController } from './attendance/attendance.controller';
 import { AuthoringService } from './authoring/authoring.service';
 import { AssessmentAuthoringService } from './authoring/assessment-authoring.service';
@@ -57,6 +60,7 @@ import { LearningController, BrowseFiltersController } from './learning/learning
  *   3. KIDORA_REDIS   -> your ioredis client; KIDORA_AI_PROVIDER -> your AI service.
  */
 @Module({
+  imports: [AiModule],
   controllers: [StudentController, TeacherController, SchoolController, SchoolDirectoryController, ParentController, AssessmentsController, CertificatesController, MessagesController, NotificationsController, AiController, AttendanceController, AuthoringController, LearningController, CourseAccessController, BrowseFiltersController, PeerReviewController, TeacherPeerReviewController, UploadsController],
   providers: [
     PrismaService, TenancyService, CacheService, ActivityService, AuditService, RolesGuard, AnalyticsService, RewardsService,
@@ -64,7 +68,7 @@ import { LearningController, BrowseFiltersController } from './learning/learning
     AuthoringService, AssessmentAuthoringService, PublishService, StudioService, CompletionService, LearningService, CourseAccessService, PeerReviewService,
     UploadsService, VideoProcessingService,
     { provide: KIDORA_REDIS, useValue: undefined }, // e.g. { provide: KIDORA_REDIS, useFactory: (r: RedisService) => r.getClient(), inject: [RedisService] }
-    { provide: KIDORA_AI_PROVIDER, useClass: UnconfiguredAiProvider },
+    { provide: KIDORA_AI_PROVIDER, useFactory: (c: AiClient) => new AiServiceAiProvider(c), inject: [AiClient] },
   ],
   exports: [RewardsService, TenancyService, AnalyticsService, CertificatesService, CompletionService, LearningService],
 })

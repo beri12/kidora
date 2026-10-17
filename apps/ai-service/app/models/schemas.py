@@ -2,7 +2,7 @@
 these before it reaches a child."""
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Difficulty = int  # 1-5, see ml/difficulty_model.py
 
@@ -42,9 +42,45 @@ class TutorResponse(BaseModel):
     difficulty: Difficulty = Field(default=2, ge=1, le=5)
     recommended_next_step: Literal["practice", "quiz", "revise", "advance", "ask_teacher"] = "practice"
     learning_objective: str | None = None
+    # Follow-up questions the child can tap next.
+    suggestions: list[str] = Field(default_factory=list)
     # True when the LLM was unreachable and this is the offline fallback, so
     # the UI can say so honestly instead of passing it off as a real answer.
     degraded: bool = False
+
+
+    @field_validator("suggestions", mode="before")
+    @classmethod
+    def _tidy_suggestions(cls, v: object) -> list[str]:
+        # Model output: keep at most three short strings, drop anything else.
+        if not isinstance(v, list):
+            return []
+        out = [str(x).strip()[:80] for x in v if isinstance(x, str) and x.strip()]
+        return out[:3]
+
+
+class ChatTurn(BaseModel):
+    role: str = Field(max_length=20)
+    content: str = Field(max_length=2000)
+
+
+class CompleteRequest(BaseModel):
+    """A free-text turn for lesson features (explain, practice, hint...).
+
+    `instructions` are written by the Kidora API, not the browser, and are
+    added under the safety and scope rules rather than replacing them.
+    """
+    instructions: str | None = Field(default=None, max_length=8000)
+    messages: list[ChatTurn] = Field(min_length=1, max_length=20)
+    audience: Literal["child", "teacher"] = "child"
+
+
+class CompleteResponse(BaseModel):
+    text: str
+    degraded: bool = False
+    # True when moderation answered instead of the model.
+    blocked: bool = False
+    tokens: int = 0
 
 
 class ModerationResult(BaseModel):

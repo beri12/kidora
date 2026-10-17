@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class ChatDto {
-  @ApiProperty({ required: false, description: 'Student user id (defaults to the caller)' })
+  @ApiProperty({ required: false, description: 'Student user id (defaults to the caller; others need a parent/teacher link)' })
   @IsOptional() @IsString() studentId?: string;
   @ApiProperty({ description: 'The child\'s question or message' })
-  @IsString() message: string;
+  @IsString() @MinLength(1) @MaxLength(2000) message: string;
 }

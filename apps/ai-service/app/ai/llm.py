@@ -28,6 +28,28 @@ class LLMReply:
     degraded: bool = False
 
 
+Turn = dict[str, str]  # {"role": "user" | "assistant", "content": str}
+
+_ASSISTANT_ROLES = {"assistant", "kai", "tutor", "ai", "model"}
+
+
+def normalize_history(raw: list[dict] | None, limit: int = 8) -> list[Turn]:
+    """Earlier turns as plain user/assistant messages.
+
+    History arrives from outside this service, so any other role (notably
+    "system") is downgraded to "user": a client must never be able to add
+    instructions that sit alongside ours.
+    """
+    turns: list[Turn] = []
+    for m in (raw or [])[-limit:]:
+        content = str(m.get("content", "")).strip()[:1500]
+        if not content:
+            continue
+        role = "assistant" if str(m.get("role", "")).lower() in _ASSISTANT_ROLES else "user"
+        turns.append({"role": role, "content": content})
+    return turns
+
+
 class LLMUnavailable(RuntimeError):
     """Raised when the provider cannot be reached. Callers fall back rather
     than surfacing an error to a child."""
@@ -39,7 +61,14 @@ class LLMProvider(abc.ABC):
     name: str
 
     @abc.abstractmethod
-    async def complete(self, *, system: str, user: str, json_mode: bool = False) -> LLMReply: ...
+    async def complete(
+        self, *, system: str, user: str, json_mode: bool = False, history: list[Turn] | None = None
+    ) -> LLMReply: ...
+
+    async def flagged(self, text: str) -> bool | None:
+        """Vendor moderation, where the vendor has it. None = no opinion
+        (not supported, or the check could not run)."""
+        return None
 
 
 class OpenAIProvider(LLMProvider):
@@ -48,11 +77,17 @@ class OpenAIProvider(LLMProvider):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def complete(self, *, system: str, user: str, json_mode: bool = False) -> LLMReply:
+    async def complete(
+        self, *, system: str, user: str, json_mode: bool = False, history: list[Turn] | None = None
+    ) -> LLMReply:
         s = self._settings
         payload: dict = {
             "model": s.llm_model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "messages": [
+                {"role": "system", "content": system},
+                *(history or []),
+                {"role": "user", "content": user},
+            ],
             "max_tokens": s.ai_max_tokens,
             "temperature": s.ai_temperature,
         }
@@ -79,6 +114,23 @@ class OpenAIProvider(LLMProvider):
             completion_tokens=usage.get("completion_tokens", 0),
         )
 
+    async def flagged(self, text: str) -> bool | None:
+        """OpenAI's moderation endpoint (free). Best effort: our own
+        deterministic checks still run whatever happens here."""
+        s = self._settings
+        try:
+            async with httpx.AsyncClient(timeout=min(s.ai_request_timeout_seconds, 10.0)) as client:
+                res = await client.post(
+                    "https://api.openai.com/v1/moderations",
+                    headers={"Authorization": f"Bearer {s.llm_api_key}"},
+                    json={"model": "omni-moderation-latest", "input": text[:4000]},
+                )
+            res.raise_for_status()
+            return bool(res.json()["results"][0]["flagged"])
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            logger.warning("vendor_moderation_unavailable", extra={"error": str(exc)})
+            return None
+
 
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
@@ -86,7 +138,9 @@ class AnthropicProvider(LLMProvider):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def complete(self, *, system: str, user: str, json_mode: bool = False) -> LLMReply:
+    async def complete(
+        self, *, system: str, user: str, json_mode: bool = False, history: list[Turn] | None = None
+    ) -> LLMReply:
         s = self._settings
         try:
             async with httpx.AsyncClient(timeout=s.ai_request_timeout_seconds) as client:
@@ -100,7 +154,7 @@ class AnthropicProvider(LLMProvider):
                     json={
                         "model": s.llm_model,
                         "system": system,
-                        "messages": [{"role": "user", "content": user}],
+                        "messages": [*(history or []), {"role": "user", "content": user}],
                         "max_tokens": s.ai_max_tokens,
                         "temperature": s.ai_temperature,
                     },
@@ -125,7 +179,9 @@ class GoogleProvider(LLMProvider):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def complete(self, *, system: str, user: str, json_mode: bool = False) -> LLMReply:
+    async def complete(
+        self, *, system: str, user: str, json_mode: bool = False, history: list[Turn] | None = None
+    ) -> LLMReply:
         s = self._settings
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -137,7 +193,13 @@ class GoogleProvider(LLMProvider):
                     url,
                     json={
                         "systemInstruction": {"parts": [{"text": system}]},
-                        "contents": [{"role": "user", "parts": [{"text": user}]}],
+                        "contents": [
+                            *(
+                                {"role": "model" if t["role"] == "assistant" else "user", "parts": [{"text": t["content"]}]}
+                                for t in (history or [])
+                            ),
+                            {"role": "user", "parts": [{"text": user}]},
+                        ],
                         "generationConfig": {
                             "maxOutputTokens": s.ai_max_tokens,
                             "temperature": s.ai_temperature,
@@ -165,7 +227,9 @@ class LocalProvider(LLMProvider):
 
     name = "local"
 
-    async def complete(self, *, system: str, user: str, json_mode: bool = False) -> LLMReply:
+    async def complete(
+        self, *, system: str, user: str, json_mode: bool = False, history: list[Turn] | None = None
+    ) -> LLMReply:
         body = {
             "message": (
                 "The AI tutor is unavailable right now, so I can't work through this with you yet. "

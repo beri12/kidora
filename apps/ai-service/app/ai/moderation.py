@@ -32,6 +32,22 @@ _BLOCKLIST: dict[str, list[str]] = {
     "danger": [r"\bdrink bleach\b", r"\bswallow\b.{0,20}\b(battery|poison)\b"],
 }
 
+# Clearly not learning, and not for children. Kept narrow on purpose ("I bet
+# it's 5", "carbon dating" and "wine-making in history" must still pass); the
+# tutor's scope rules handle everything subtler.
+_OFF_TOPIC = [
+    r"\bgambl(e|es|ed|ing)\b", r"\bcasinos?\b", r"\bbetting\b", r"\bsports? bets?\b",
+    r"\bcrypto(currency|currencies)?\b", r"\bbitcoin\b",
+    r"\bvap(e|es|ing)\b", r"\bcigarettes?\b", r"\bvodka\b", r"\bget drunk\b",
+]
+
+# Attempts to talk the tutor out of its rules.
+_INJECTION = [
+    r"\bignore (all |any |your |the |my )?(previous |prior |above |earlier )?(instructions|rules|prompts?)\b",
+    r"\b(system|hidden|secret) prompt\b", r"\bjailbreak\b", r"\bdeveloper mode\b",
+    r"\bDAN mode\b", r"\bpretend (you are|to be) (not|no longer) (an? )?(ai|kai|tutor)\b",
+]
+
 # Things a children's product must never solicit, even innocently.
 _PII_REQUESTS = [
     r"\b(what is|tell me) your (address|password|phone)\b",
@@ -59,6 +75,15 @@ _SAFE_REPLIES = {
     ),
 }
 
+_SAFE_REPLIES["off_topic"] = (
+    "I'm Kai, and I only help with learning 🦉 How about a maths puzzle, a science fact, "
+    "or help with something from your lesson?"
+)
+_SAFE_REPLIES["injection"] = (
+    "I'm Kai, your learning helper, and my rules stay the same. "
+    "What would you like to learn about today?"
+)
+
 _DEFAULT_SAFE = "Let's keep to schoolwork. What would you like help with?"
 
 
@@ -79,7 +104,20 @@ def check_input(text: str) -> ModerationResult:
                 safe_reply=_SAFE_REPLIES.get(category, _DEFAULT_SAFE),
             )
 
+    if _match(text, _INJECTION):
+        return ModerationResult(allowed=False, category="injection", reason="Tried to override the tutor's rules",
+                                safe_reply=_SAFE_REPLIES["injection"])
+    if _match(text, _OFF_TOPIC):
+        return ModerationResult(allowed=False, category="off_topic", reason="Not a learning topic",
+                                safe_reply=_SAFE_REPLIES["off_topic"])
+
     return ModerationResult(allowed=True)
+
+
+def vendor_flagged() -> ModerationResult:
+    """The provider's own moderation flagged a message our patterns missed."""
+    return ModerationResult(allowed=False, category="vendor_flagged", reason="Provider moderation flagged it",
+                            safe_reply=_DEFAULT_SAFE)
 
 
 def check_output(text: str) -> ModerationResult:

@@ -18,6 +18,14 @@ from app.models.schemas import TutorResponse
 logger = get_logger(__name__)
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
+_LINK = re.compile(r"(https?://|www\.)\S+", re.IGNORECASE)
+
+_TEXT_FIELDS = ("message", "explanation", "example", "question", "hint", "learning_objective")
+
+
+def strip_links(text: str) -> str:
+    """A child is never sent off-platform by a link the model made up."""
+    return re.sub(r"[ \t]{2,}", " ", _LINK.sub("", text)).strip()
 
 
 def extract_json(text: str) -> dict[str, Any] | None:
@@ -44,12 +52,18 @@ def parse_tutor_response(text: str, *, degraded: bool = False) -> TutorResponse 
     payload = extract_json(text)
     if payload is None:
         # A plain-prose answer is still usable as the message body.
-        stripped = text.strip()
+        stripped = strip_links(text)
         if stripped:
             return TutorResponse(message=stripped[:2000], degraded=degraded)
         return None
 
-    payload.setdefault("message", payload.get("explanation") or "")
+    if not payload.get("message"):
+        payload["message"] = payload.get("explanation") or ""
+    for key in _TEXT_FIELDS:
+        if isinstance(payload.get(key), str):
+            payload[key] = strip_links(payload[key]) or None
+    if not payload.get("message"):
+        return None
     payload["degraded"] = degraded
     try:
         return TutorResponse(**payload)

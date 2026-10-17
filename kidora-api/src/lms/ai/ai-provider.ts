@@ -4,7 +4,15 @@
  * powers AIConversation, adapt it to this interface instead of adding a second one.
  */
 export const KIDORA_AI_PROVIDER = 'KIDORA_AI_PROVIDER';
-export interface AiProvider { complete(p: { system: string; messages: { role: 'user' | 'assistant'; content: string }[]; maxTokens?: number }): Promise<{ text: string; tokens?: number }>; }
+export interface AiProvider {
+  complete(p: {
+    system: string;
+    messages: { role: 'user' | 'assistant'; content: string }[];
+    maxTokens?: number;
+    /** Children get Kai's kids-learning-only rules; teachers the teaching assistant's. */
+    audience?: 'child' | 'teacher';
+  }): Promise<{ text: string; tokens?: number }>;
+}
 
 /** Default when nothing is configured: fails loudly instead of faking answers. */
 export class UnconfiguredAiProvider implements AiProvider {

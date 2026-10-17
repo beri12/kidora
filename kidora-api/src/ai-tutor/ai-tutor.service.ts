@@ -1,115 +1,93 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import type { AuthUser } from '../common/decorators/current-user.decorator';
+import { AiService } from '../modules/ai/ai.service';
+import type { TutorResponsePayload } from '../modules/ai/ai.types';
 
 export interface TutorReply {
   answer: string;
   suggestions: string[];
   recommendedLessons: { id: string; title: string; slug: string }[];
+  /** True when Kai could not reach the AI service; the UI says so. */
+  degraded: boolean;
 }
 
-// Kai — the AI tutor. This service wraps the model call so the provider
-// (OpenAI/Anthropic/etc.) can be swapped without touching controllers.
-// A kid-safe heuristic reply is used when no AI key is configured.
+const DEFAULT_SUGGESTIONS = ['Can you give me an example?', 'Show me a practice question', 'Explain it a simpler way'];
+
+const OFFLINE_ANSWER =
+  "Kai is taking a short rest right now 🦉 Keep going with your lesson and ask me again in a minute, or ask your teacher.";
+
+/**
+ * Kai, the chat box at /ai-tutor (POST /ai/chat).
+ *
+ * Every answer comes from the Kidora AI service, which owns the model call,
+ * the kids-learning-only scope rules and moderation on the way in and out.
+ * Nothing here talks to OpenAI directly, so no reply can skip those checks.
+ */
 @Injectable()
 export class AiTutorService {
-  constructor(private prisma: PrismaService) {}
+  private logger = new Logger('KaiChat');
 
-  async chat(userId: string, message: string): Promise<TutorReply> {
-    const answer = await this.generate(message);
-    const recommendedLessons = await this.recommend(message);
-    const suggestions = this.followups(message);
-    // Persist conversation history for context + parent visibility.
-    await this.prisma.aIConversation.create({ data: { userId, message, response: answer } });
-    return { answer, suggestions, recommendedLessons };
+  constructor(private prisma: PrismaService, private ai: AiService) {}
+
+  async chat(user: AuthUser, message: string, studentId?: string): Promise<TutorReply> {
+    let reply: TutorResponsePayload;
+    try {
+      reply = await this.ai.kaiChat(user, message, studentId);
+    } catch (err) {
+      if (!(err instanceof ServiceUnavailableException)) throw err;
+      this.logger.warn('AI service unreachable; answered with the offline message.');
+      return { answer: OFFLINE_ANSWER, suggestions: [], recommendedLessons: [], degraded: true };
+    }
+    // A safety reply ("talk to a trusted adult") stands alone: no chips, no lessons.
+    const quiet = reply.degraded || reply.recommended_next_step === 'ask_teacher';
+    return {
+      answer: KaiText.compose(reply),
+      // An empty list from the AI service is deliberate; only an older
+      // service that sends none gets the defaults.
+      suggestions: quiet ? [] : reply.suggestions ?? DEFAULT_SUGGESTIONS,
+      recommendedLessons: quiet ? [] : await this.recommend(message),
+      degraded: reply.degraded,
+    };
   }
 
   history(userId: string) {
     return this.prisma.aIConversation.findMany({ where: { userId }, orderBy: { createdAt: 'asc' }, take: 100 });
   }
 
-  // ---- provider integration point ----
-  private async generate(message: string): Promise<string> {
-    const key = process.env.OPENAI_API_KEY ?? process.env.AI_API_KEY;
-    if (!key) return this.fallback(message);
-    try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: this.systemPrompt() },
-            { role: 'user', content: message },
-          ],
-          temperature: 0.6,
-          max_tokens: 400,
-        }),
-      });
-      const data: any = await res.json();
-      return data?.choices?.[0]?.message?.content?.trim() || this.fallback(message);
-    } catch {
-      return this.fallback(message);
-    }
-  }
-
-  // Kid-safe system prompt shared by chat + streaming.
-  private systemPrompt(): string {
-    return [
-      'You are Kai, a friendly, encouraging AI tutor for children aged 3–12 on the Kidora platform.',
-      'Always be warm, patient and playful. Use simple words and short sentences.',
-      'Never give the final answer outright for homework — guide with hints and small steps.',
-      'Keep every reply under 90 words. Add one cheerful emoji. Never discuss unsafe topics.',
-    ].join(' ');
-  }
-
-  // Streaming variant for the AI Tutor chat UI (Server-Sent tokens).
-  async *stream(userId: string, message: string): AsyncGenerator<string> {
-    const key = process.env.OPENAI_API_KEY ?? process.env.AI_API_KEY;
-    if (!key) { yield this.fallback(message); await this.prisma.aIConversation.create({ data: { userId, message, response: this.fallback(message) } }); return; }
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-        stream: true,
-        messages: [{ role: 'system', content: this.systemPrompt() }, { role: 'user', content: message }],
-      }),
-    });
-    const reader = (res.body as any).getReader();
-    const decoder = new TextDecoder();
-    let full = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of decoder.decode(value).split('\n')) {
-        const t = line.replace(/^data: /, '').trim();
-        if (!t || t === '[DONE]') continue;
-        try { const tok = JSON.parse(t).choices?.[0]?.delta?.content; if (tok) { full += tok; yield tok; } } catch { /* a partial or malformed SSE chunk: skip it and read the next */ }
-      }
-    }
-    await this.prisma.aIConversation.create({ data: { userId, message, response: full } });
-  }
-
-  private fallback(message: string): string {
-    const m = message.toLowerCase();
-    const mult = m.match(/(\d+)\s*[x*×]\s*(\d+)/);
-    if (mult) return `Let's solve ${mult[1]} × ${mult[2]}! Think of it as adding ${mult[1]} to itself ${mult[2]} times. The answer is ${Number(mult[1]) * Number(mult[2])}. 🎉`;
-    const add = m.match(/(\d+)\s*\+\s*(\d+)/);
-    if (add) return `${add[1]} + ${add[2]} = ${Number(add[1]) + Number(add[2])}. Great question! ➕`;
-    return "Great question! Let's break it into small steps and figure it out together. Can you tell me what part feels tricky? 🌟";
-  }
-
-  private followups(_message: string): string[] {
-    return ['Can you give me an example?', 'Show me a practice question', 'Explain it a simpler way'];
+  /**
+   * Same checked answer, sent as Server-Sent tokens for UIs that type it out.
+   * The whole reply is moderated before the first word is sent.
+   */
+  async *stream(user: AuthUser, message: string, studentId?: string): AsyncGenerator<string> {
+    const { answer } = await this.chat(user, message, studentId);
+    for (const word of answer.split(/(?<=\s)/)) yield word;
   }
 
   private async recommend(message: string) {
-    // Naive keyword → subject match against real courses.
+    // Naive keyword → subject match against real, published lessons.
     const m = message.toLowerCase();
     const subjectSlug = m.includes('read') || m.includes('word') ? 'english'
       : m.includes('science') || m.includes('planet') ? 'science'
       : m.includes('code') || m.includes('program') ? 'coding' : 'math';
-    const courses = await this.prisma.course.findMany({ where: { subject: { slug: subjectSlug } }, include: { lessons: { take: 2 } }, take: 1 });
+    const courses = await this.prisma.course.findMany({
+      where: { subject: { slug: subjectSlug }, published: true },
+      include: { lessons: { where: { status: 'PUBLISHED' }, take: 2 } },
+      take: 1,
+    });
     return courses.flatMap((c) => c.lessons.map((l) => ({ id: l.id, title: l.title, slug: c.slug })));
   }
 }
+
+/** Turns the structured tutor reply into the chat bubble's text. */
+export const KaiText = {
+  compose(r: Pick<TutorResponsePayload, 'message' | 'explanation' | 'example' | 'question'>): string {
+    const parts: string[] = [];
+    for (const p of [r.message, r.explanation, r.example, r.question]) {
+      const t = p?.trim();
+      // The model sometimes repeats the message as the explanation.
+      if (t && !parts.some((x) => x.includes(t) || t.includes(x))) parts.push(t);
+    }
+    return parts.join('\n\n');
+  },
+};

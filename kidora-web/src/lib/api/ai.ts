@@ -13,6 +13,8 @@ export interface TutorReply {
   answer: string;
   suggestions: string[];
   recommendedLessons?: { id: string; title: string }[];
+  /** True when Kai could not reach the AI service; the answer says so. */
+  degraded?: boolean;
 }
 
 /* --------------------------------------------- teaching aids (teachers only) */

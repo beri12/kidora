@@ -8,6 +8,6 @@ import { PrismaModule } from '../../database/prisma.module';
   imports: [PrismaModule],
   controllers: [AiController],
   providers: [AiService, AiClient],
-  exports: [AiService],
+  exports: [AiService, AiClient],
 })
 export class AiModule {}

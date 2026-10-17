@@ -76,6 +76,7 @@ sudo certbot --nginx -d justkidora.com -d www.justkidora.com -d api.justkidora.c
 | | App mode | **Live** (needs privacy, terms and data-deletion URLs) |
 | Twilio → Phone Numbers | A number (or Messaging Service) that can send SMS to your users' country; set `TWILIO_*` | |
 | PayPal | Keep `PAYPAL_ENVIRONMENT=sandbox` until a sandbox purchase works | |
+| OpenAI (Kai, the AI tutor) | `LLM_PROVIDER=openai`, `LLM_API_KEY=<key>` in `kidora-api/.env.production` | Used only by the ai-service container; set a monthly spend limit in the OpenAI dashboard |
 
 Keep the `http://localhost:4000/...` redirect URIs as well, so local
 development keeps working.

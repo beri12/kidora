@@ -1,7 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
-  AiHealth, ClassAnalysisPayload, ClassAnalysisResult, LessonPlanPayload, LessonPlanResult,
+  AiHealth, ClassAnalysisPayload, CompletePayload, CompleteResult, ClassAnalysisResult, LessonPlanPayload, LessonPlanResult,
   QuizDraftPayload, QuizDraftResult, TutorRequestPayload, TutorResponsePayload,
 } from './ai.types';
 
@@ -66,6 +66,10 @@ export class AiClient {
 
   tutorChat(payload: TutorRequestPayload) {
     return this.post<TutorResponsePayload>('/tutor/chat', payload);
+  }
+
+  complete(payload: CompletePayload) {
+    return this.post<CompleteResult>('/tutor/complete', payload);
   }
 
   async health(): Promise<AiHealth | { status: 'unreachable' }> {

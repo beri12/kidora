@@ -42,7 +42,7 @@ export class AiTutorService {
     // so a default here could only ever mask a missing assignment.
     let text: string;
     let tokens: number;
-    try { const r = await this.provider.complete({ system: `${SYSTEM_BASE}\n${KIND_PROMPTS[kind]}${context}`, messages, maxTokens: 600 }); text = r.text; tokens = r.tokens ?? 0; }
+    try { const r = await this.provider.complete({ system: `${SYSTEM_BASE}\n${KIND_PROMPTS[kind]}${context}`, messages, maxTokens: 600, audience: kind === 'TEACHER_ASSIST' ? 'teacher' : 'child' }); text = r.text; tokens = r.tokens ?? 0; }
     catch { throw new ServiceUnavailableException('The tutor is unavailable right now. Please try again later.'); }
 
     const row = await this.prisma.aIConversation.create({ data: { userId, message: p.message, response: text, kind, lessonId: p.lessonId, courseId: p.courseId } });

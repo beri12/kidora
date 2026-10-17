@@ -29,8 +29,26 @@ export interface TutorResponsePayload {
   difficulty: number;
   recommended_next_step: 'practice' | 'quiz' | 'revise' | 'advance' | 'ask_teacher';
   learning_objective?: string | null;
+  /** Follow-up questions the child can tap next. */
+  suggestions?: string[];
   /** True when the AI service fell back; the UI should say so. */
   degraded: boolean;
+}
+
+/** POST /tutor/complete: a free-text turn under Kai's safety and scope rules. */
+export interface CompletePayload {
+  /** Written by this API (never by a browser); added under the rules, not over them. */
+  instructions?: string;
+  messages: { role: 'user' | 'assistant'; content: string }[];
+  audience: 'child' | 'teacher';
+}
+
+export interface CompleteResult {
+  text: string;
+  degraded: boolean;
+  /** Moderation answered instead of the model. */
+  blocked: boolean;
+  tokens: number;
 }
 
 export interface AiHealth {
