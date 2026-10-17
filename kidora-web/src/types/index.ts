@@ -128,6 +128,10 @@ export interface Course {
   trailerUrl?: string | null;
   createdAt?: string;
   _count?: { lessons: number };
+  /** Catalogue only: who teaches it (name only). */
+  teacher?: { name: string } | null;
+  language?: string | null;
+  duration?: string | null;
 }
 
 export interface Section {

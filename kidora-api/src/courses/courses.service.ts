@@ -209,6 +209,11 @@ export class CoursesService {
     include: {
       subject: true,
       _count: { select: { lessons: true } },
+      // The catalogue card shows who teaches it (name only, never contact
+      // details) and how many lectures it has: courses built in the upload
+      // wizard keep their content as section lectures, not Lesson rows.
+      teacher: { select: { name: true } },
+      sections: { select: { _count: { select: { lectures: true } } } },
     },
   } as const;
 

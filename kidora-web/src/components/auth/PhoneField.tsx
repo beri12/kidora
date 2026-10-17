@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, Search } from 'lucide-react';
 import {
   AsYouType,
   getCountries,
@@ -16,13 +16,29 @@ import { cn } from '@/lib/utils';
 const COUNTRY_KEY = 'kidora.phone-country';
 const FALLBACK: CountryCode = 'ET';
 
-/** 🇪🇹 from "ET": two regional-indicator letters. */
-function flag(cc: string) {
-  return String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 0x1f1a5 + c.charCodeAt(0)));
+/**
+ * The country's flag as an image (public/flags, from country-flag-icons, MIT).
+ * Not an emoji: Windows has no flag emojis and shows two letters instead.
+ */
+function Flag({ code, className }: { code: string; className?: string }) {
+  return (
+    // Tiny local SVGs; next/image would add nothing here.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/flags/${code.toLowerCase()}.svg`}
+      alt=""
+      width={24}
+      height={16}
+      loading="lazy"
+      className={cn('h-4 w-6 shrink-0 rounded-[3px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,0.08)]', className)}
+    />
+  );
 }
 
+type Country = { code: CountryCode; name: string; dial: string };
+
 /** Every country libphonenumber knows (245), named in English, sorted A–Z. */
-function countryList() {
+function countryList(): Country[] {
   let names: Intl.DisplayNames | null = null;
   try { names = new Intl.DisplayNames(['en'], { type: 'region' }); } catch { /* old browser: show codes */ }
   return getCountries()
@@ -112,10 +128,10 @@ export function PhoneField({ label, value, onChange, error, hint, autoFocus }: P
   }
 
   const example = getExampleNumber(country, examples)?.formatNational() ?? '';
-  const current = countries.find((c) => c.code === country);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div>
+    <div className="relative">
       <label htmlFor={id} className="mb-1.5 block font-body text-sm font-extrabold text-ink">{label}</label>
       <div
         className={cn(
@@ -123,24 +139,13 @@ export function PhoneField({ label, value, onChange, error, hint, autoFocus }: P
           error ? 'border-coral-500' : 'border-slate-200',
         )}
       >
-        {/* A native select underneath: every phone gets its own searchable
-            picker, and keyboards can type a country name to jump to it. */}
-        <div className="relative flex h-12 shrink-0 items-center gap-1 border-r border-slate-200 pl-3 pr-2">
-          <span aria-hidden className="text-lg leading-none">{flag(country)}</span>
-          <span aria-hidden className="font-body text-[15px] font-bold text-ink">+{current?.dial}</span>
-          <ChevronDown aria-hidden className="h-4 w-4 text-slate-400" />
-          <select
-            aria-label="Country"
-            value={country}
-            onChange={(e) => pick(e.target.value as CountryCode)}
-            className="absolute inset-0 cursor-pointer opacity-0"
-          >
-            {countries.map((c) => (
-              <option key={c.code} value={c.code}>{`${c.name} (+${c.dial})`}</option>
-            ))}
-          </select>
-        </div>
+        <CountryPicker
+          countries={countries}
+          value={country}
+          onPick={(cc) => { pick(cc); inputRef.current?.focus(); }}
+        />
         <input
+          ref={inputRef}
           id={id}
           type="tel"
           inputMode="tel"
@@ -157,6 +162,114 @@ export function PhoneField({ label, value, onChange, error, hint, autoFocus }: P
       </div>
       {hint && !error && <p className="mt-1 font-body text-xs font-semibold text-slate-500">{hint}</p>}
       {error && <p id={`${id}-err`} role="alert" className="mt-1 font-body text-xs font-bold text-coral-600">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * The country button (flag + dial code) and its searchable list: every
+ * country with its flag, name and code. Search by name ("ken"), ISO code
+ * ("KE") or dial code ("254", "+44"). Arrow keys, Enter and Escape work.
+ */
+function CountryPicker({ countries, value, onPick }: { countries: Country[]; value: CountryCode; onPick: (cc: CountryCode) => void }) {
+  const listId = useId();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const current = countries.find((c) => c.code === value);
+
+  const q = query.trim().toLowerCase().replace(/^\+/, '');
+  const shown = useMemo(() => {
+    if (!q) return countries;
+    const digits = /^\d+$/.test(q);
+    return countries.filter((c) =>
+      digits ? c.dial.startsWith(q) : c.name.toLowerCase().includes(q) || c.code.toLowerCase() === q,
+    );
+  }, [countries, q]);
+
+  // Open on the selected country; close on a click outside.
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    setActive(Math.max(0, countries.findIndex((c) => c.code === value)));
+    const close = (e: MouseEvent) => { if (!rootRef.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open, countries, value]);
+
+  useEffect(() => { setActive(0); }, [q]);
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [active, open]);
+
+  const choose = (c: Country) => { setOpen(false); onPick(c.code); };
+
+  function onKey(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => Math.min(i + 1, shown.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (shown[active]) choose(shown[active]); }
+    else if (e.key === 'Escape') { e.preventDefault(); setOpen(false); }
+  }
+
+  return (
+    <div ref={rootRef} className="static">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Country: ${current?.name ?? value} (+${current?.dial ?? ''}). Change`}
+        className="flex h-12 shrink-0 items-center gap-1.5 rounded-l-xl border-r border-slate-200 pl-3 pr-2 hover:bg-slate-50 focus:outline-none focus-visible:bg-iris-50"
+      >
+        <Flag code={value} />
+        <span className="font-body text-[15px] font-bold tabular-nums text-ink">+{current?.dial}</span>
+        <ChevronDown aria-hidden className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:right-auto sm:w-[340px]">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-3">
+            <Search aria-hidden className="h-4 w-4 shrink-0 text-slate-400" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onKey}
+              placeholder="Search country or code"
+              aria-label="Search country or code"
+              aria-controls={listId}
+              aria-activedescendant={shown[active] ? `${listId}-${shown[active].code}` : undefined}
+              className="h-11 w-full bg-transparent font-body text-sm font-semibold text-ink outline-none placeholder:text-slate-400"
+            />
+          </div>
+          <ul ref={listRef} id={listId} role="listbox" aria-label="Countries" className="max-h-64 overflow-y-auto overscroll-contain py-1">
+            {shown.length === 0 && <li className="px-4 py-3 font-body text-sm font-semibold text-slate-500">No country matches “{query}”.</li>}
+            {shown.map((c, i) => (
+              <li
+                key={c.code}
+                id={`${listId}-${c.code}`}
+                data-index={i}
+                role="option"
+                aria-selected={c.code === value}
+                onMouseEnter={() => setActive(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => choose(c)}
+                className={cn(
+                  'flex cursor-pointer items-center gap-3 px-3 py-2 font-body text-sm',
+                  i === active ? 'bg-iris-50' : 'bg-white',
+                )}
+              >
+                <Flag code={c.code} />
+                <span className="min-w-0 flex-1 truncate font-semibold text-ink">{c.name}</span>
+                <span className="font-bold tabular-nums text-slate-500">+{c.dial}</span>
+                {c.code === value && <Check aria-hidden className="h-4 w-4 text-iris-600" />}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

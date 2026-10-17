@@ -16,9 +16,10 @@ import type { Role } from '@/types';
  * previous copy lived at src/app/middleware.ts, which Next never loads — so
  * nothing was protected at all.
  */
-// Pages any signed-in role may see, but a signed-out visitor may not — the
-// course catalogue is for members, not for the marketing site.
-const SIGNED_IN_ONLY = ['/courses'];
+// Pages any signed-in role may see, but a signed-out visitor may not: a
+// course's lessons. The catalogue itself (/courses) is public, so visitors
+// can browse and "Start course" sends them to log in first.
+const SIGNED_IN_ONLY = ['/courses/'];
 
 function toLogin(req: NextRequest, pathname: string) {
   const url = req.nextUrl.clone();
@@ -32,7 +33,7 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const role = req.cookies.get('kidora_role')?.value as Role | undefined;
 
-  if (SIGNED_IN_ONLY.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+  if (SIGNED_IN_ONLY.some((p) => pathname.startsWith(p))) {
     return role ? NextResponse.next() : toLogin(req, pathname);
   }
 
