@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { ProviderGuard } from './guards/optional-oauth.guard';
-import { oauthCredentials } from '../config/oauth-callback';
+import { callbackUrlProblems, callbackUrlWarnings, oauthCallbackUrl, oauthCredentials } from '../config/oauth-callback';
 import { OAuthService, OAuthProfile } from './services/oauth.service';
 
 const GoogleGuard = ProviderGuard('google');
@@ -67,6 +67,29 @@ export class OAuthController {
   providers() {
     const all = ['google', 'tiktok', 'facebook', 'github', 'microsoft', 'apple'];
     return { providers: all.filter((p) => Boolean(oauthCredentials(p).id)) };
+  }
+
+  /**
+   * GET /api/auth/redirect-uris — exactly what each configured provider is
+   * sent, to copy into its console. "Error 400: redirect_uri_mismatch" means
+   * the `redirectUri` here is not listed on the OAuth client `clientId`.
+   * Both values are public by nature (they are in every sign-in link); no
+   * secret is returned.
+   */
+  @Public()
+  @Get('redirect-uris')
+  redirectUris() {
+    const all = ['google', 'facebook', 'tiktok', 'github', 'microsoft', 'apple'];
+    const providers = all
+      .filter((p) => Boolean(oauthCredentials(p).id))
+      .map((p) => ({
+        provider: p,
+        clientId: oauthCredentials(p).id,
+        redirectUri: oauthCallbackUrl(p),
+        problems: callbackUrlProblems(p),
+        warnings: callbackUrlWarnings(p),
+      }));
+    return { webUrl: this.config.get<string>('app.webUrl'), providers };
   }
 
   @Public() @UseGuards(GoogleGuard) @Get('google') google() { /* redirects */ }

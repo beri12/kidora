@@ -32,6 +32,18 @@ Production: `GOOGLE_CALLBACK_URL=https://api.justkidora.com/api/auth/google/call
 3. Copy the **Client ID** (ends in `.apps.googleusercontent.com`) and the
    **Client secret** (`GOCSPX-…`) into the env vars above. Restart the API.
 
+## Fixing "Error 400: redirect_uri_mismatch"
+
+Open **`<API>/api/auth/redirect-uris`** in a browser:
+- locally: http://localhost:4000/api/auth/redirect-uris
+- production: https://api.justkidora.com/api/auth/redirect-uris
+
+For Google it shows `clientId` and `redirectUri`. In Google Cloud Console →
+Google Auth Platform → Clients, open the client whose ID is that `clientId`
+and add that `redirectUri` under **Authorized redirect URIs**, exactly. Save,
+wait a few minutes, and try again. Local and production need one entry each
+(and the production server may use a different client than your laptop).
+
 ## "Error 400: invalid_request" and friends
 
 At boot the API prints, under `Sign-in:`, the exact redirect URI it sends
