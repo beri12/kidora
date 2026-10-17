@@ -58,6 +58,20 @@ export interface EmailPending {
   resendIn: number;
 }
 
+/**
+ * Sign-up with a phone number: the API has texted a 4-digit code
+ * ("Kidora OTP verification") and issues no session until it comes back.
+ */
+export interface PhonePending {
+  needsPhoneVerification: true;
+  /** E.164, e.g. "+251911223344" — send back with the code. */
+  phone: string;
+  /** e.g. "+2519•••••344" */
+  maskedPhone: string;
+  expiresIn: number;
+  resendIn: number;
+}
+
 /** POST /auth/email/verify */
 export interface EmailVerifyResponse extends AuthResponse {
   needsRole: boolean;

@@ -24,12 +24,3 @@ export function FacebookIcon() {
   );
 }
 
-export function TiktokIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-      <path fill="#25F4EE" d="M15.6 1.5h-3v13.4a2.7 2.7 0 1 1-2.2-2.7V9.1a5.8 5.8 0 1 0 5.2 5.8V8.6a6.9 6.9 0 0 0 4 1.3V6.8a4 4 0 0 1-4-4Z" transform="translate(-.6 -.4)" />
-      <path fill="#FE2C55" d="M15.6 1.5h-3v13.4a2.7 2.7 0 1 1-2.2-2.7V9.1a5.8 5.8 0 1 0 5.2 5.8V8.6a6.9 6.9 0 0 0 4 1.3V6.8a4 4 0 0 1-4-4Z" transform="translate(.6 .4)" />
-      <path fill="currentColor" d="M15.6 1.5h-3v13.4a2.7 2.7 0 1 1-2.2-2.7V9.1a5.8 5.8 0 1 0 5.2 5.8V8.6a6.9 6.9 0 0 0 4 1.3V6.8a4 4 0 0 1-4-4Z" />
-    </svg>
-  );
-}

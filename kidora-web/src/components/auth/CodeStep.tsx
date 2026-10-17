@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { MailCheck } from 'lucide-react';
+import { MailCheck, MessageSquareText } from 'lucide-react';
 import { OtpInput } from './OtpInput';
 import { BackLink, PrimaryButton } from './kidora/ui';
 import { apiErrorMessage } from '@/lib/api-error';
 
 interface Props {
-  /** Masked email address, as the API returned it. */
+  /** Masked email address or phone number, as the API returned it. */
   destination: string;
+  /** Where the code went: email (6 digits) or SMS (4 digits). */
+  channel?: 'email' | 'sms';
   /** Seconds before "Resend" works, from the send response. */
   resendIn: number;
   /** Checks the code. Throw to show the error and clear the boxes. */
@@ -20,11 +22,14 @@ interface Props {
 }
 
 /**
- * "Check your inbox" — the 6-digit code emailed at sign-up (or to an
- * unverified account signing in). The code is never shown here: it only
- * exists in the person's inbox, which is the whole point of asking for it.
+ * "Check your inbox" / "Check your phone" — the code emailed (6 digits) or
+ * texted as "Kidora OTP verification" (4 digits). The code is never shown
+ * here: it only exists in the person's inbox or messages, which is the whole
+ * point of asking for it.
  */
-export function CodeStep({ destination, resendIn: initialResend, onVerify, onResend, onBack, backLabel }: Props) {
+export function CodeStep({ destination, channel = 'email', resendIn: initialResend, onVerify, onResend, onBack, backLabel }: Props) {
+  const sms = channel === 'sms';
+  const digits = sms ? 4 : 6;
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -40,7 +45,7 @@ export function CodeStep({ destination, resendIn: initialResend, onVerify, onRes
   }, [resendIn]);
 
   async function submit(value: string) {
-    if (verifying.current || value.length < 6) return;
+    if (verifying.current || value.length < digits) return;
     verifying.current = true;
     setBusy(true);
     setError('');
@@ -65,7 +70,7 @@ export function CodeStep({ destination, resendIn: initialResend, onVerify, onRes
     try {
       setResendIn(await onResend());
       setCode('');
-      setNotice('New code sent. Check your inbox.');
+      setNotice(sms ? 'New code sent. Check your messages.' : 'New code sent. Check your inbox.');
     } catch (e) {
       setError(apiErrorMessage(e, "We couldn't resend the code."));
     } finally {
@@ -77,21 +82,22 @@ export function CodeStep({ destination, resendIn: initialResend, onVerify, onRes
     <div>
       <BackLink onClick={onBack}>{backLabel}</BackLink>
       <div data-anim="row" className="mt-3 grid h-14 w-14 place-items-center rounded-2xl bg-iris-100 text-iris-700" aria-hidden>
-        <MailCheck className="h-7 w-7" />
+        {sms ? <MessageSquareText className="h-7 w-7" /> : <MailCheck className="h-7 w-7" />}
       </div>
-      <h1 data-anim="row" className="mt-4 font-display text-3xl font-extrabold text-ink">Check your inbox</h1>
+      <h1 data-anim="row" className="mt-4 font-display text-3xl font-extrabold text-ink">{sms ? 'Check your phone' : 'Check your inbox'}</h1>
       <p data-anim="row" className="mt-1 font-body font-semibold text-slate-600">
-        We sent a 6-digit code to <span className="break-words font-extrabold text-ink">{destination}</span>
+        {sms ? 'We texted a 4-digit code to ' : 'We sent a 6-digit code to '}
+        <span className="break-words font-extrabold text-ink">{destination}</span>
       </p>
 
       <div data-anim="row" className="mt-7">
-        <OtpInput value={code} onChange={(v) => { setCode(v); setError(''); }} onComplete={submit} disabled={busy} invalid={invalid} autoFocus />
+        <OtpInput length={digits} value={code} onChange={(v) => { setCode(v); setError(''); }} onComplete={submit} disabled={busy} invalid={invalid} autoFocus />
       </div>
 
       {error && <p role="alert" className="mt-3 text-center font-body text-sm font-bold text-coral-600">{error}</p>}
       {notice && !error && <p role="status" className="mt-3 text-center font-body text-sm font-bold text-grass-700">{notice}</p>}
 
-      <PrimaryButton className="mt-6" disabled={code.length < 6} busy={busy} onClick={() => submit(code)}>
+      <PrimaryButton className="mt-6" disabled={code.length < digits} busy={busy} onClick={() => submit(code)}>
         {busy ? 'Checking…' : 'Verify & continue'}
       </PrimaryButton>
 
@@ -102,7 +108,11 @@ export function CodeStep({ destination, resendIn: initialResend, onVerify, onRes
           <button type="button" onClick={resend} disabled={busy} className="font-extrabold text-iris-700 underline">Resend code</button>
         )}
       </p>
-      <p className="mt-2 text-center font-body text-xs font-semibold text-slate-400">Can&apos;t find it? Check your spam or promotions folder.</p>
+      <p className="mt-2 text-center font-body text-xs font-semibold text-slate-400">
+        {sms
+          ? 'Look for a text headed “Kidora OTP verification”. It can take a minute to arrive.'
+          : 'Can\u2019t find it? Check your spam or promotions folder.'}
+      </p>
     </div>
   );
 }

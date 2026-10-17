@@ -20,7 +20,7 @@
  * internal one Nginx forwards to. Two production rules:
  *
  *   - Google answers "Error 400: invalid_request" to any redirect_uri that is
- *     plain http on a real domain, and TikTok and Facebook refuse it too. So
+ *     plain http on a real domain, and Facebook refuses it too. So
  *     in production an http:// URL on a non-local host is upgraded to https.
  *   - "/api" is appended when it is missing, because every route lives there.
  */
@@ -68,10 +68,9 @@ export function callbackUrlProblems(provider: string): string[] {
   }
 
   const local = LOCAL_HOST.test(parsed.hostname);
-  if (parsed.protocol === 'http:' && !local && provider !== 'github') {
-    // Google, Facebook ("Enforce HTTPS"), TikTok, Microsoft and Apple only
-    // allow plain http for localhost (GitHub alone accepts it). Google wants
-    // device parameters for a LAN address on top.
+  if (parsed.protocol === 'http:' && !local) {
+    // Google and Facebook ("Enforce HTTPS") only allow plain http for
+    // localhost. Google wants device parameters for a LAN address on top.
     problems.push(
       PRIVATE_IP.test(parsed.hostname)
         ? `${url} uses a local network address; ${provider} only accepts http://localhost or https. Open the app via localhost, or use an https tunnel.`
@@ -126,10 +125,9 @@ export function oauthCallbackUrl(provider: string): string {
 
 /**
  * Each provider's own name for its credentials is accepted alongside ours:
- * TikTok's "client key", Facebook's "app id / app secret".
+ * Facebook's "app id / app secret".
  */
 const CREDENTIAL_NAMES: Record<string, { id: string[]; secret: string[] }> = {
-  tiktok: { id: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_ID'], secret: ['TIKTOK_CLIENT_SECRET'] },
   facebook: { id: ['FACEBOOK_APP_ID', 'FACEBOOK_CLIENT_ID'], secret: ['FACEBOOK_APP_SECRET', 'FACEBOOK_CLIENT_SECRET'] },
 };
 

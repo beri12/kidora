@@ -4,7 +4,7 @@ describe('OAuth callback URLs', () => {
   const env = { ...process.env };
   afterEach(() => { process.env = { ...env }; });
   const set = (vars: Record<string, string | undefined>) => {
-    for (const k of ['API_URL', 'PUBLIC_API_URL', 'GOOGLE_CALLBACK_URL', 'GOOGLE_REDIRECT_URI', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CALLBACK_URL', 'FACEBOOK_CALLBACK_URL', 'TIKTOK_CALLBACK_URL', 'NODE_ENV']) delete process.env[k];
+    for (const k of ['API_URL', 'PUBLIC_API_URL', 'GOOGLE_CALLBACK_URL', 'GOOGLE_REDIRECT_URI', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'FACEBOOK_CALLBACK_URL', 'NODE_ENV']) delete process.env[k];
     Object.assign(process.env, vars);
   };
 
@@ -20,7 +20,6 @@ describe('OAuth callback URLs', () => {
 
   it('accepts PUBLIC_API_URL, which docker-compose sets', () => {
     set({ PUBLIC_API_URL: 'https://api.justkidora.com' });
-    expect(oauthCallbackUrl('tiktok')).toBe('https://api.justkidora.com/api/auth/tiktok/callback');
   });
 
   it('keeps http for localhost in development', () => {
@@ -54,7 +53,6 @@ describe('OAuth callback URLs', () => {
     set({ NODE_ENV: 'production', API_URL: 'https://api.justkidora.com' });
     expect(oauthCallbackUrl('google')).toBe('https://api.justkidora.com/api/auth/google/callback');
     expect(oauthCallbackUrl('facebook')).toBe('https://api.justkidora.com/api/auth/facebook/callback');
-    expect(oauthCallbackUrl('tiktok')).toBe('https://api.justkidora.com/api/auth/tiktok/callback');
     expect(callbackUrlWarnings('google')).toEqual([]);
   });
 
@@ -93,10 +91,6 @@ describe('OAuth callback URLs', () => {
       expect(callbackUrlProblems('google')[0]).toMatch(/local network address/);
     });
 
-    it('does not apply the https rule to GitHub, which accepts http', () => {
-      set({ GITHUB_CALLBACK_URL: 'http://dev.example:4000/api/auth/github/callback' });
-      expect(callbackUrlProblems('github')).toEqual([]);
-    });
 
     it('flags a client id that is not an OAuth client id, or swapped with the secret', () => {
       set({ GOOGLE_CLIENT_ID: '123456789012' });

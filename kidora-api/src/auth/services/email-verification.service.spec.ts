@@ -44,7 +44,7 @@ function setup(user: any = USER) {
   const cache = fakeCache();
   const email = fakeEmail();
   const prisma = fakePrisma(user);
-  const svc = new EmailVerificationService(prisma as any, cache as any, email as any, fakeTokens() as any);
+  const svc = new EmailVerificationService(prisma as any, cache as any, email as any, fakeTokens() as any, {} as any);
   const sentCode = () => email.sendVerificationCode.mock.calls.at(-1)![2];
   return { svc, cache, email, prisma, sentCode };
 }

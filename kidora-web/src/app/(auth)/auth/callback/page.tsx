@@ -10,7 +10,7 @@ import { AUTH, destinationFor, safeNext } from '@/features/auth/routes';
 import { celebrate } from '@/lib/motion';
 import { useAuthStore } from '@/stores/auth.store';
 
-const PROVIDER_NAME: Record<string, string> = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
+const PROVIDER_NAME: Record<string, string> = { google: 'Google', facebook: 'Facebook' };
 
 /**
  * Landing page for every social sign-in.

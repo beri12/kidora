@@ -114,7 +114,7 @@ async function bootstrap() {
 function reportSignInSetup() {
   // Read through the same helper the strategies use, so this can never print
   // a URL different from the one actually sent to the provider.
-  const providers = ['google', 'facebook', 'tiktok', 'github', 'microsoft', 'apple'];
+  const providers = ['google', 'facebook'];
 
   const lines: string[] = [];
   for (const name of providers) {

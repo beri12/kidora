@@ -88,10 +88,11 @@ export class SmsService {
   /**
    * The one-time-code text, in one place.
    *
-   *   Kidora: 482913 is your verification code. It expires in 5 minutes.
-   *   Never share this code — Kidora will never ask for it.
+   *   Kidora OTP verification
+   *   Your code is 4829. It expires in 5 minutes.
+   *   Never share this code. Kidora will never ask for it.
    *
-   *   @kidora.app #482913
+   *   @justkidora.com #4829
    *
    * The brand leads so it is the first thing on the lock screen, and the code
    * comes before any other number so phones offer it for autofill. The last
@@ -100,18 +101,19 @@ export class SmsService {
    * only added when that domain is a real https host, because a line naming
    * localhost would be meaningless to the recipient.
    */
-  otpMessage(code: string) {
+  otpMessage(code: string, minutes = OTP_MINUTES) {
     const lines = [
-      `Kidora: ${code} is your verification code. It expires in ${OTP_MINUTES} minutes.`,
-      'Never share this code — Kidora will never ask for it.',
+      'Kidora OTP verification',
+      `Your code is ${code}. It expires in ${minutes} minutes.`,
+      'Never share this code. Kidora will never ask for it.',
     ];
     const domain = SmsService.otpDomain();
     if (domain) lines.push('', `@${domain} #${code}`);
     return lines.join('\n');
   }
 
-  sendOtp(to: string, code: string) {
-    return this.send(to, this.otpMessage(code));
+  sendOtp(to: string, code: string, minutes = OTP_MINUTES) {
+    return this.send(to, this.otpMessage(code, minutes));
   }
 
   /** SMS_OTP_DOMAIN, or the host of an https WEB_URL; null otherwise. */

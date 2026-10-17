@@ -25,7 +25,7 @@ const WORLDS = [
 ];
 
 const STEPS = [
-  { icon: UserPlus, title: 'Create an account', body: 'Sign up with email, Google, Facebook or TikTok in under a minute.' },
+  { icon: UserPlus, title: 'Create an account', body: 'Sign up with email and phone, Google or Facebook in under a minute.' },
   { icon: Users, title: 'Choose your role', body: 'Student, parent, teacher or school — each gets their own space.' },
   { icon: Gamepad2, title: 'Learn through play', body: 'Courses, lessons, quizzes and 3D games that adapt to each child.' },
   { icon: LineChart, title: 'Watch progress grow', body: 'XP, badges and streaks for kids; clear reports for grown-ups.' },

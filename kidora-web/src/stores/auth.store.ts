@@ -7,6 +7,7 @@ import type {
   EmailPending,
   EmailVerifyResponse,
   OrgRequest,
+  PhonePending,
   Role,
   SignupRoleKey,
   SubmitOrgRequestResponse,
@@ -19,7 +20,21 @@ export type RegisterInput = {
   email: string;
   password: string;
   role?: string;
+  /** Required for adult accounts: verified by SMS, then used for every code. */
+  phone?: string;
 } & Record<string, string | undefined>;
+
+/** "Forgot password": where the reset code went. */
+export type ForgotResult =
+  | { channel: 'email'; maskedEmail: string; resendIn: number }
+  | { channel: 'sms'; maskedPhone: string; resendIn: number };
+
+/** The API's exception filter nests the body under `error`. */
+function errorBody(err: unknown): (Record<string, unknown> & { code?: string }) | null {
+  const res = (err as { response?: { status?: number; data?: { error?: unknown } & Record<string, unknown> } })?.response;
+  if (res?.status !== 403 || !res.data) return null;
+  return (typeof res.data.error === 'object' && res.data.error ? res.data.error : res.data) as Record<string, unknown> & { code?: string };
+}
 
 /**
  * The 403 an unverified account gets from a correct password carries the same
@@ -27,11 +42,14 @@ export type RegisterInput = {
  * or null for any other error.
  */
 export function emailPendingFrom(err: unknown): EmailPending | null {
-  const res = (err as { response?: { status?: number; data?: { error?: unknown } & Record<string, unknown> } })?.response;
-  if (res?.status !== 403 || !res.data) return null;
-  // The API's exception filter nests the body under `error`.
-  const body = (typeof res.data.error === 'object' && res.data.error ? res.data.error : res.data) as Partial<EmailPending> & { code?: string };
-  return body.code === 'EMAIL_NOT_VERIFIED' && body.email ? (body as EmailPending) : null;
+  const body = errorBody(err);
+  return body?.code === 'EMAIL_NOT_VERIFIED' && body.email ? (body as unknown as EmailPending) : null;
+}
+
+/** Same, for an account that signed up with a phone number: a code was just texted. */
+export function phonePendingFrom(err: unknown): PhonePending | null {
+  const body = errorBody(err);
+  return body?.code === 'PHONE_NOT_VERIFIED' && body.phone ? (body as unknown as PhonePending) : null;
 }
 
 interface AuthState {
@@ -45,17 +63,29 @@ interface AuthState {
   remember: boolean;
   login: (email: string, password: string, opts?: { remember?: boolean; mfaCode?: string }) => Promise<User>;
   /**
-   * Creates an email + password account. The API emails a 6-digit code and
-   * issues no session until `verifyEmail` sends it back.
+   * Creates an email + password account. With a phone number the API texts a
+   * 4-digit code (`verifyPhone`); without one it emails a 6-digit code
+   * (`verifyEmail`). No session until the code comes back.
    */
-  register: (payload: RegisterInput) => Promise<EmailPending>;
+  register: (payload: RegisterInput) => Promise<EmailPending | PhonePending>;
   /** Confirms the emailed code and signs in. */
   verifyEmail: (email: string, code: string) => Promise<EmailVerifyResponse>;
   /** Emails a new code. */
   resendEmail: (email: string) => Promise<EmailPending>;
-  /** "Forgot password": emails a reset code. Same answer for any address. */
-  forgotPassword: (email: string) => Promise<{ maskedEmail: string; resendIn: number }>;
-  /** New password with the emailed code; signs in. */
+  /** Confirms the texted sign-up code and signs in. */
+  verifyPhone: (phone: string, code: string) => Promise<EmailVerifyResponse>;
+  /** Texts a new sign-up code. */
+  resendPhone: (phone: string) => Promise<PhonePending>;
+  /** "Log in with phone": texts a 4-digit code. Same answer for any number. */
+  requestPhoneLogin: (phone: string) => Promise<PhonePending>;
+  /** Signs in with the texted code. */
+  verifyPhoneLogin: (phone: string, code: string) => Promise<EmailVerifyResponse>;
+  /**
+   * "Forgot password". The code goes by SMS to the account's verified phone,
+   * otherwise by email. Same answer for any address.
+   */
+  forgotPassword: (email: string) => Promise<ForgotResult>;
+  /** New password with the texted or emailed code; signs in. */
   resetPassword: (email: string, code: string, password: string) => Promise<EmailVerifyResponse>;
   /** Trades the one-time code from a social sign-in redirect for a session. */
   exchangeOAuthCode: (code: string) => Promise<EmailVerifyResponse>;
@@ -189,7 +219,7 @@ export const useAuthStore = create<AuthState>()(
         const body = Object.fromEntries(
           Object.entries(payload).filter(([, v]) => v !== undefined && String(v).trim() !== ''),
         );
-        const { data } = await api.post<EmailPending>('/auth/register', body);
+        const { data } = await api.post<EmailPending | PhonePending>('/auth/register', body);
         return data;
       },
 
@@ -204,9 +234,32 @@ export const useAuthStore = create<AuthState>()(
         return data;
       },
 
-      forgotPassword: async (email) => {
-        const { data } = await api.post<{ maskedEmail: string; resendIn: number }>('/auth/password/forgot', { email });
+      verifyPhone: async (phone, code) => {
+        const { data } = await api.post<EmailVerifyResponse>('/auth/phone/verify', { phone, code });
+        get().setSession(data);
         return data;
+      },
+
+      resendPhone: async (phone) => {
+        const { data } = await api.post<PhonePending>('/auth/phone/resend', { phone });
+        return data;
+      },
+
+      requestPhoneLogin: async (phone) => {
+        const { data } = await api.post<PhonePending>('/auth/phone/login', { phone });
+        return data;
+      },
+
+      verifyPhoneLogin: async (phone, code) => {
+        const { data } = await api.post<EmailVerifyResponse>('/auth/phone/login/verify', { phone, code });
+        get().setSession(data);
+        return data;
+      },
+
+      forgotPassword: async (email) => {
+        const { data } = await api.post<ForgotResult & { channel?: string }>('/auth/password/forgot', { email });
+        // An older API sent no channel: that was always email.
+        return (data.channel === 'sms' ? data : { ...data, channel: 'email' }) as ForgotResult;
       },
 
       resetPassword: async (email, code, password) => {

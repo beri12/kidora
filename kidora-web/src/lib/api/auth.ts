@@ -1,5 +1,5 @@
 import { api as http, API_URL } from "@/lib/axios";
-import type { AuthResponse, EmailPending, EmailVerifyResponse, User } from "@/types";
+import type { AuthResponse, EmailPending, EmailVerifyResponse, PhonePending, User } from "@/types";
 
 /**
  * Auth endpoints.
@@ -27,22 +27,16 @@ export interface RegisterPayload {
 }
 
 /** The code itself is only ever delivered by SMS, never in this response. */
-export interface OtpRequestResult {
-  sent: boolean;
-  expiresIn: number;
-}
+export type OtpRequestResult = PhonePending;
 
 export const authApi = {
   login: async (email: string, password: string) =>
     (await http.post<AuthResponse>("/auth/login", { email, password })).data,
 
-  /** Same endpoint; the backend resolves the account by whichever identifier is sent. */
-  loginWithPhone: async (phone: string, password: string) =>
-    (await http.post<AuthResponse>("/auth/login", { phone, password })).data,
-
   /**
-   * Creates the account and emails a 6-digit code. No session yet — finish
-   * with `verifyEmail`.
+   * Creates the account. With a phone number a 4-digit code is texted
+   * (finish with POST /auth/phone/verify); otherwise a 6-digit code is emailed
+   * (finish with `verifyEmail`).
    */
   register: async (payload: RegisterPayload) => {
     // Blank optional fields are dropped rather than sent as "", which the
@@ -50,7 +44,7 @@ export const authApi = {
     const body = Object.fromEntries(
       Object.entries(payload).filter(([, v]) => v !== undefined && String(v).trim() !== ""),
     );
-    return (await http.post<EmailPending>("/auth/register", body)).data;
+    return (await http.post<EmailPending | PhonePending>("/auth/register", body)).data;
   },
 
   verifyEmail: async (email: string, code: string) =>
@@ -59,11 +53,12 @@ export const authApi = {
   resendEmail: async (email: string) =>
     (await http.post<EmailPending>("/auth/email/resend", { email })).data,
 
+  /** "Log in with phone": texts a 4-digit code to the account's number. */
   requestOtp: async (phone: string) =>
-    (await http.post<OtpRequestResult>("/auth/otp/request", { phone })).data,
+    (await http.post<OtpRequestResult>("/auth/phone/login", { phone })).data,
 
   verifyOtp: async (phone: string, code: string) =>
-    (await http.post<AuthResponse>("/auth/otp/verify", { phone, code })).data,
+    (await http.post<EmailVerifyResponse>("/auth/phone/login/verify", { phone, code })).data,
 
   me: async () => (await http.get<User>("/auth/me")).data,
 

@@ -81,10 +81,10 @@ describe('OAuthService', () => {
     expect(db.users).toHaveLength(1);
   });
 
-  it('links TikTok (no email) and Google to separate users unless the email matches', async () => {
+  it('links Facebook (no email) and Google to separate users unless the email matches', async () => {
     const { svc, db } = setup();
     await svc.resolveUser(google);
-    await svc.resolveUser({ provider: 'tiktok', providerId: 't-1', name: 'Tok' });
+    await svc.resolveUser({ provider: 'facebook', providerId: 'f-1', name: 'Face' });
     expect(db.users).toHaveLength(2);
   });
 
@@ -150,9 +150,10 @@ describe('OAuthService', () => {
     await expect(svc.resolveUser(facebook)).rejects.toThrow('connection lost');
   });
 
-  it('rejects an unknown provider', async () => {
+  it('rejects an unknown or removed provider', async () => {
     const { svc } = setup();
     await expect(svc.resolveUser({ provider: 'myspace', providerId: '1', name: 'x' })).rejects.toThrow(BadRequestException);
+    await expect(svc.resolveUser({ provider: 'tiktok', providerId: '1', name: 'x' })).rejects.toThrow(BadRequestException);
   });
 });
 

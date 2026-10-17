@@ -9,20 +9,19 @@ import { TokenService } from './token.service';
 export interface OAuthProfile {
   provider: string;
   providerId: string;
-  /** Facebook accounts created with a phone number, and every TikTok account, have none. */
+  /** Facebook never reports one (public_profile only). */
   email?: string | null;
   name: string;
   avatarUrl?: string | null;
 }
 
 /** Strategy name → the provider stored on SocialAccount. */
+// Google and Facebook only. Accounts linked earlier through other providers
+// keep their rows (the enum values stay in the schema) but cannot sign in
+// that way any more; they can use email, phone, or "Forgot password".
 const PROVIDERS: Record<string, AuthProvider> = {
   google: AuthProvider.GOOGLE,
-  tiktok: AuthProvider.TIKTOK,
   facebook: AuthProvider.FACEBOOK,
-  apple: AuthProvider.APPLE,
-  microsoft: AuthProvider.MICROSOFT,
-  github: AuthProvider.GITHUB,
 };
 
 /** How long the one-time code handed to the web app stays redeemable. */

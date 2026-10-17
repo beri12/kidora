@@ -20,7 +20,7 @@ export class TeacherService {
     const classes = await this.classes(u);
     const studentIds = [...new Set((await this.prisma.classEnrollment.findMany({ where: { classId: { in: classIds }, status: 'ACTIVE' }, select: { studentId: true } })).map((e) => e.studentId))];
     const [profile, coursesTeaching, pending, pendingDueSoon, badges, badgesPrev, newStudents, tasks, activity, topics, schedule, unread, unreadMsgs, progress] = await Promise.all([
-      this.prisma.user.findUniqueOrThrow({ where: { id: u.id }, select: { id: true, name: true, avatarUrl: true, avatarColor: true, role: true, schoolId: true, emailVerified: true, classesTaught: { select: { subject: { select: { name: true } } }, take: 1 } } }),
+      this.prisma.user.findUniqueOrThrow({ where: { id: u.id }, select: { id: true, name: true, avatarUrl: true, avatarColor: true, role: true, schoolId: true, emailVerified: true, phoneVerified: true, classesTaught: { select: { subject: { select: { name: true } } }, take: 1 } } }),
       this.prisma.course.count({ where: { status: 'PUBLISHED', OR: [{ teacherId: u.id }, { classCourses: { some: { classId: { in: classIds } } } }] } }),
       this.prisma.assignmentSubmission.count({ where: { status: 'SUBMITTED', assignment: { OR: [{ teacherId: u.id }, { classId: { in: classIds } }] } } }),
       this.prisma.assignment.count({ where: { status: 'PUBLISHED', OR: [{ teacherId: u.id }, { classId: { in: classIds } }], dueAt: { gte: new Date(), lte: new Date(Date.now() + 7 * 86400000) } } }),
@@ -37,7 +37,7 @@ export class TeacherService {
     ]);
     const avgProgress = classes.length ? Math.round(classes.reduce((a, c) => a + c.completionPercent, 0) / classes.length) : 0;
     return {
-      profile: { id: profile.id, name: profile.name, avatarUrl: profile.avatarUrl, avatarColor: profile.avatarColor, role: profile.role, schoolId: profile.schoolId, subject: profile.classesTaught[0]?.subject?.name ?? null, verified: profile.emailVerified },
+      profile: { id: profile.id, name: profile.name, avatarUrl: profile.avatarUrl, avatarColor: profile.avatarColor, role: profile.role, schoolId: profile.schoolId, subject: profile.classesTaught[0]?.subject?.name ?? null, verified: profile.emailVerified || profile.phoneVerified },
       kpis: {
         students: { value: studentIds.length, unit: 'count', caption: `Across ${classes.length} classes`, trend: newStudents ? { delta: newStudents, label: 'new this period' } : undefined },
         coursesTeaching: { value: coursesTeaching, unit: 'count', caption: 'Active courses' },

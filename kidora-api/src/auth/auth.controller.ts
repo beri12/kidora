@@ -18,6 +18,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './services/auth.service';
 import { MfaService } from './services/mfa.service';
 import { EmailVerificationService } from './services/email-verification.service';
+import { PhoneVerificationService } from './services/phone-verification.service';
 
 
 import {
@@ -27,6 +28,8 @@ import {
   MfaVerifyDto,
   EmailVerifyDto,
   EmailResendDto,
+  PhoneCodeDto,
+  PhoneDto,
   ForgotPasswordDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
@@ -55,7 +58,8 @@ constructor(
 
  private mfa:MfaService,
 
- private emailVerification:EmailVerificationService
+ private emailVerification:EmailVerificationService,
+ private phoneVerification:PhoneVerificationService
 
 ){}
 
@@ -194,6 +198,44 @@ resendEmail(
 
  return this.emailVerification.resend(dto.email);
 
+}
+
+// --- Phone (Twilio SMS, 4-digit codes) ------------------------------------
+// The number given at sign-up is the account's channel for one-time codes.
+
+/** Confirms the number from sign-up with the texted code and signs in. */
+@Public()
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
+@Post('phone/verify')
+@ApiOperation({ summary: 'Verify the texted sign-up code and sign in' })
+verifyPhone(@Body() dto: PhoneCodeDto, @Req() req: any) {
+  return this.phoneVerification.verifySignup(dto.phone, dto.code, req.ip, req.headers['user-agent'] ?? '');
+}
+
+/** Texts a new sign-up code. Same answer for any number. */
+@Public()
+@Throttle({ default: { limit: 5, ttl: 60_000 } })
+@Post('phone/resend')
+@ApiOperation({ summary: 'Text a new sign-up verification code' })
+resendPhone(@Body() dto: PhoneDto) {
+  return this.phoneVerification.resendVerification(dto.phone);
+}
+
+/** "Log in with phone": texts a sign-in code to the account's number. */
+@Public()
+@Throttle({ default: { limit: 5, ttl: 60_000 } })
+@Post('phone/login')
+@ApiOperation({ summary: 'Text a sign-in code to a registered phone number' })
+requestPhoneLogin(@Body() dto: PhoneDto) {
+  return this.phoneVerification.requestLogin(dto.phone);
+}
+
+@Public()
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
+@Post('phone/login/verify')
+@ApiOperation({ summary: 'Sign in with the texted code' })
+verifyPhoneLogin(@Body() dto: PhoneCodeDto, @Req() req: any) {
+  return this.phoneVerification.verifyLogin(dto.phone, dto.code, req.ip, req.headers['user-agent'] ?? '');
 }
 
 

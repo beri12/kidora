@@ -81,8 +81,8 @@ export class SchoolService {
   async teachers(u: AuthUser, q: PaginationDto) {
     const schoolId = this.tenancy.requireSchool(u);
     const where = { schoolId, role: 'TEACHER' as const, active: true, ...(q.search ? { OR: [{ name: { contains: q.search, mode: 'insensitive' as const } }, { email: { contains: q.search, mode: 'insensitive' as const } }] } : {}) };
-    const [rows, total] = await Promise.all([this.prisma.user.findMany({ where, orderBy: { name: 'asc' }, skip: skip(q), take: q.pageSize, select: { id: true, name: true, email: true, avatarUrl: true, emailVerified: true, classesTaught: { select: { classId: true, subject: { select: { name: true } }, class: { select: { _count: { select: { enrollments: true } } } } } } } }), this.prisma.user.count({ where })]);
-    return paginate(rows.map((t) => ({ id: t.id, name: t.name, email: t.email, avatarUrl: t.avatarUrl, subject: t.classesTaught[0]?.subject?.name ?? null, classCount: new Set(t.classesTaught.map((c) => c.classId)).size, studentCount: t.classesTaught.reduce((a, c) => a + c.class._count.enrollments, 0), verified: t.emailVerified })), total, q);
+    const [rows, total] = await Promise.all([this.prisma.user.findMany({ where, orderBy: { name: 'asc' }, skip: skip(q), take: q.pageSize, select: { id: true, name: true, email: true, avatarUrl: true, emailVerified: true, phoneVerified: true, classesTaught: { select: { classId: true, subject: { select: { name: true } }, class: { select: { _count: { select: { enrollments: true } } } } } } } }), this.prisma.user.count({ where })]);
+    return paginate(rows.map((t) => ({ id: t.id, name: t.name, email: t.email, avatarUrl: t.avatarUrl, subject: t.classesTaught[0]?.subject?.name ?? null, classCount: new Set(t.classesTaught.map((c) => c.classId)).size, studentCount: t.classesTaught.reduce((a, c) => a + c.class._count.enrollments, 0), verified: t.emailVerified || t.phoneVerified })), total, q);
   }
 
   async classes(u: AuthUser, q: PaginationDto & { gradeId?: string }) {

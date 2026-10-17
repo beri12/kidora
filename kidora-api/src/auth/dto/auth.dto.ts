@@ -78,6 +78,18 @@ export class RegisterDto {
   role?: SelfSignupRole;
 
   /**
+   * The account's phone number. When given, the sign-up code is sent to it by
+   * SMS instead of email, and every later one-time code (log in with phone,
+   * password reset) goes to it too. Local numbers are read against
+   * SMS_DEFAULT_COUNTRY_CODE.
+   */
+  @ApiPropertyOptional({ example: '+251911223344' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  phone?: string;
+
+  /**
    * CHILD / TEACHER related field.
    * Example: "Grade 5"
    */
@@ -232,9 +244,10 @@ export class ResetPasswordDto {
   @IsEmail()
   email!: string;
 
+  /** 6 digits when the code was emailed, 4 when it was texted. */
   @ApiProperty({ example: '482913' })
   @IsString()
-  @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code.' })
+  @Matches(/^(\d{4}|\d{6})$/, { message: 'Enter the code we sent you.' })
   code!: string;
 
   @ApiProperty({ example: 'NewPassword123', minLength: 8, maxLength: 72 })
@@ -242,6 +255,22 @@ export class ResetPasswordDto {
   @MinLength(8)
   @MaxLength(72)
   password!: string;
+}
+
+/** A phone number: "Log in with phone" and "Resend code" on the SMS step. */
+export class PhoneDto {
+  @ApiProperty({ example: '+251911223344' })
+  @IsString()
+  @MaxLength(32)
+  phone!: string;
+}
+
+/** The 4-digit code texted to a phone. */
+export class PhoneCodeDto extends PhoneDto {
+  @ApiProperty({ example: '4829' })
+  @IsString()
+  @Matches(/^\d{4}$/, { message: 'Enter the 4-digit code.' })
+  code!: string;
 }
 
 /** "Resend code" on the email verification step. */

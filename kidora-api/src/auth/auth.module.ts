@@ -12,22 +12,12 @@ import { EmailVerificationService } from './services/email-verification.service'
 import { RegistrationService } from './services/registeration.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
-import { GithubStrategy } from './strategies/github.strategy';
-import { MicrosoftStrategy } from './strategies/microsoft.strategy';
-import { AppleStrategy } from './strategies/apple.strategy';
 import { FacebookStrategy } from './strategies/facebook.strategy';
-import { TiktokStrategy } from './strategies/tiktok.strategy';
+import { PhoneVerificationService } from './services/phone-verification.service';
 
-// OAuth strategies self-disable when their client id env var is absent,
-// so the app still boots with only Google (or none) configured.
-const oauthStrategies = [
-  GoogleStrategy,
-  FacebookStrategy,
-  TiktokStrategy,
-  GithubStrategy,
-  MicrosoftStrategy,
-  AppleStrategy,
-];
+// Social sign-in is Google and Facebook only. Each strategy self-disables
+// when its client id env var is absent, so the app boots with either or none.
+const oauthStrategies = [GoogleStrategy, FacebookStrategy];
 
 @Module({
   imports: [PassportModule, JwtModule.register({})],
@@ -38,6 +28,7 @@ const oauthStrategies = [
     MfaService,
     OAuthService,
     EmailVerificationService,
+    PhoneVerificationService,
     RegistrationService,
     JwtStrategy,
     ...oauthStrategies,

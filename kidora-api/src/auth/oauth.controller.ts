@@ -10,10 +10,6 @@ import { OAuthService, OAuthProfile } from './services/oauth.service';
 
 const GoogleGuard = ProviderGuard('google');
 const FacebookGuard = ProviderGuard('facebook');
-const TiktokGuard = ProviderGuard('tiktok');
-const GithubGuard = ProviderGuard('github');
-const MicrosoftGuard = ProviderGuard('microsoft');
-const AppleGuard = ProviderGuard('apple');
 
 class OAuthExchangeDto {
   @IsString()
@@ -65,7 +61,7 @@ export class OAuthController {
   @Public()
   @Get('providers')
   providers() {
-    const all = ['google', 'tiktok', 'facebook', 'github', 'microsoft', 'apple'];
+    const all = ['google', 'facebook'];
     return { providers: all.filter((p) => Boolean(oauthCredentials(p).id)) };
   }
 
@@ -79,7 +75,7 @@ export class OAuthController {
   @Public()
   @Get('redirect-uris')
   redirectUris() {
-    const all = ['google', 'facebook', 'tiktok', 'github', 'microsoft', 'apple'];
+    const all = ['google', 'facebook'];
     const providers = all
       .filter((p) => Boolean(oauthCredentials(p).id))
       .map((p) => ({
@@ -98,15 +94,7 @@ export class OAuthController {
   @Public() @UseGuards(FacebookGuard) @Get('facebook') facebook() {}
   @Public() @UseGuards(FacebookGuard) @Get('facebook/callback') facebookCb(@Req() req: any, @Res() res: any) { return this.finish(req, res); }
 
-  @Public() @UseGuards(TiktokGuard) @Get('tiktok') tiktok() {}
-  @Public() @UseGuards(TiktokGuard) @Get('tiktok/callback') tiktokCb(@Req() req: any, @Res() res: any) { return this.finish(req, res); }
 
-  @Public() @UseGuards(GithubGuard) @Get('github') github() {}
-  @Public() @UseGuards(GithubGuard) @Get('github/callback') githubCb(@Req() req: any, @Res() res: any) { return this.finish(req, res); }
 
-  @Public() @UseGuards(MicrosoftGuard) @Get('microsoft') microsoft() {}
-  @Public() @UseGuards(MicrosoftGuard) @Get('microsoft/callback') microsoftCb(@Req() req: any, @Res() res: any) { return this.finish(req, res); }
 
-  @Public() @UseGuards(AppleGuard) @Get('apple') apple() {}
-  @Public() @UseGuards(AppleGuard) @Get('apple/callback') appleCb(@Req() req: any, @Res() res: any) { return this.finish(req, res); }
 }

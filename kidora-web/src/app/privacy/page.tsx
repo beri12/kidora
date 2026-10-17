@@ -9,7 +9,7 @@ export default function PrivacyPage() {
       <p>Kidora is built for children, so we collect as little as we can and never sell personal data.</p>
       <h2>What we collect</h2>
       <ul>
-        <li>Account details: name, email address and a password (stored only as a secure hash), or the basic profile a sign-in provider (Google, Facebook, TikTok) shares with us.</li>
+        <li>Account details: name, email address and a password (stored only as a secure hash), or the basic profile a sign-in provider (Google or Facebook) shares with us, and your phone number if you give one (used only to text you sign-in and verification codes).</li>
         <li>For students: date of birth and grade, used to suggest age-appropriate content, and an optional school.</li>
         <li>Learning activity: courses, lessons, quiz and game results, badges and streaks.</li>
       </ul>

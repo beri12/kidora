@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Lock, Mail, User as UserIcon } from 'lucide-react';
+import { Lock, Mail, Phone, User as UserIcon } from 'lucide-react';
 
 import { CodeStep } from './CodeStep';
 import { Field, FormError, PasswordField, PrimaryButton, SocialRow } from './kidora/ui';
@@ -11,7 +11,11 @@ import { AUTH, authHref, destinationFor, safeNext } from '@/features/auth/routes
 import { emailSchema, passwordSchema } from '@/features/auth/schema';
 import { apiErrorMessage } from '@/lib/api-error';
 import { useAuthStore } from '@/stores/auth.store';
-import type { EmailPending } from '@/types';
+import type { EmailPending, PhonePending } from '@/types';
+
+/** Loose check before the API's real E.164 normalisation: 9–15 digits, optional +. */
+const PHONE_RE = /^\+?[\d\s().-]{9,20}$/;
+const phoneDigits = (v: string) => v.replace(/\D/g, '').length;
 
 /** 0–4 for the strength meter: length and variety, nothing cleverer. */
 function strength(pw: string) {
@@ -31,21 +35,25 @@ const STRENGTH = [
 ];
 
 /**
- * "Create your account": full name, email, password (twice), or a social
- * provider. The account is created unverified and a code is emailed; after
- * the code comes "How will you use Kidora?".
+ * "Create your account": full name, email, phone, password (twice), or a
+ * social provider. The account is created unverified and a 4-digit code is
+ * texted to the phone ("Kidora OTP verification"); that number then receives
+ * every later code (phone log-in, password reset). Student sign-ups
+ * (`?role=CHILD`) may leave the phone blank and verify by email instead.
+ * After the code comes "How will you use Kidora?".
  */
 export function SignupForm({ onStepChange }: { onStepChange?: (step: string) => void }) {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params.get('next'));
   const roleHint = params.get('role');
-  const { register, verifyEmail, resendEmail } = useAuthStore();
+  const { register, verifyEmail, resendEmail, verifyPhone, resendPhone } = useAuthStore();
+  const phoneOptional = roleHint === 'CHILD';
 
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<EmailPending | null>(null);
+  const [pending, setPending] = useState<EmailPending | PhonePending | null>(null);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -58,6 +66,12 @@ export function SignupForm({ onStepChange }: { onStepChange?: (step: string) => 
     if (form.name.trim().length < 2) errs.name = 'Please enter your full name';
     const em = emailSchema.safeParse(form.email);
     if (!em.success) errs.email = em.error.issues[0].message;
+    const phone = form.phone.trim();
+    if (!phone) {
+      if (!phoneOptional) errs.phone = 'Enter your phone number. We text your verification code to it.';
+    } else if (!PHONE_RE.test(phone) || phoneDigits(phone) < 9 || phoneDigits(phone) > 15) {
+      errs.phone = 'Enter a valid phone number, e.g. +251 91 122 3344';
+    }
     const pw = passwordSchema.safeParse(form.password);
     if (!pw.success) errs.password = pw.error.issues[0].message;
     if (!form.confirm) errs.confirm = 'Please confirm your password';
@@ -66,14 +80,34 @@ export function SignupForm({ onStepChange }: { onStepChange?: (step: string) => 
 
     setBusy(true);
     try {
-      const res = await register({ name: form.name.trim(), email: form.email.trim(), password: form.password });
+      const res = await register({ name: form.name.trim(), email: form.email.trim(), phone: phone || undefined, password: form.password });
       setPending(res);
       onStepChange?.('code');
     } catch (err) {
-      setErrors({ form: apiErrorMessage(err, "We couldn't create your account. Please try again.") });
+      const msg = apiErrorMessage(err, "We couldn't create your account. Please try again.");
+      // Put phone problems next to the phone field.
+      if (/phone/i.test(msg)) setErrors({ phone: msg });
+      else setErrors({ form: msg });
     } finally {
       setBusy(false);
     }
+  }
+
+  if (pending && 'needsPhoneVerification' in pending) {
+    return (
+      <CodeStep
+        channel="sms"
+        destination={pending.maskedPhone}
+        resendIn={pending.resendIn}
+        backLabel="Edit my details"
+        onBack={() => { setPending(null); onStepChange?.('form'); }}
+        onVerify={async (code) => {
+          const res = await verifyPhone(pending.phone, code);
+          router.replace(destinationFor(res.user.role, res.needsRole, next, roleHint));
+        }}
+        onResend={async () => (await resendPhone(pending.phone)).resendIn}
+      />
+    );
   }
 
   if (pending) {
@@ -112,6 +146,11 @@ export function SignupForm({ onStepChange }: { onStepChange?: (step: string) => 
         <div data-anim="row">
           <Field label="Email" icon={<Mail className="h-[18px] w-[18px]" />} type="email" autoComplete="email" inputMode="email" placeholder="you@example.com"
             value={form.email} onChange={set('email')} error={errors.email} maxLength={254} />
+        </div>
+        <div data-anim="row">
+          <Field label={phoneOptional ? 'Phone number (optional)' : 'Phone number'} icon={<Phone className="h-[18px] w-[18px]" />} type="tel" autoComplete="tel" inputMode="tel"
+            placeholder="+251 91 122 3344" value={form.phone} onChange={set('phone')} error={errors.phone} maxLength={20}
+            hint={'We text a 4-digit code to verify it. Codes for log-in and password reset go here too.'} />
         </div>
         <div data-anim="row">
           <PasswordField label="Password" icon={<Lock className="h-[18px] w-[18px]" />} autoComplete="new-password" placeholder="Create a strong password"

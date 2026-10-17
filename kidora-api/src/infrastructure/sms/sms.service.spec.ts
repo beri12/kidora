@@ -117,8 +117,8 @@ describe('SmsService one-time-code text', () => {
   it('leads with the brand and the code', () => {
     delete process.env.SMS_OTP_DOMAIN;
     delete process.env.WEB_URL;
-    const body = new SmsService().otpMessage('482913');
-    expect(body.startsWith('Kidora: 482913 is your verification code.')).toBe(true);
+    const body = new SmsService().otpMessage('4829');
+    expect(body.split('\n').slice(0, 2)).toEqual(['Kidora OTP verification', 'Your code is 4829. It expires in 5 minutes.']);
     expect(body).toContain('expires in 5 minutes');
     expect(body).toContain('Never share this code');
     expect(body).not.toContain('@');

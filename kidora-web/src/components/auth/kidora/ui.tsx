@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { api, API_URL } from '@/lib/axios';
 import { cn } from '@/lib/utils';
-import { FacebookIcon, GoogleIcon, TiktokIcon } from '../scene/icons';
+import { FacebookIcon, GoogleIcon } from '../scene/icons';
 
 /* ------------------------------------------------------------------ logo */
 
@@ -141,15 +141,14 @@ export const NEXT_KEY = 'kidora.next';
 /** The role picked on the sign-up screen, kept across the provider round trip. */
 export const ROLE_HINT_KEY = 'kidora.role-hint';
 
-type Provider = 'google' | 'facebook' | 'tiktok';
+type Provider = 'google' | 'facebook';
 const PROVIDERS: { key: Provider; label: string; icon: ReactNode }[] = [
   { key: 'google', label: 'Google', icon: <GoogleIcon /> },
   { key: 'facebook', label: 'Facebook', icon: <FacebookIcon /> },
-  { key: 'tiktok', label: 'TikTok', icon: <TiktokIcon /> },
 ];
 
 /**
- * Google · Facebook · TikTok in one row. Each is a plain link to the API's
+ * Google · Facebook in one row. Each is a plain link to the API's
  * OAuth start route, so the client secret never reaches the browser. The API
  * is asked which providers are configured and only those are offered — a
  * button that could only fail is never shown.

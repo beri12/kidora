@@ -11,7 +11,7 @@ api.justkidora.com                  ──► Nginx :443 ──► api  (127.0.0
 ## 0. Before you start: rotate every credential that has been shared
 
 Any secret pasted into a chat, an email or a commit must be replaced:
-- Google, Facebook and TikTok client secrets
+- Google and Facebook client secrets
 - PayPal client secret
 - Twilio auth token
 - the Gmail App Password
@@ -74,7 +74,7 @@ sudo certbot --nginx -d justkidora.com -d www.justkidora.com -d api.justkidora.c
 | | Authorized JavaScript origin | `https://justkidora.com` |
 | Meta → Facebook Login → Settings | Valid OAuth Redirect URI | `https://api.justkidora.com/api/auth/facebook/callback` |
 | | App mode | **Live** (needs privacy, terms and data-deletion URLs) |
-| TikTok → Login Kit | Redirect URI | `https://api.justkidora.com/api/auth/tiktok/callback` |
+| Twilio → Phone Numbers | A number (or Messaging Service) that can send SMS to your users' country; set `TWILIO_*` | |
 | PayPal | Keep `PAYPAL_ENVIRONMENT=sandbox` until a sandbox purchase works | |
 
 Keep the `http://localhost:4000/...` redirect URIs as well, so local

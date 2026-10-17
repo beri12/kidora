@@ -15,6 +15,7 @@ import { RegisterDto, LoginDto, SELF_SIGNUP_ROLES } from '../dto/auth.dto';
 import { SelectRoleDto } from '../dto/role.dto';
 import { isVerifiedRole } from '../../org/dto/org-request.dto';
 import { RegistrationService } from './registeration.service';
+import { PhoneVerificationService } from './phone-verification.service';
 import { EmailVerificationService } from './email-verification.service';
 
 const MAX_FAILED = 5;
@@ -29,6 +30,7 @@ export class AuthService {
     private cache: CacheService,
     private registration: RegistrationService,
     private emailVerification: EmailVerificationService,
+    private phoneVerification: PhoneVerificationService,
   ) {}
 
   private sanitize(u: any) {
@@ -58,14 +60,21 @@ export class AuthService {
    */
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
+    const phone = dto.phone?.trim() ? this.phoneVerification.normalize(dto.phone) : null;
     const taken = await this.prisma.user.findUnique({ where: { email } });
     if (taken) {
       // Someone who registered, closed the tab and is trying again with the
       // same details should simply get a new code, not a dead end.
-      if (!taken.emailVerified && taken.passwordHash && (await bcrypt.compare(dto.password, taken.passwordHash))) {
-        return this.emailVerification.send(email, taken.name, { quiet: true });
+      const unverified = !taken.emailVerified && !taken.phoneVerified;
+      if (unverified && taken.passwordHash && (await bcrypt.compare(dto.password, taken.passwordHash))) {
+        return taken.phone
+          ? this.phoneVerification.send('verify', taken.phone, { quiet: true })
+          : this.emailVerification.send(email, taken.name, { quiet: true });
       }
       throw new ConflictException('An account with this email already exists. Sign in instead.');
+    }
+    if (phone && (await this.prisma.user.findUnique({ where: { phone }, select: { id: true } }))) {
+      throw new ConflictException('This phone number is already used by another Kidora account. Log in instead.');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -75,6 +84,8 @@ export class AuthService {
       data: {
         name: dto.name.trim(),
         email,
+        phone,
+        phoneVerified: false,
         passwordHash,
         role,
         emailVerified: false,
@@ -98,10 +109,11 @@ export class AuthService {
     await this.prisma.subscription.create({ data: { userId: user.id, plan: 'free' } });
 
     try {
-      return await this.emailVerification.send(email, user.name);
+      // With a phone number the code is texted (4 digits); otherwise emailed.
+      return phone ? await this.phoneVerification.send('verify', phone) : await this.emailVerification.send(email, user.name);
     } catch (err) {
-      // The address could not be reached at all, so the account is removed
-      // rather than left holding an email nobody can verify.
+      // The number or address could not be reached at all, so the account is
+      // removed rather than left holding contact details nobody can verify.
       await this.prisma.subscription.deleteMany({ where: { userId: user.id } }).catch(() => undefined);
       await this.prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
       throw err;
@@ -200,7 +212,18 @@ export class AuthService {
     // The password is right but the address was never confirmed: send a fresh
     // code and tell the client to show the code step. Checked after the
     // password so it reveals nothing to someone who doesn't know it.
-    if (user.email && !user.emailVerified) {
+    // An account is verified once either its phone or its email is. One with
+    // a phone number finishes by SMS.
+    if (!user.emailVerified && !user.phoneVerified && user.phone) {
+      const pending = await this.phoneVerification.send('verify', user.phone, { quiet: true });
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'PHONE_NOT_VERIFIED',
+        message: 'Please verify your phone number. We texted you a new code.',
+        ...pending,
+      });
+    }
+    if (user.email && !user.emailVerified && !user.phoneVerified) {
       const pending = await this.emailVerification.send(user.email, user.name, { quiet: true });
       throw new ForbiddenException({
         statusCode: 403,

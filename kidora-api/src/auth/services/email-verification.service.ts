@@ -4,6 +4,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CacheService } from '../../infrastructure/cache/cache.service';
 import { EmailService } from '../../infrastructure/email/email.service';
 import { TokenService } from './token.service';
+import { PhoneVerificationService } from './phone-verification.service';
 import { exposeOtpForTests, newOtpCode } from './otp-code';
 
 const OTP_TTL = 600; // an email can take a minute to arrive, so 10 minutes
@@ -39,6 +40,7 @@ export class EmailVerificationService {
     private cache: CacheService,
     private email: EmailService,
     private tokens: TokenService,
+    private phone: PhoneVerificationService,
   ) {}
 
   static normalize(raw: string) {
@@ -187,7 +189,15 @@ export class EmailVerificationService {
    */
   async forgotPassword(rawEmail: string) {
     const email = EmailVerificationService.normalize(rawEmail);
-    const user = await this.prisma.user.findUnique({ where: { email }, select: { name: true, active: true } });
+    const user = await this.prisma.user.findUnique({ where: { email }, select: { name: true, active: true, phone: true, phoneVerified: true } });
+    if (user?.active && user.phone && user.phoneVerified) {
+      // The verified phone is the account's code channel: text a 4-digit code.
+      const res = await this.phone.send('reset', user.phone, { quiet: true });
+      return {
+        sent: true as const, channel: 'sms' as const, maskedPhone: res.maskedPhone, maskedEmail: EmailVerificationService.mask(email),
+        expiresIn: res.expiresIn, resendIn: res.resendIn, ...(res.devCode ? { devCode: res.devCode } : {}),
+      };
+    }
     if (user?.active) {
       const res = await this.issueCode('reset', email, user.name, { quiet: true });
       return { ...this.resetPending(email), ...('devCode' in res ? { devCode: res.devCode } : {}) };
@@ -197,7 +207,7 @@ export class EmailVerificationService {
   }
 
   private resetPending(email: string) {
-    return { sent: true as const, maskedEmail: EmailVerificationService.mask(email), expiresIn: OTP_TTL, resendIn: RESEND_COOLDOWN };
+    return { sent: true as const, channel: 'email' as const, maskedEmail: EmailVerificationService.mask(email), expiresIn: OTP_TTL, resendIn: RESEND_COOLDOWN };
   }
 
   /**
@@ -207,9 +217,11 @@ export class EmailVerificationService {
    */
   async resetPassword(rawEmail: string, code: string, newPassword: string, ip = '', ua = '') {
     const email = EmailVerificationService.normalize(rawEmail);
-    await this.checkCode('reset', email, code);
-
     const existing = await this.prisma.user.findUnique({ where: { email } });
+    // Checked against wherever the code went: the verified phone, or the inbox.
+    const viaPhone = Boolean(existing?.phone && existing.phoneVerified);
+    if (viaPhone) await this.phone.checkCode('reset', existing!.phone!, code);
+    else await this.checkCode('reset', email, code);
     if (!existing || !existing.active) throw new BadRequestException('That code has expired. Request a new one.');
 
     await this.prisma.refreshToken.deleteMany({ where: { userId: existing.id } });
@@ -217,7 +229,8 @@ export class EmailVerificationService {
       where: { id: existing.id },
       data: {
         passwordHash: await bcrypt.hash(newPassword, 10),
-        emailVerified: true,
+        // An emailed code proves the address; a texted one only the phone.
+        ...(viaPhone ? {} : { emailVerified: true }),
         failedLogins: 0,
         lockedUntil: null,
         lastActiveAt: new Date(),

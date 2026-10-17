@@ -1,8 +1,11 @@
 import { randomInt } from 'crypto';
 
-/** A 6-digit one-time code from the OS CSPRNG (Math.random is guessable). */
-export function newOtpCode(): string {
-  return String(randomInt(0, 1_000_000)).padStart(6, '0');
+/**
+ * A one-time code from the OS CSPRNG (Math.random is guessable): 6 digits by
+ * default (email), 4 for SMS codes.
+ */
+export function newOtpCode(digits = 6): string {
+  return String(randomInt(0, 10 ** digits)).padStart(digits, '0');
 }
 
 /**
