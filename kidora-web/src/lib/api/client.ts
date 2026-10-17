@@ -3,21 +3,24 @@
 // Every client in the app resolves its base URL from API_BASE_URL here, so
 // there is one env var to set and no module can drift onto a different host.
 
+const LOCAL_API = "http://localhost:4000/api";
+
 function resolveBaseUrl(): string {
-  const configured = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+  const configured = (process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
   if (configured) return configured;
 
-  // A localhost fallback in production is worse than a loud failure: the app
-  // looks fine and every request quietly fails against a host that is not
-  // there. Only development gets the convenience default.
-  if (process.env.NODE_ENV === "production") {
-    if (typeof window !== "undefined") {
-      // eslint-disable-next-line no-console
-      console.error("NEXT_PUBLIC_API_URL is not set; API calls will fail.");
-    }
-    return "";
+  if (process.env.NODE_ENV !== "production") return LOCAL_API;
+
+  // A production build without NEXT_PUBLIC_API_URL. Opened on this machine
+  // (`npm run build && npm start` while testing), the API is on localhost
+  // too. On a real domain a guessed address is worse than a loud failure:
+  // every request would quietly go somewhere else.
+  if (typeof window !== "undefined") {
+    if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)) return LOCAL_API;
+    // eslint-disable-next-line no-console
+    console.error("NEXT_PUBLIC_API_URL was not set when this app was built; API calls will fail. Rebuild with it set.");
   }
-  return "http://localhost:4000/api";
+  return "";
 }
 
 /** e.g. https://api.justkidora.com/api */

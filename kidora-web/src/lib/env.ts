@@ -27,10 +27,8 @@ function requiredAtUse(name: string, value: string | undefined): string {
 // accepted for backwards compatibility, but NEXT_PUBLIC_API_URL is the
 // variable the rest of the app already uses (see lib/axios.ts), and the
 // default matches it so a local checkout works with no configuration.
-export const API_BASE_URL =
-  optional(process.env.NEXT_PUBLIC_API_BASE_URL) ??
-  optional(process.env.NEXT_PUBLIC_API_URL) ??
-  'http://localhost:4000/api';
+export { API_BASE_URL } from './api/client';
+import { API_BASE_URL } from './api/client';
 
 export const APP_URL =
   optional(process.env.NEXT_PUBLIC_APP_URL) ??

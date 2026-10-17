@@ -8,7 +8,9 @@ declare module 'axios' {
   }
 }
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+// Same address as every other client (see lib/api/client.ts), so login and
+// the rest of the app can never talk to different servers.
+export const API_URL = API_BASE_URL;
 
 // Request tracing is useful while developing and noise (or a leak) in
 // production: the URLs include ids, and anything logged here ends up in the

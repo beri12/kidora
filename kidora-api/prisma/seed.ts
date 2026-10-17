@@ -4,6 +4,12 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
+  // Demo data with publicly known passwords (password123). Never on a live
+  // server: prices and plans come from migrations, not from this file.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+    console.error('Refusing to seed demo accounts with NODE_ENV=production. (Set ALLOW_DEMO_SEED=true only on a throwaway staging database.)');
+    process.exit(1);
+  }
   console.log('Seeding...');
   const subjects = [
     { slug: 'math', name: 'Mathematics', accent: '#7C3AED' },
@@ -19,9 +25,9 @@ async function main() {
 
   const password = await bcrypt.hash('password123', 10);
   // The row is still seeded; nothing below needs its id, so it is not bound.
-  await prisma.user.upsert({ where: { email: 'admin@kidora.com' }, update: {}, create: { email: 'admin@kidora.com', name: 'Admin', role: Role.ADMIN, passwordHash: password, emailVerified: true } });
-  const teacher = await prisma.user.upsert({ where: { email: 'teacher@kidora.com' }, update: {}, create: { email: 'teacher@kidora.com', name: 'Ms. Okafor', role: Role.TEACHER, passwordHash: password, emailVerified: true } });
-  const parent = await prisma.user.upsert({ where: { email: 'parent@kidora.com' }, update: {}, create: { email: 'parent@kidora.com', name: 'Priya Sharma', role: Role.PARENT, passwordHash: password, points: 1240, streak: 5, emailVerified: true } });
+  await prisma.user.upsert({ where: { email: 'admin@kidora.com' }, update: { roleConfirmed: true }, create: { roleConfirmed: true,  email: 'admin@kidora.com', name: 'Admin', role: Role.ADMIN, passwordHash: password, emailVerified: true } });
+  const teacher = await prisma.user.upsert({ where: { email: 'teacher@kidora.com' }, update: { roleConfirmed: true }, create: { roleConfirmed: true,  email: 'teacher@kidora.com', name: 'Ms. Okafor', role: Role.TEACHER, passwordHash: password, emailVerified: true } });
+  const parent = await prisma.user.upsert({ where: { email: 'parent@kidora.com' }, update: { roleConfirmed: true }, create: { roleConfirmed: true,  email: 'parent@kidora.com', name: 'Priya Sharma', role: Role.PARENT, passwordHash: password, points: 1240, streak: 5, emailVerified: true } });
   await prisma.subscription.upsert({ where: { userId: parent.id }, update: {}, create: { userId: parent.id, plan: PlanKey.family, status: 'active' } });
 
   const course = await prisma.course.upsert({
@@ -55,7 +61,7 @@ async function main() {
   ]) await prisma.badge.upsert({ where: { slug: b.slug }, update: {}, create: b });
 
   // ---- Kidora: child account + avatar + wallet ----
-  const child = await prisma.user.upsert({ where: { email: 'child@kidora.com' }, update: {}, create: { email: 'child@kidora.com', name: 'Leo', role: Role.CHILD, passwordHash: password, points: 1250, streak: 7, emailVerified: true } });
+  const child = await prisma.user.upsert({ where: { email: 'child@kidora.com' }, update: { roleConfirmed: true }, create: { roleConfirmed: true,  email: 'child@kidora.com', name: 'Leo', role: Role.CHILD, passwordHash: password, points: 1250, streak: 7, emailVerified: true } });
   await prisma.avatar.upsert({ where: { userId: child.id }, update: {}, create: { userId: child.id, hair: 'curly', clothes: 'explorer', pet: 'dragon' } });
   await prisma.rewardWallet.upsert({ where: { userId: child.id }, update: {}, create: { userId: child.id, coins: 1250, gems: 12, xp: 3600, level: 8 } });
 
