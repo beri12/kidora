@@ -24,9 +24,21 @@ class RedisIoAdapter extends IoAdapter {
     // Derived, so REDIS_HOST/REDIS_PORT work here too — docker-compose sets
     // those and no REDIS_URL, which used to leave this pointing at localhost.
     const url = redisUrl();
-    const pub = createClient({ url });
+    // Give up after a few quick tries so a missing Redis means "in-memory
+    // Socket.IO" and one warning, not an endless stream of errors.
+    const pub = createClient({
+      url,
+      socket: { connectTimeout: 5000, reconnectStrategy: (retries) => (retries >= 2 ? new Error('Redis unreachable') : 500) },
+    });
     const sub = pub.duplicate();
-    await Promise.all([pub.connect(), sub.connect()]);
+    pub.on('error', () => undefined);
+    sub.on('error', () => undefined);
+    try {
+      await Promise.all([pub.connect(), sub.connect()]);
+    } catch (err) {
+      await Promise.allSettled([pub.disconnect(), sub.disconnect()]);
+      throw err;
+    }
     this.adapterConstructor = createAdapter(pub, sub);
   }
   createIOServer(port: number, options?: ServerOptions) {
@@ -87,7 +99,13 @@ async function bootstrap() {
   // Attach the Redis Socket.IO adapter (falls back to in-memory if Redis is down).
   const ioAdapter = new RedisIoAdapter(app);
   try { await ioAdapter.connect(); app.useWebSocketAdapter(ioAdapter); }
-  catch { console.warn('Redis adapter unavailable — using in-memory Socket.IO'); }
+  catch {
+    const host = (() => { try { return new URL(redisUrl()).hostname; } catch { return ''; } })();
+    console.warn(
+      `Redis adapter unavailable (${redisUrl().replace(/\/\/[^@]*@/, '//***@')}) — using in-memory Socket.IO.` +
+      (host === 'redis' ? ' "redis" only resolves inside Docker; outside it set REDIS_URL=redis://localhost:6379.' : ''),
+    );
+  }
 
   const config = new DocumentBuilder()
     .setTitle('Kidora Education Platform API')
